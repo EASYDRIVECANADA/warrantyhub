@@ -26,7 +26,7 @@ function NavLink({ to, label }: { to: string; label: string }) {
 }
 
 export function Navbar() {
-  const { user, signOut, mode } = useAuth();
+  const { user, signOut } = useAuth();
   const isUnassigned = user?.role === "UNASSIGNED";
 
   const location = useLocation();
@@ -110,9 +110,6 @@ export function Navbar() {
 
           <div className="flex items-center justify-end gap-3">
             <div className="hidden md:flex items-center gap-3">
-              {isUnassigned ? null : (
-                <span className="text-xs text-muted-foreground">{mode === "supabase" ? "Supabase" : "Local mode"}</span>
-              )}
               {user ? (
                 <>
                   <Button variant="ghost" size="sm" asChild>

@@ -6,7 +6,6 @@ import {
   Car,
   ChartPie,
   Clock,
-  ExternalLink,
   Globe,
   Mail,
   MapPin,
@@ -205,48 +204,6 @@ export function HomePage() {
               fill="hsl(var(--background))"
             />
           </svg>
-        </div>
-      </section>
-
-      <section className="py-16 bg-muted/30">
-        <div className="container mx-auto px-4">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-10">
-              <div className="inline-flex items-center px-3 py-1 rounded-full border bg-card text-[11px] text-muted-foreground">
-                Consumer Resource
-              </div>
-
-              <h2 className="font-display text-3xl md:text-4xl font-semibold tracking-tight text-foreground mt-4">Extended Warranties</h2>
-
-              <p className="text-muted-foreground leading-relaxed text-base md:text-lg mt-4">
-                Extended warranties provide additional protection beyond the manufacturer's warranty, covering repairs and maintenance for your vehicle. Understanding your options helps ensure you make informed decisions about protecting your investment.
-              </p>
-            </div>
-
-            <div className="bg-card rounded-2xl border border-border p-8 md:p-10 shadow-card">
-              <div className="flex flex-col items-center text-center gap-5">
-                <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center border">
-                  <ExternalLink className="w-5 h-5" />
-                </div>
-
-                <div>
-                  <div className="text-lg md:text-xl font-semibold text-foreground">UCDA Extended Warranties Guide</div>
-                  <p className="text-muted-foreground mt-2">
-                    For comprehensive information about extended warranties, dealer requirements, and frequently asked questions, visit the official UCDA resource.
-                  </p>
-                </div>
-
-                <a
-                  href="https://www.ucda.org/dealer-faqs/extended-warranties/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium"
-                >
-                  Visit UCDA Guide
-                </a>
-              </div>
-            </div>
-          </div>
         </div>
       </section>
 
