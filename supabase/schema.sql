@@ -395,7 +395,7 @@ alter table public.contracts
   add column if not exists provider_id uuid references public.profiles(id) on delete set null;
 
 alter table public.contracts
-  add column if not exists product_id uuid references public.products(id) on delete set null;
+  add column if not exists product_id uuid;
 
 alter table public.contracts
   add column if not exists created_by_user_id text;
@@ -549,6 +549,18 @@ create table if not exists public.products (
   updated_at timestamptz not null default now()
 );
 
+do $$
+begin
+  alter table public.contracts
+    drop constraint if exists contracts_product_id_fkey;
+
+  alter table public.contracts
+    add constraint contracts_product_id_fkey
+    foreign key (product_id) references public.products(id) on delete set null;
+exception
+  when duplicate_object then null;
+end $$;
+
 alter table public.products
   add column if not exists dealer_cost_cents integer;
 
@@ -694,66 +706,95 @@ create policy "provider_team_members_provider_own"
   using (provider_id = auth.uid())
   with check (provider_id = auth.uid());
 
-insert into storage.buckets (id, name, public)
-values ('product-documents', 'product-documents', false)
-on conflict (id) do nothing;
+do $$
+begin
+  execute $sql$
+    insert into storage.buckets (id, name, public)
+    values ('product-documents', 'product-documents', false)
+    on conflict (id) do nothing;
+  $sql$;
 
-alter table storage.objects enable row level security;
+  execute $sql$
+    alter table storage.objects enable row level security;
+  $sql$;
 
-drop policy if exists "product_documents_storage_select" on storage.objects;
-create policy "product_documents_storage_select"
-  on storage.objects
-  for select
-  to authenticated
-  using (
-    bucket_id = 'product-documents'
-    and (
-      (storage.foldername(name))[1] = auth.uid()::text
-      or exists (
-        select 1
-        from public.profiles p
-        where p.id = auth.uid() and p.role in ('DEALER','DEALER_ADMIN','ADMIN','SUPER_ADMIN')
+  execute $sql$
+    drop policy if exists "product_documents_storage_select" on storage.objects;
+  $sql$;
+
+  execute $sql$
+    create policy "product_documents_storage_select"
+      on storage.objects
+      for select
+      to authenticated
+      using (
+        bucket_id = 'product-documents'
+        and (
+          (storage.foldername(name))[1] = auth.uid()::text
+          or exists (
+            select 1
+            from public.profiles p
+            where p.id = auth.uid() and p.role in ('ADMIN','SUPER_ADMIN')
+          )
+          or exists (
+            select 1
+            from public.product_documents pd
+            join public.products pr on pr.id = pd.product_id
+            where pd.storage_path = storage.objects.name
+              and pr.published = true
+          )
+        )
+      );
+  $sql$;
+
+  execute $sql$
+    drop policy if exists "product_documents_storage_insert" on storage.objects;
+  $sql$;
+
+  execute $sql$
+    create policy "product_documents_storage_insert"
+      on storage.objects
+      for insert
+      to authenticated
+      with check (
+        bucket_id = 'product-documents'
+        and (storage.foldername(name))[1] = auth.uid()::text
+      );
+  $sql$;
+
+  execute $sql$
+    drop policy if exists "product_documents_storage_update" on storage.objects;
+  $sql$;
+
+  execute $sql$
+    create policy "product_documents_storage_update"
+      on storage.objects
+      for update
+      to authenticated
+      using (
+        bucket_id = 'product-documents'
+        and (storage.foldername(name))[1] = auth.uid()::text
       )
-      and exists (
-        select 1
-        from public.product_documents pd
-        join public.products pr on pr.id = pd.product_id
-        where pd.storage_path = storage.objects.name
-          and pr.published = true
-      )
-    )
-  );
+      with check (
+        bucket_id = 'product-documents'
+        and (storage.foldername(name))[1] = auth.uid()::text
+      );
+  $sql$;
 
-drop policy if exists "product_documents_storage_insert" on storage.objects;
-create policy "product_documents_storage_insert"
-  on storage.objects
-  for insert
-  to authenticated
-  with check (
-    bucket_id = 'product-documents'
-    and (storage.foldername(name))[1] = auth.uid()::text
-  );
+  execute $sql$
+    drop policy if exists "product_documents_storage_delete" on storage.objects;
+  $sql$;
 
-drop policy if exists "product_documents_storage_update" on storage.objects;
-create policy "product_documents_storage_update"
-  on storage.objects
-  for update
-  to authenticated
-  using (
-    bucket_id = 'product-documents'
-    and (storage.foldername(name))[1] = auth.uid()::text
-  )
-  with check (
-    bucket_id = 'product-documents'
-    and (storage.foldername(name))[1] = auth.uid()::text
-  );
-
-drop policy if exists "product_documents_storage_delete" on storage.objects;
-create policy "product_documents_storage_delete"
-  on storage.objects
-  for delete
-  to authenticated
-  using (
-    bucket_id = 'product-documents'
-    and (storage.foldername(name))[1] = auth.uid()::text
-  );
+  execute $sql$
+    create policy "product_documents_storage_delete"
+      on storage.objects
+      for delete
+      to authenticated
+      using (
+        bucket_id = 'product-documents'
+        and (storage.foldername(name))[1] = auth.uid()::text
+      );
+  $sql$;
+exception
+  when insufficient_privilege then null;
+end $$;
