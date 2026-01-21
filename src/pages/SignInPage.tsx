@@ -30,7 +30,19 @@ export function SignInPage() {
     try {
       await signIn(email, password);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign in failed");
+      if (err instanceof Error) {
+        setError(err.message);
+        return;
+      }
+      if (typeof err === "string") {
+        setError(err);
+        return;
+      }
+      try {
+        setError(JSON.stringify(err));
+      } catch {
+        setError("Sign in failed");
+      }
     }
   };
 

@@ -7,22 +7,23 @@ async function ensureProfileAndGetRole(userId: string, email: string): Promise<R
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error("Supabase is not configured");
 
-  try {
-    const { data, error } = await supabase.from("profiles").select("role, is_active").eq("id", userId).single();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("role, is_active")
+    .eq("id", userId)
+    .maybeSingle();
 
-    if (error) throw error;
+  if (error) throw new Error(error.message);
 
+  if (data) {
     const active = (data as any).is_active !== false;
     if (!active) return "UNASSIGNED";
     return ((data as any).role ?? "UNASSIGNED") as Role;
-  } catch {
-    const upsertRes = await supabase
-      .from("profiles")
-      .upsert({ id: userId, role: "UNASSIGNED", email, is_active: false }, { onConflict: "id" });
-
-    if (upsertRes.error) throw upsertRes.error;
-    return "UNASSIGNED";
   }
+
+  const insertRes = await supabase.from("profiles").insert({ id: userId, role: "UNASSIGNED", email, is_active: false });
+  if (insertRes.error && (insertRes.error as any).code !== "23505") throw new Error(insertRes.error.message);
+  return "UNASSIGNED";
 }
 
 export const supabaseAuthApi: AuthApi = {
@@ -51,7 +52,7 @@ export const supabaseAuthApi: AuthApi = {
       },
     });
 
-    if (error) throw error;
+    if (error) throw new Error(error.message);
   },
 
   async signInWithPassword(email, password) {
@@ -59,7 +60,7 @@ export const supabaseAuthApi: AuthApi = {
     if (!supabase) throw new Error("Supabase is not configured");
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+    if (error) throw new Error(error.message);
 
     const user = data.user;
     if (!user?.email) throw new Error("No user returned");
@@ -73,7 +74,7 @@ export const supabaseAuthApi: AuthApi = {
     if (!supabase) throw new Error("Supabase is not configured");
 
     const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) throw error;
+    if (error) throw new Error(error.message);
 
     const user = data.user;
     if (!user?.email) throw new Error("No user returned");
@@ -91,7 +92,7 @@ export const supabaseAuthApi: AuthApi = {
     const supabase = getSupabaseClient();
     if (!supabase) return;
     const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    if (error) throw new Error(error.message);
   },
 
   onAuthStateChange(cb) {
