@@ -49,8 +49,8 @@ export function Navbar() {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-xl border-b border-border shadow-card">
-      <div className="container mx-auto px-6 lg:px-10">
-        <div className="grid grid-cols-2 md:grid-cols-[auto,1fr,auto] items-center h-16 gap-4">
+      <div className="container mx-auto px-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 items-center h-16 gap-4">
           <div className="flex items-center">
             <Link to={brandPath} className="flex items-center gap-2 group">
               <img src={BRAND.logoUrl} alt={BRAND.name} className="h-12 w-auto object-contain" />

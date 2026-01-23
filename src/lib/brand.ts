@@ -4,5 +4,5 @@ export const BRAND = {
   wordmarkLeft: "Bridge",
   wordmarkRight: "Warranty",
   logoUrl: new URL("../../images/Bridge Warranty_Transparent.png", import.meta.url).href,
-  copyrightYear: "2026",
+  copyrightYear: "2024",
 } as const;
