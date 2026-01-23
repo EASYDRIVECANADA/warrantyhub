@@ -271,7 +271,7 @@ export function HomePage() {
         </div>
       </section>
 
-      <footer className="bg-primary text-primary-foreground py-12 mt-auto">
+      <footer className="bg-primary text-white py-12 mt-auto">
         <div className="container mx-auto px-4">
           <div className="flex flex-col items-center gap-6">
             <div className="flex items-center">
@@ -279,7 +279,7 @@ export function HomePage() {
             </div>
 
             <div className="text-center max-w-4xl">
-              <p className="text-primary-foreground/90 text-sm md:text-base leading-relaxed mb-4">
+              <p className="text-white/90 text-sm md:text-base leading-relaxed mb-4">
                 When reaching out, dealers should verify the specific products and current terms offered, ensuring they satisfy themselves as to the insured status of any company whose products they offer their customers. You can find additional information and a list of recognized insured companies on the{' '}
                 <a
                   href="https://ucda.ca"
@@ -301,7 +301,7 @@ export function HomePage() {
               </p>
             </div>
 
-            <p className="text-primary-foreground/70 text-sm">© {BRAND.copyrightYear} {BRAND.name}. All rights reserved.</p>
+            <p className="text-white/80 text-sm">© {BRAND.copyrightYear} {BRAND.name}. All rights reserved.</p>
           </div>
         </div>
       </footer>

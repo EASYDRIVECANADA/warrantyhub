@@ -24,6 +24,57 @@ alter table public.profiles
 
 alter table public.profiles enable row level security;
 
+create or replace function public.current_role()
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select p.role from public.profiles p where p.id = auth.uid();
+$$;
+
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.role in ('ADMIN','SUPER_ADMIN')
+  );
+$$;
+
+create or replace function public.is_dealer_or_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.role in ('DEALER','DEALER_ADMIN','ADMIN','SUPER_ADMIN')
+  );
+$$;
+
+create or replace function public.can_update_profile(target_id uuid, new_role text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    public.is_admin()
+    and new_role <> 'SUPER_ADMIN'
+    and (
+      (select old.role from public.profiles old where old.id = target_id) <> 'SUPER_ADMIN'
+    );
+$$;
+
 drop policy if exists "profiles_select_own" on public.profiles;
 create policy "profiles_select_own"
   on public.profiles
@@ -33,10 +84,7 @@ create policy "profiles_select_own"
     auth.uid() = id
     or (
       role = 'PROVIDER'
-      and exists (
-        select 1 from public.profiles p
-        where p.id = auth.uid() and p.role in ('DEALER','DEALER_ADMIN','ADMIN','SUPER_ADMIN')
-      )
+      and public.is_dealer_or_admin()
     )
   );
 
@@ -57,73 +105,22 @@ create policy "profiles_update_own"
   for update
   to authenticated
   using (auth.uid() = id)
-  with check (
-    auth.uid() = id
-    and role = (
-      select p.role from public.profiles p
-      where p.id = auth.uid()
-    )
-    and is_active = (
-      select p.is_active from public.profiles p
-      where p.id = auth.uid()
-    )
-    and coalesce(email,'') = coalesce((
-      select p.email from public.profiles p
-      where p.id = auth.uid()
-    ),'')
-  );
+  with check (auth.uid() = id);
 
 drop policy if exists "profiles_select_admin_all" on public.profiles;
 create policy "profiles_select_admin_all"
   on public.profiles
   for select
   to authenticated
-  using (exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid() and p.role in ('ADMIN','SUPER_ADMIN')
-  ));
+  using (public.is_admin());
 
 drop policy if exists "profiles_update_admin_all" on public.profiles;
 create policy "profiles_update_admin_all"
   on public.profiles
   for update
   to authenticated
-  using (exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid() and p.role in ('ADMIN','SUPER_ADMIN')
-  ))
-  with check (
-    exists (
-      select 1 from public.profiles p
-      where p.id = auth.uid() and p.role in ('ADMIN','SUPER_ADMIN')
-    )
-    and (
-      select old.role from public.profiles old
-      where old.id = public.profiles.id
-    ) <> 'SUPER_ADMIN'
-    and role <> 'SUPER_ADMIN'
-    and (
-      (
-        exists (select 1 from public.profiles a where a.id = auth.uid() and a.role = 'ADMIN')
-        and (
-          select old.role from public.profiles old
-          where old.id = public.profiles.id
-        ) not in ('ADMIN','SUPER_ADMIN')
-        and role in ('UNASSIGNED','DEALER','DEALER_ADMIN','PROVIDER')
-      )
-      or
-      (
-        exists (select 1 from public.profiles a where a.id = auth.uid() and a.role = 'SUPER_ADMIN')
-        and (
-          role = (
-            select old.role from public.profiles old
-            where old.id = public.profiles.id
-          )
-          or role in ('UNASSIGNED','DEALER','PROVIDER','ADMIN')
-        )
-      )
-    )
-  );
+  using (public.is_admin())
+  with check (public.can_update_profile(public.profiles.id, public.profiles.role));
 
 create table if not exists public.access_request_audit (
   id uuid primary key default gen_random_uuid(),
