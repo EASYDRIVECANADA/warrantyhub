@@ -86,9 +86,9 @@ const directory: ProviderDirectoryEntry[] = [
 ];
 
 const stats = [
-  { icon: Users, value: "50K+", label: "Happy Customers" },
+  { icon: Users, value: "50K+", label: "Users Served" },
   { icon: Car, value: "99.9%", label: "Claims Approved" },
-  { icon: ChartPie, value: "$2M+", label: "Saved by Users" },
+  { icon: ChartPie, value: "500+", label: "Active Dealerships" },
   { icon: Clock, value: "24/7", label: "Support" },
 ];
 
@@ -145,7 +145,7 @@ export function HomePage() {
             </h1>
 
             <p className="text-lg md:text-xl text-primary-foreground/80 mb-12 max-w-2xl mx-auto">
-              Here are several car dealership warranty companies operating in Ontario that you can reach out to, along with their contact details.
+              Below are independent vehicle warranty providers you can explore through our marketplace. We do not sell warranties directly-all warranties are provided and administered by third-party companies.
             </p>
 
             <div className="max-w-3xl mx-auto mb-12 rounded-2xl bg-primary-foreground/10 backdrop-blur-sm border border-primary-foreground/25 px-6 py-6">
@@ -277,7 +277,7 @@ export function HomePage() {
         <div className="container mx-auto px-4">
           <div className="flex flex-col items-center gap-6">
             <div className="flex items-center">
-              <img src={footerLogoUrl} alt={BRAND.name} className="h-12 w-auto object-contain" />
+              <img src={footerLogoUrl} alt={BRAND.name} className="h-20 md:h-24 w-auto object-contain" />
             </div>
 
             <div className="text-center max-w-4xl">

@@ -53,7 +53,7 @@ export function Navbar() {
         <div className="grid grid-cols-2 md:grid-cols-3 items-center h-16 gap-4">
           <div className="flex items-center">
             <Link to={brandPath} className="flex items-center gap-2 group">
-              <img src={BRAND.logoUrl} alt={BRAND.name} className="h-12 w-auto object-contain" />
+              <img src={BRAND.logoUrl} alt={BRAND.name} className="h-14 w-auto object-contain" />
             </Link>
           </div>
 
