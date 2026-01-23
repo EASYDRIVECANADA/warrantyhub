@@ -83,6 +83,21 @@ function writeLocal(items: AccessRequest[]) {
   localStorage.setItem(LOCAL_KEY, JSON.stringify(items));
 }
 
+function toErrorMessage(err: unknown) {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  if (err && typeof err === "object") {
+    const anyErr = err as any;
+    if (typeof anyErr.message === "string") return anyErr.message;
+    if (typeof anyErr.error_description === "string") return anyErr.error_description;
+  }
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return "Unknown error";
+  }
+}
+
 export function AdminAccessRequestsPage() {
   const mode = useMemo(() => getAppMode(), []);
   const qc = useQueryClient();
@@ -174,7 +189,7 @@ export function AdminAccessRequestsPage() {
           .update(updateRow)
           .eq("id", input.id);
 
-        if (error) throw error;
+        if (error) throw new Error(toErrorMessage(error));
 
         if (input.status === "APPROVED" && input.assignedRole && input.assignedCompany) {
           const email = (current?.email ?? "").trim().toLowerCase();
@@ -187,7 +202,7 @@ export function AdminAccessRequestsPage() {
                 .update({ role: input.assignedRole, company_name: input.assignedCompany, is_active: true })
                 .eq("id", profileId);
 
-              if (profileUpdate.error) throw profileUpdate.error;
+              if (profileUpdate.error) throw new Error(toErrorMessage(profileUpdate.error));
             }
           }
         }
@@ -203,7 +218,7 @@ export function AdminAccessRequestsPage() {
           actor_email: actorEmail ?? null,
         });
 
-        if (auditInsert.error) throw auditInsert.error;
+        if (auditInsert.error) throw new Error(toErrorMessage(auditInsert.error));
         return;
       }
 
@@ -423,7 +438,7 @@ export function AdminAccessRequestsPage() {
 
       {updateStatusMutation.isError ? (
         <div className="mt-4 text-sm text-destructive">
-          {updateStatusMutation.error instanceof Error ? updateStatusMutation.error.message : "Failed to update request."}
+          {toErrorMessage(updateStatusMutation.error)}
         </div>
       ) : null}
     </PageShell>

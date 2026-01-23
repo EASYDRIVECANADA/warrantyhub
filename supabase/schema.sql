@@ -142,20 +142,14 @@ create policy "access_request_audit_select_admin"
   on public.access_request_audit
   for select
   to authenticated
-  using (exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid() and p.role in ('ADMIN','SUPER_ADMIN')
-  ));
+  using (public.is_admin());
 
 drop policy if exists "access_request_audit_insert_admin" on public.access_request_audit;
 create policy "access_request_audit_insert_admin"
   on public.access_request_audit
   for insert
   to authenticated
-  with check (exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid() and p.role in ('ADMIN','SUPER_ADMIN')
-  ));
+  with check (public.is_admin());
 
 create table if not exists public.dealers (
   id uuid primary key default gen_random_uuid(),
@@ -278,25 +272,16 @@ create policy "access_requests_select_admin"
   on public.access_requests
   for select
   to authenticated
-  using (exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid() and p.role in ('ADMIN','SUPER_ADMIN')
-  ));
+  using (public.is_admin());
 
 drop policy if exists "access_requests_update_admin" on public.access_requests;
 create policy "access_requests_update_admin"
   on public.access_requests
   for update
   to authenticated
-  using (exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid() and p.role in ('ADMIN','SUPER_ADMIN')
-  ))
+  using (public.is_admin())
   with check (
-    exists (
-      select 1 from public.profiles p
-      where p.id = auth.uid() and p.role in ('ADMIN','SUPER_ADMIN')
-    )
+    public.is_admin()
     and (
       status <> 'APPROVED'
       or (assigned_role is not null and assigned_company is not null)
@@ -305,19 +290,13 @@ create policy "access_requests_update_admin"
       assigned_role is null
       or (
         (
-          exists (select 1 from public.profiles a where a.id = auth.uid() and a.role = 'ADMIN')
+          public.current_role() = 'ADMIN'
           and assigned_role in ('DEALER','DEALER_ADMIN','PROVIDER')
         )
         or
         (
-          exists (select 1 from public.profiles a where a.id = auth.uid() and a.role = 'SUPER_ADMIN')
-          and (
-            assigned_role = (
-              select ar.assigned_role from public.access_requests ar
-              where ar.id = public.access_requests.id
-            )
-            or assigned_role in ('DEALER','PROVIDER','ADMIN')
-          )
+          public.current_role() = 'SUPER_ADMIN'
+          and assigned_role in ('DEALER','PROVIDER','ADMIN')
         )
       )
     )
