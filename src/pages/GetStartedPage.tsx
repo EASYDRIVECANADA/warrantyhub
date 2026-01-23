@@ -29,7 +29,19 @@ export function GetStartedPage() {
       await signUp(email, password);
       navigate("/request-access", { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign up failed");
+      if (err instanceof Error) {
+        setError(err.message);
+        return;
+      }
+      if (typeof err === "string") {
+        setError(err);
+        return;
+      }
+      try {
+        setError(JSON.stringify(err));
+      } catch {
+        setError("Sign up failed");
+      }
     }
   };
 

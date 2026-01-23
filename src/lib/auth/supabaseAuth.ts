@@ -73,17 +73,29 @@ export const supabaseAuthApi: AuthApi = {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error("Supabase is not configured");
 
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/sign-in`,
+      },
+    });
     if (error) throw new Error(error.message);
 
     const user = data.user;
     if (!user?.email) throw new Error("No user returned");
 
-    const upsertRes = await supabase
-      .from("profiles")
-      .upsert({ id: user.id, role: "UNASSIGNED", email: user.email, is_active: false }, { onConflict: "id" });
+    if (!data.session) {
+      throw new Error("Account created. Please confirm your email, then sign in.");
+    }
 
-    if (upsertRes.error) throw upsertRes.error;
+    const insertRes = await supabase
+      .from("profiles")
+      .insert({ id: user.id, role: "UNASSIGNED", email: user.email, is_active: false });
+
+    if (insertRes.error && (insertRes.error as any).code !== "23505") {
+      throw new Error(insertRes.error.message);
+    }
 
     return { id: user.id, email: user.email, role: "UNASSIGNED" };
   },
