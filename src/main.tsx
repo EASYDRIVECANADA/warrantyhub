@@ -11,6 +11,18 @@ import { AlertProvider } from "./providers/AlertProvider";
 
 const queryClient = new QueryClient();
 
+const faviconUrl = new URL("../images/Bridge Warranty_Icon Only.png", import.meta.url).href;
+
+const existingFavicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+if (existingFavicon) {
+  existingFavicon.href = faviconUrl;
+} else {
+  const link = document.createElement("link");
+  link.rel = "icon";
+  link.href = faviconUrl;
+  document.head.appendChild(link);
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

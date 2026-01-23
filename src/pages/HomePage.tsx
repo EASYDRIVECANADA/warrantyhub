@@ -16,6 +16,8 @@ import {
 import { Button } from "../components/ui/button";
 import { BRAND } from "../lib/brand";
 
+const footerLogoUrl = new URL("../../images/warrantyhubwhite.png", import.meta.url).href;
+
 type ProviderDirectoryEntry = {
   name: string;
   phone: string;
@@ -275,7 +277,7 @@ export function HomePage() {
         <div className="container mx-auto px-4">
           <div className="flex flex-col items-center gap-6">
             <div className="flex items-center">
-              <img src={BRAND.logoUrl} alt={BRAND.name} className="h-12 w-auto object-contain" />
+              <img src={footerLogoUrl} alt={BRAND.name} className="h-12 w-auto object-contain" />
             </div>
 
             <div className="text-center max-w-4xl">
