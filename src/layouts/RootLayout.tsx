@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { Navbar } from "../components/Navbar";
+import { SupportWidget } from "../components/SupportWidget";
 import type { Role } from "../lib/auth/types";
 import { useAuth } from "../providers/AuthProvider";
 
@@ -65,6 +66,7 @@ export function RootLayout() {
       <main className="pt-16">
         <Outlet />
       </main>
+      <SupportWidget />
     </div>
   );
 }

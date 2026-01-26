@@ -261,6 +261,9 @@ export function SuperAdminPlatformPage() {
             </Link>
           </Button>
           <Button variant="outline" asChild>
+            <Link to="/admin-support">Support Inbox</Link>
+          </Button>
+          <Button variant="outline" asChild>
             <Link to="/admin-users">
               <span className="inline-flex items-center gap-2">
                 <UserCircle className="w-4 h-4" />

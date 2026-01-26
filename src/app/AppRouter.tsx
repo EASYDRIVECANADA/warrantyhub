@@ -33,6 +33,8 @@ import { SuperAdminPlatformPage } from "../pages/SuperAdminPlatformPage";
 import { RequestAccessPage } from "../pages/RequestAccessPage";
 import { ProfilePage } from "../pages/ProfilePage";
 import { RemittancesPage } from "../pages/RemittancesPage";
+import { SupportPage } from "../pages/SupportPage";
+import { AdminSupportInboxPage } from "../pages/AdminSupportInboxPage";
 
 export function AppRouter() {
   return (
@@ -50,10 +52,15 @@ export function AppRouter() {
           <Route path="profile" element={<ProfilePage />} />
         </Route>
 
+        <Route element={<ProtectedRoute allowedRoles={["DEALER", "DEALER_ADMIN", "PROVIDER", "ADMIN", "SUPER_ADMIN"]} />}>
+          <Route path="support" element={<SupportPage />} />
+        </Route>
+
         <Route element={<ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]} />}>
           <Route path="company-dashboard" element={<AdminDashboardPage />} />
           <Route path="admin-users" element={<AdminUsersPage />} />
           <Route path="admin-access-requests" element={<AdminAccessRequestsPage />} />
+          <Route path="admin-support" element={<AdminSupportInboxPage />} />
           <Route path="admin-contracts" element={<ContractsPage title="Admin Contracts" />} />
           <Route path="admin-remittances" element={<RemittancesPage title="Admin Remittances" />} />
           <Route path="admin-batches" element={<BatchesPage title="Admin Batches" />} />

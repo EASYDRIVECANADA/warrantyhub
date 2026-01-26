@@ -97,6 +97,7 @@ export function Navbar() {
                 {user?.role === "SUPER_ADMIN" ? <NavLink to="/platform" label="Platform" /> : null}
                 {user?.role === "SUPER_ADMIN" ? <NavLink to="/admin-users" label="Platform Users" /> : null}
                 {user?.role === "SUPER_ADMIN" ? <NavLink to="/admin-access-requests" label="Access Requests" /> : null}
+                {user?.role === "SUPER_ADMIN" ? <NavLink to="/admin-support" label="Support Inbox" /> : null}
 
                 {user?.role === "ADMIN" ? <NavLink to="/admin-contracts" label="Contracts" /> : null}
                 {user?.role === "ADMIN" ? <NavLink to="/admin-remittances" label="Remittances" /> : null}

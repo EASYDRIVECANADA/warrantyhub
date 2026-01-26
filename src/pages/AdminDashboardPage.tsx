@@ -137,6 +137,9 @@ export function AdminDashboardPage() {
             <Button asChild>
               <Link to="/admin-remittances">View remittances</Link>
             </Button>
+            <Button variant="outline" asChild>
+              <Link to="/admin-support">Support Inbox</Link>
+            </Button>
           </div>
         </div>
 
