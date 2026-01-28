@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { PageShell } from "../components/PageShell";
 import { Button } from "../components/ui/button";
+import { SupportFaqs } from "../components/SupportFaqs";
 import { getAppMode } from "../lib/runtime";
 import { getSupabaseClient } from "../lib/supabase/client";
 import { useAuth } from "../providers/AuthProvider";
@@ -192,6 +193,8 @@ export function SupportPage() {
       {mode !== "supabase" ? (
         <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">Supabase is not configured.</div>
       ) : null}
+
+      <SupportFaqs />
 
       {conversationQuery.isError ? (
         <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">

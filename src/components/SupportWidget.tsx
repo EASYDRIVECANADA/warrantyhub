@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "./ui/button";
+import { SupportFaqs } from "./SupportFaqs";
 import { getAppMode } from "../lib/runtime";
 import { getSupabaseClient } from "../lib/supabase/client";
 import { useAuth } from "../providers/AuthProvider";
@@ -54,6 +55,7 @@ export function SupportWidget() {
   const userId = (user?.id ?? "").trim();
 
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<"chat" | "faqs">("chat");
   const [draft, setDraft] = useState("");
 
   const canUseSupport =
@@ -207,17 +209,51 @@ export function SupportWidget() {
   });
 
   const busy = conversationQuery.isLoading || messagesQuery.isLoading || sendMutation.isPending;
+  const showChat = tab === "chat";
 
   if (!shouldRender) return null;
 
   return (
     <div className="fixed bottom-5 right-5 z-50">
       {!open ? (
-        <Button onClick={() => setOpen(true)}>Help</Button>
+        <Button
+          onClick={() => {
+            setTab("chat");
+            setOpen(true);
+          }}
+        >
+          Help
+        </Button>
       ) : (
-        <div className="w-[360px] max-w-[calc(100vw-40px)] rounded-xl border bg-card shadow-card overflow-hidden">
+        <div className="w-[360px] max-w-[calc(100vw-40px)] max-h-[calc(100vh-40px)] rounded-xl border bg-card shadow-card overflow-hidden flex flex-col">
           <div className="px-4 py-3 border-b flex items-center justify-between">
-            <div className="font-semibold text-sm">Help & Support</div>
+            <div className="flex items-center gap-2">
+              <div className="font-semibold text-sm">Help & Support</div>
+              <div className="flex items-center rounded-md border bg-background overflow-hidden">
+                <button
+                  type="button"
+                  className={
+                    showChat
+                      ? "px-2 py-1 text-xs font-medium bg-accent/30"
+                      : "px-2 py-1 text-xs text-muted-foreground hover:bg-accent/10"
+                  }
+                  onClick={() => setTab("chat")}
+                >
+                  Chat
+                </button>
+                <button
+                  type="button"
+                  className={
+                    !showChat
+                      ? "px-2 py-1 text-xs font-medium bg-accent/30"
+                      : "px-2 py-1 text-xs text-muted-foreground hover:bg-accent/10"
+                  }
+                  onClick={() => setTab("faqs")}
+                >
+                  FAQs
+                </button>
+              </div>
+            </div>
             <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
               Close
             </Button>
@@ -231,65 +267,89 @@ export function SupportWidget() {
             <div className="p-4 text-sm text-destructive">{toErrorMessage(conversationQuery.error)}</div>
           ) : null}
 
-          <div className="p-4">
-            <div className="text-sm font-medium">Hi, how can we help you?</div>
-            <div className="text-xs text-muted-foreground mt-1">Send us a message and our team will reply.</div>
-            <div className="text-xs text-muted-foreground mt-1">Human support only. This is not an AI chatbot.</div>
-            <div className="space-y-2 max-h-[260px] overflow-auto pr-1 mt-3">
-              {(messagesQuery.data ?? []).map((m) => {
-                const mine = m.sender_type === "USER";
-                return (
-                  <div key={m.id} className={mine ? "flex justify-end" : "flex justify-start"}>
-                    <div
-                      className={
-                        mine
-                          ? "max-w-[85%] rounded-2xl bg-primary text-primary-foreground px-3 py-2 text-xs"
-                          : "max-w-[85%] rounded-2xl border bg-background px-3 py-2 text-xs"
-                      }
-                    >
-                      <div className={mine ? "text-primary-foreground/80 text-[11px]" : "text-muted-foreground text-[11px]"}>
-                        {mine ? "You" : "Support"} • {new Date(m.created_at).toLocaleTimeString()}
+          <div className="flex-1 overflow-auto p-4">
+            {showChat ? (
+              <>
+                <div className="text-sm font-medium">Hi, how can we help you?</div>
+                <div className="text-xs text-muted-foreground mt-1">Send us a message and our team will reply.</div>
+                <div className="text-xs text-muted-foreground mt-1">Human support only. This is not an AI chatbot.</div>
+                <div className="space-y-2 pr-1 mt-3">
+                  {(messagesQuery.data ?? []).map((m) => {
+                    const mine = m.sender_type === "USER";
+                    return (
+                      <div key={m.id} className={mine ? "flex justify-end" : "flex justify-start"}>
+                        <div
+                          className={
+                            mine
+                              ? "max-w-[85%] rounded-2xl bg-primary text-primary-foreground px-3 py-2 text-xs"
+                              : "max-w-[85%] rounded-2xl border bg-background px-3 py-2 text-xs"
+                          }
+                        >
+                          <div className={mine ? "text-primary-foreground/80 text-[11px]" : "text-muted-foreground text-[11px]"}>
+                            {mine ? "You" : "Support"} • {new Date(m.created_at).toLocaleTimeString()}
+                          </div>
+                          <div className="mt-1 whitespace-pre-wrap break-words text-sm">{m.body}</div>
+                        </div>
                       </div>
-                      <div className="mt-1 whitespace-pre-wrap break-words text-sm">{m.body}</div>
-                    </div>
-                  </div>
-                );
-              })}
+                    );
+                  })}
 
-              {!messagesQuery.isLoading && (messagesQuery.data ?? []).length === 0 ? (
-                <div className="text-sm text-muted-foreground">Send a message to start.</div>
-              ) : null}
+                  {!messagesQuery.isLoading && (messagesQuery.data ?? []).length === 0 ? (
+                    <div className="text-sm text-muted-foreground">Send a message to start.</div>
+                  ) : null}
 
-              {messagesQuery.isError ? (
-                <div className="text-sm text-destructive">{toErrorMessage(messagesQuery.error)}</div>
-              ) : null}
-            </div>
+                  {messagesQuery.isError ? (
+                    <div className="text-sm text-destructive">{toErrorMessage(messagesQuery.error)}</div>
+                  ) : null}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-sm font-medium">Bridge Warranty-FAQs</div>
+                <div className="text-xs text-muted-foreground mt-1">Search common questions before messaging.</div>
+                <div className="mt-3">
+                  <SupportFaqs compact />
+                </div>
+              </>
+            )}
+          </div>
 
-            <div className="mt-3 grid grid-cols-1 gap-2">
-              <textarea
-                className="min-h-[84px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder="Type your message…"
-                disabled={busy || mode !== "supabase"}
-              />
-              <div className="flex justify-end">
-                <Button
-                  size="sm"
+          {showChat ? (
+            <div className="p-4 border-t">
+              <div className="grid grid-cols-1 gap-2">
+                <textarea
+                  className="min-h-[84px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder="Type your message…"
                   disabled={busy || mode !== "supabase"}
-                  onClick={() => {
-                    sendMutation.mutate();
-                  }}
-                >
-                  Send
+                />
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    disabled={busy || mode !== "supabase"}
+                    onClick={() => {
+                      sendMutation.mutate();
+                    }}
+                  >
+                    Send
+                  </Button>
+                </div>
+
+                {sendMutation.isError ? (
+                  <div className="text-sm text-destructive">{toErrorMessage(sendMutation.error)}</div>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 border-t">
+              <div className="flex justify-end">
+                <Button size="sm" variant="outline" onClick={() => setTab("chat")}>
+                  Back to chat
                 </Button>
               </div>
-
-              {sendMutation.isError ? (
-                <div className="text-sm text-destructive">{toErrorMessage(sendMutation.error)}</div>
-              ) : null}
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>
