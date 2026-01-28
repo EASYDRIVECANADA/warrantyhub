@@ -682,6 +682,21 @@ alter table public.contracts
   add column if not exists product_id uuid;
 
 alter table public.contracts
+  add column if not exists product_pricing_id uuid;
+
+alter table public.contracts
+  add column if not exists pricing_term_months integer;
+
+alter table public.contracts
+  add column if not exists pricing_term_km integer;
+
+alter table public.contracts
+  add column if not exists pricing_deductible_cents integer;
+
+alter table public.contracts
+  add column if not exists pricing_base_price_cents integer;
+
+alter table public.contracts
   add column if not exists created_by_user_id text;
 
 alter table public.contracts
@@ -892,6 +907,18 @@ create table if not exists public.product_pricing (
   created_at timestamptz not null default now(),
   unique (product_id, term_months, term_km, deductible_cents)
 );
+
+do $$
+begin
+  alter table public.contracts
+    drop constraint if exists contracts_product_pricing_id_fkey;
+
+  alter table public.contracts
+    add constraint contracts_product_pricing_id_fkey
+    foreign key (product_pricing_id) references public.product_pricing(id) on delete set null;
+exception
+  when duplicate_object then null;
+end $$;
 
 alter table public.product_pricing enable row level security;
 

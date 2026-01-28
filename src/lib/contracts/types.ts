@@ -12,6 +12,11 @@ export type Contract = {
   customerName: string;
   providerId?: string;
   productId?: string;
+  productPricingId?: string;
+  pricingTermMonths?: number;
+  pricingTermKm?: number;
+  pricingDeductibleCents?: number;
+  pricingBasePriceCents?: number;
   createdByUserId?: string;
   createdByEmail?: string;
   soldByUserId?: string;
@@ -48,6 +53,11 @@ export type CreateContractInput = {
   customerName: string;
   providerId?: string;
   productId?: string;
+  productPricingId?: string;
+  pricingTermMonths?: number;
+  pricingTermKm?: number;
+  pricingDeductibleCents?: number;
+  pricingBasePriceCents?: number;
   createdByUserId?: string;
   createdByEmail?: string;
   customerEmail?: string;

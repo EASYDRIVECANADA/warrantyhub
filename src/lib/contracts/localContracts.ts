@@ -22,6 +22,11 @@ function read(): Contract[] {
           customerName: c.customerName ?? "",
           providerId: c.providerId,
           productId: c.productId,
+          productPricingId: c.productPricingId,
+          pricingTermMonths: typeof c.pricingTermMonths === "number" ? c.pricingTermMonths : undefined,
+          pricingTermKm: typeof c.pricingTermKm === "number" ? c.pricingTermKm : undefined,
+          pricingDeductibleCents: typeof c.pricingDeductibleCents === "number" ? c.pricingDeductibleCents : undefined,
+          pricingBasePriceCents: typeof c.pricingBasePriceCents === "number" ? c.pricingBasePriceCents : undefined,
           createdByUserId: c.createdByUserId,
           createdByEmail: c.createdByEmail,
           soldByUserId: c.soldByUserId,
@@ -92,6 +97,11 @@ export const localContractsApi: ContractsApi = {
       customerName: input.customerName,
       providerId: input.providerId,
       productId: input.productId,
+      productPricingId: input.productPricingId,
+      pricingTermMonths: typeof input.pricingTermMonths === "number" ? input.pricingTermMonths : undefined,
+      pricingTermKm: typeof input.pricingTermKm === "number" ? input.pricingTermKm : undefined,
+      pricingDeductibleCents: typeof input.pricingDeductibleCents === "number" ? input.pricingDeductibleCents : undefined,
+      pricingBasePriceCents: typeof input.pricingBasePriceCents === "number" ? input.pricingBasePriceCents : undefined,
       createdByUserId: input.createdByUserId,
       createdByEmail: input.createdByEmail,
       customerEmail: input.customerEmail,
@@ -142,9 +152,31 @@ export const localContractsApi: ContractsApi = {
       }
     }
 
+    const normalizedPatch: Partial<Contract> = { ...(patch as any) };
+    if ("productPricingId" in patch) {
+      const v = (patch as any).productPricingId as string | null | undefined;
+      normalizedPatch.productPricingId = typeof v === "string" ? v : undefined;
+    }
+    if ("pricingTermMonths" in patch) {
+      const v = (patch as any).pricingTermMonths as number | null | undefined;
+      normalizedPatch.pricingTermMonths = typeof v === "number" ? v : undefined;
+    }
+    if ("pricingTermKm" in patch) {
+      const v = (patch as any).pricingTermKm as number | null | undefined;
+      normalizedPatch.pricingTermKm = typeof v === "number" ? v : undefined;
+    }
+    if ("pricingDeductibleCents" in patch) {
+      const v = (patch as any).pricingDeductibleCents as number | null | undefined;
+      normalizedPatch.pricingDeductibleCents = typeof v === "number" ? v : undefined;
+    }
+    if ("pricingBasePriceCents" in patch) {
+      const v = (patch as any).pricingBasePriceCents as number | null | undefined;
+      normalizedPatch.pricingBasePriceCents = typeof v === "number" ? v : undefined;
+    }
+
     const next: Contract = {
       ...current,
-      ...patch,
+      ...normalizedPatch,
       updatedAt: now,
     };
 

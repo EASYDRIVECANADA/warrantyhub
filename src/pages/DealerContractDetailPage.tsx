@@ -8,12 +8,14 @@ import { PageShell } from "../components/PageShell";
 import { decodeVin } from "../lib/vin/decodeVin";
 import { getContractsApi } from "../lib/contracts/contracts";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
+import { getProductPricingApi } from "../lib/productPricing/productPricing";
 import { alertMissing, confirmProceed, sanitizeDigitsOnly, sanitizeLettersOnly, sanitizeWordsOnly } from "../lib/utils";
 import { getProvidersApi } from "../lib/providers/providers";
 import type { ProviderPublic } from "../lib/providers/types";
 import type { ContractsApi } from "../lib/contracts/api";
 import type { Contract } from "../lib/contracts/types";
 import type { Product } from "../lib/products/types";
+import type { ProductPricing } from "../lib/productPricing/types";
 import { useAuth } from "../providers/AuthProvider";
 
 type WizardStep = "CUSTOMER" | "VEHICLE" | "PLAN" | "PRICING" | "CONFIRM";
@@ -66,6 +68,7 @@ export function DealerContractDetailPage() {
 
   const api = useMemo(() => getContractsApi(), []);
   const marketplaceApi = useMemo(() => getMarketplaceApi(), []);
+  const productPricingApi = useMemo(() => getProductPricingApi(), []);
   const providersApi = useMemo(() => getProvidersApi(), []);
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -133,6 +136,7 @@ export function DealerContractDetailPage() {
   const [vehicleEngine, setVehicleEngine] = useState("");
   const [vehicleTransmission, setVehicleTransmission] = useState("");
   const [productId, setProductId] = useState("");
+  const [pricingId, setPricingId] = useState("");
   const [step, setStep] = useState<WizardStep>("VEHICLE");
 
   useEffect(() => {
@@ -154,6 +158,7 @@ export function DealerContractDetailPage() {
     setVehicleEngine(contract.vehicleEngine ?? "");
     setVehicleTransmission(contract.vehicleTransmission ?? "");
     setProductId(contract.productId ?? "");
+    setPricingId(contract.productPricingId ?? "");
 
     const vinNormalized = (contract.vin ?? "").trim().replace(/[^a-z0-9]/gi, "").toUpperCase();
     const hasVin = vinNormalized.length === 17;
@@ -174,7 +179,13 @@ export function DealerContractDetailPage() {
     setStep("PRICING");
   }, [contract]);
 
-  type ContractPatch = Parameters<ContractsApi["update"]>[1];
+  type ContractPatch = Parameters<ContractsApi["update"]>[1] & {
+    productPricingId?: string | null;
+    pricingTermMonths?: number | null;
+    pricingTermKm?: number | null;
+    pricingDeductibleCents?: number | null;
+    pricingBasePriceCents?: number | null;
+  };
 
   const updateMutation = useMutation({
     mutationFn: async (patch: ContractPatch) => {
@@ -256,10 +267,12 @@ export function DealerContractDetailPage() {
     const vinNormalized = vin.trim().replace(/[^a-z0-9]/gi, "").toUpperCase();
     const hasVin = vinNormalized.length === 17;
     const selectedPlanId = (productId || contract.productId || "").trim();
+    const selectedPriceId = (pricingId || contract.productPricingId || "").trim();
 
     if (!customerName.trim()) return alertMissing("Customer name is required.");
     if (!hasVin) return alertMissing("Enter a valid 17-character VIN before submission.");
     if (!selectedPlanId) return alertMissing("Select a plan before submission.");
+    if (!selectedPriceId) return alertMissing("Select a pricing option before submission.");
 
     if (!(await confirmProceed("Submit contract? This will lock editing."))) return;
     const now = new Date().toISOString();
@@ -388,17 +401,53 @@ export function DealerContractDetailPage() {
     if (!contract) return;
     if (!(await confirmProceed(`Select ${p.name} for this contract?`))) return;
     setProductId(p.id);
-    await updateMutation.mutateAsync({ productId: p.id, providerId: p.providerId });
+    setPricingId("");
+    await updateMutation.mutateAsync({
+      productId: p.id,
+      providerId: p.providerId,
+      productPricingId: null,
+      pricingTermMonths: null,
+      pricingTermKm: null,
+      pricingDeductibleCents: null,
+      pricingBasePriceCents: null,
+    });
+  };
+
+  const selectPricing = async (row: ProductPricing) => {
+    if (!contract) return;
+    if (!(await confirmProceed(`Select ${row.termMonths} mo / ${row.termKm} km for this contract?`))) return;
+    setPricingId(row.id);
+    await updateMutation.mutateAsync({
+      productPricingId: row.id,
+      pricingTermMonths: row.termMonths,
+      pricingTermKm: row.termKm,
+      pricingDeductibleCents: row.deductibleCents,
+      pricingBasePriceCents: row.basePriceCents,
+    });
   };
 
   const canEdit = (contract?.status ?? "DRAFT") === "DRAFT";
   const selectedProductId = (productId || contract?.productId || "").trim();
+  const selectedPricingId = (pricingId || contract?.productPricingId || "").trim();
 
   const selectedProduct = useMemo(() => {
     const id = selectedProductId;
     if (!id) return null;
     return marketplaceProducts.find((p) => p.id === id) ?? null;
   }, [marketplaceProducts, selectedProductId]);
+
+  const pricingOptionsQuery = useQuery({
+    queryKey: ["product-pricing-public", selectedProductId],
+    enabled: Boolean(selectedProductId),
+    queryFn: () => productPricingApi.list({ productId: selectedProductId }),
+  });
+
+  const pricingOptions = (pricingOptionsQuery.data ?? []) as ProductPricing[];
+  const selectedPricing = useMemo(() => {
+    const id = selectedPricingId;
+    if (!id) return null;
+    return pricingOptions.find((r) => r.id === id) ?? null;
+  }, [pricingOptions, selectedPricingId]);
 
   const vinNormalized = vin.trim().replace(/[^a-z0-9]/gi, "").toUpperCase();
   const vinError = canEdit && vinNormalized.length > 0 && vinNormalized.length !== 17 ? "VIN must be 17 characters." : null;
@@ -408,7 +457,11 @@ export function DealerContractDetailPage() {
     { key: "PLAN", label: "Plan", enabled: vinNormalized.length === 17 },
     { key: "CUSTOMER", label: "Customer", enabled: true },
     { key: "PRICING", label: "Pricing", enabled: Boolean(selectedProductId) && vinNormalized.length === 17 },
-    { key: "CONFIRM", label: "Confirm", enabled: Boolean(selectedProductId) && vinNormalized.length === 17 && Boolean(customerName.trim()) },
+    {
+      key: "CONFIRM",
+      label: "Confirm",
+      enabled: Boolean(selectedProductId) && Boolean(selectedPricingId) && vinNormalized.length === 17 && Boolean(customerName.trim()),
+    },
   ];
 
   const suggestions = useMemo(() => {
@@ -755,9 +808,9 @@ export function DealerContractDetailPage() {
                         <tr className="border-b">
                           <th className="text-left px-6 py-3 text-xs text-muted-foreground">Provider</th>
                           <th className="text-left px-6 py-3 text-xs text-muted-foreground">Product / Type</th>
-                          <th className="text-left px-6 py-3 text-xs text-muted-foreground">Term</th>
+                          <th className="text-left px-6 py-3 text-xs text-muted-foreground">Term / KM</th>
                           <th className="text-left px-6 py-3 text-xs text-muted-foreground">Deductible</th>
-                          <th className="text-left px-6 py-3 text-xs text-muted-foreground">Price</th>
+                          <th className="text-left px-6 py-3 text-xs text-muted-foreground">From</th>
                           <th className="text-right px-6 py-3 text-xs text-muted-foreground">Action</th>
                         </tr>
                       </thead>
@@ -770,11 +823,9 @@ export function DealerContractDetailPage() {
                               <div className="text-xs text-muted-foreground mt-1">{productTypeLabel(p.productType)}</div>
                             </td>
                             <td className="px-6 py-4 text-muted-foreground">
-                              {typeof p.termMonths === "number" ? `${p.termMonths} mo` : "—"}
-                              {" / "}
-                              {typeof p.termKm === "number" ? `${p.termKm} km` : "—"}
+                              See pricing
                             </td>
-                            <td className="px-6 py-4 text-muted-foreground">{money(p.deductibleCents)}</td>
+                            <td className="px-6 py-4 text-muted-foreground">See pricing</td>
                             <td className="px-6 py-4 font-medium">{money(p.basePriceCents)}</td>
                             <td className="px-6 py-4 text-right">
                               <Button
@@ -802,7 +853,7 @@ export function DealerContractDetailPage() {
             {step === "PRICING" ? (
               <div className="rounded-2xl border bg-card p-6 shadow-card">
                 <div className="font-semibold">Pricing</div>
-                <div className="text-sm text-muted-foreground mt-1">Review the plan pricing before submission.</div>
+                <div className="text-sm text-muted-foreground mt-1">Select the term + km option for this contract.</div>
 
                 <div className="mt-4 rounded-xl border p-4 bg-muted/20">
                   <div className="text-xs text-muted-foreground">Selected plan</div>
@@ -810,9 +861,49 @@ export function DealerContractDetailPage() {
                   <div className="mt-1 text-xs text-muted-foreground">
                     {selectedProduct ? providerDisplay(selectedProduct.providerId) : ""}
                     {selectedProduct ? " • " : ""}
-                    {selectedProduct ? `${typeof selectedProduct.termMonths === "number" ? `${selectedProduct.termMonths} mo` : "—"} / ${typeof selectedProduct.termKm === "number" ? `${selectedProduct.termKm} km` : "—"}` : ""}
-                    {selectedProduct ? " • " : ""}
-                    {selectedProduct ? `Deductible ${money(selectedProduct.deductibleCents)}` : ""}
+                    {selectedPricing ? `${selectedPricing.termMonths} mo / ${selectedPricing.termKm} km` : "Select a pricing option"}
+                    {selectedPricing ? " • " : ""}
+                    {selectedPricing ? `Deductible ${money(selectedPricing.deductibleCents)}` : ""}
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-xl border p-4">
+                  <div className="text-xs text-muted-foreground">Available pricing</div>
+                  {pricingOptionsQuery.isLoading ? <div className="mt-2 text-sm text-muted-foreground">Loading pricing…</div> : null}
+                  {pricingOptionsQuery.isError ? <div className="mt-2 text-sm text-destructive">Failed to load pricing.</div> : null}
+
+                  {!pricingOptionsQuery.isLoading && !pricingOptionsQuery.isError && pricingOptions.length === 0 ? (
+                    <div className="mt-2 text-sm text-muted-foreground">No pricing rows found for this plan.</div>
+                  ) : null}
+
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {pricingOptions
+                      .slice()
+                      .sort((a, b) => (a.termMonths - b.termMonths) || (a.termKm - b.termKm) || (a.deductibleCents - b.deductibleCents))
+                      .map((r) => (
+                        <button
+                          key={r.id}
+                          type="button"
+                          onClick={() => {
+                            void (async () => {
+                              await selectPricing(r);
+                            })();
+                          }}
+                          disabled={!canEdit || updateMutation.isPending}
+                          className={
+                            "rounded-xl border p-4 text-left transition-colors " +
+                            (r.id === selectedPricingId ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted")
+                          }
+                        >
+                          <div className="text-sm font-medium">{r.termMonths} mo / {r.termKm.toLocaleString()} km</div>
+                          <div className={"text-xs mt-1 " + (r.id === selectedPricingId ? "text-primary-foreground/80" : "text-muted-foreground")}>
+                            Deductible {money(r.deductibleCents)}
+                          </div>
+                          <div className={"text-sm font-semibold mt-2 " + (r.id === selectedPricingId ? "text-primary-foreground" : "text-foreground")}>
+                            {money(r.basePriceCents)}
+                          </div>
+                        </button>
+                      ))}
                   </div>
                 </div>
 
@@ -820,18 +911,18 @@ export function DealerContractDetailPage() {
                   <div className="flex items-start justify-between gap-6">
                     <div>
                       <div className="text-xs text-muted-foreground">Retail price</div>
-                      <div className="text-lg font-semibold mt-1">{money(selectedProduct?.basePriceCents)}</div>
-                      <div className="text-xs text-muted-foreground mt-1">Price is pulled from the selected plan.</div>
+                      <div className="text-lg font-semibold mt-1">{money(selectedPricing?.basePriceCents)}</div>
+                      <div className="text-xs text-muted-foreground mt-1">Price is pulled from the selected pricing option.</div>
                     </div>
                     <div className="text-right">
                       <div className="text-xs text-muted-foreground">Total</div>
-                      <div className="text-lg font-semibold mt-1">{money(selectedProduct?.basePriceCents)}</div>
+                      <div className="text-lg font-semibold mt-1">{money(selectedPricing?.basePriceCents)}</div>
                     </div>
                   </div>
                 </div>
 
                 <div className="mt-4 flex gap-2 flex-wrap">
-                  <Button onClick={() => setStep("CONFIRM")} disabled={!selectedProductId}>
+                  <Button onClick={() => setStep("CONFIRM")} disabled={!selectedProductId || !selectedPricingId}>
                     Continue to confirmation
                   </Button>
                   <Button variant="outline" onClick={() => setStep("PLAN")}>
@@ -869,7 +960,7 @@ export function DealerContractDetailPage() {
                     <div className="flex items-start justify-between gap-6">
                       <div>
                         <div className="text-xs text-muted-foreground">Total</div>
-                        <div className="text-lg font-semibold mt-1">{money(selectedProduct?.basePriceCents)}</div>
+                        <div className="text-lg font-semibold mt-1">{money(selectedPricing?.basePriceCents)}</div>
                       </div>
                       <div className="text-right">
                         <div className="text-xs text-muted-foreground">Status</div>

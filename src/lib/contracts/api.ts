@@ -40,6 +40,12 @@ export type ContractsApi = {
         | "vehicleEngine"
         | "vehicleTransmission"
       >
-    >,
+    > & {
+      productPricingId?: string | null;
+      pricingTermMonths?: number | null;
+      pricingTermKm?: number | null;
+      pricingDeductibleCents?: number | null;
+      pricingBasePriceCents?: number | null;
+    },
   ): Promise<Contract>;
 };

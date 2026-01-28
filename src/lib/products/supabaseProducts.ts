@@ -58,6 +58,14 @@ async function currentUserId(): Promise<string> {
 
   const id = data.session?.user?.id;
   if (!id) throw new Error("Not authenticated");
+
+  const profile = await supabase.from("profiles").select("role, is_active").eq("id", id).maybeSingle();
+  if (profile.error) throw profile.error;
+  const active = (profile.data as any)?.is_active !== false;
+  const role = ((profile.data as any)?.role ?? "UNASSIGNED") as string;
+  if (!active || role !== "PROVIDER") {
+    throw new Error("Provider access is not approved yet.");
+  }
   return id;
 }
 

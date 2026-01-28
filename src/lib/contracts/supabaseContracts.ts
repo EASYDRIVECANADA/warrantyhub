@@ -10,6 +10,11 @@ type ContractsRow = {
   customer_name: string;
   provider_id?: string | null;
   product_id?: string | null;
+  product_pricing_id?: string | null;
+  pricing_term_months?: number | null;
+  pricing_term_km?: number | null;
+  pricing_deductible_cents?: number | null;
+  pricing_base_price_cents?: number | null;
   created_by_user_id?: string | null;
   created_by_email?: string | null;
   sold_by_user_id?: string | null;
@@ -51,6 +56,11 @@ function toContract(r: ContractsRow): Contract {
     customerName: r.customer_name,
     providerId: r.provider_id ?? undefined,
     productId: r.product_id ?? undefined,
+    productPricingId: r.product_pricing_id ?? undefined,
+    pricingTermMonths: typeof r.pricing_term_months === "number" ? r.pricing_term_months : undefined,
+    pricingTermKm: typeof r.pricing_term_km === "number" ? r.pricing_term_km : undefined,
+    pricingDeductibleCents: typeof r.pricing_deductible_cents === "number" ? r.pricing_deductible_cents : undefined,
+    pricingBasePriceCents: typeof r.pricing_base_price_cents === "number" ? r.pricing_base_price_cents : undefined,
     createdByUserId: r.created_by_user_id ?? undefined,
     createdByEmail: r.created_by_email ?? undefined,
     soldByUserId: r.sold_by_user_id ?? undefined,
@@ -130,6 +140,11 @@ export const supabaseContractsApi: ContractsApi = {
       customer_name: input.customerName,
       provider_id: input.providerId,
       product_id: input.productId,
+      product_pricing_id: input.productPricingId,
+      pricing_term_months: typeof input.pricingTermMonths === "number" ? input.pricingTermMonths : undefined,
+      pricing_term_km: typeof input.pricingTermKm === "number" ? input.pricingTermKm : undefined,
+      pricing_deductible_cents: typeof input.pricingDeductibleCents === "number" ? input.pricingDeductibleCents : undefined,
+      pricing_base_price_cents: typeof input.pricingBasePriceCents === "number" ? input.pricingBasePriceCents : undefined,
       created_by_user_id: input.createdByUserId,
       created_by_email: input.createdByEmail,
       customer_email: input.customerEmail,
@@ -225,6 +240,32 @@ export const supabaseContractsApi: ContractsApi = {
     if (typeof patch.providerId === "string") updateRowBase.provider_id = patch.providerId.trim() ? patch.providerId : null;
     if (typeof patch.productId === "string") updateRowBase.product_id = patch.productId.trim() ? patch.productId : null;
 
+    if ("productPricingId" in patch) {
+      const v = (patch as any).productPricingId as string | null | undefined;
+      if (typeof v === "string") updateRowBase.product_pricing_id = v.trim() ? v : null;
+      if (v === null) updateRowBase.product_pricing_id = null;
+    }
+    if ("pricingTermMonths" in patch) {
+      const v = (patch as any).pricingTermMonths as number | null | undefined;
+      if (typeof v === "number") updateRowBase.pricing_term_months = v;
+      if (v === null) updateRowBase.pricing_term_months = null;
+    }
+    if ("pricingTermKm" in patch) {
+      const v = (patch as any).pricingTermKm as number | null | undefined;
+      if (typeof v === "number") updateRowBase.pricing_term_km = v;
+      if (v === null) updateRowBase.pricing_term_km = null;
+    }
+    if ("pricingDeductibleCents" in patch) {
+      const v = (patch as any).pricingDeductibleCents as number | null | undefined;
+      if (typeof v === "number") updateRowBase.pricing_deductible_cents = v;
+      if (v === null) updateRowBase.pricing_deductible_cents = null;
+    }
+    if ("pricingBasePriceCents" in patch) {
+      const v = (patch as any).pricingBasePriceCents as number | null | undefined;
+      if (typeof v === "number") updateRowBase.pricing_base_price_cents = v;
+      if (v === null) updateRowBase.pricing_base_price_cents = null;
+    }
+
     if (typeof patch.createdByUserId === "string") updateRowBase.created_by_user_id = patch.createdByUserId;
     if (typeof patch.createdByEmail === "string") updateRowBase.created_by_email = patch.createdByEmail;
     if (typeof patch.soldByUserId === "string") updateRowBase.sold_by_user_id = patch.soldByUserId;
@@ -263,6 +304,31 @@ export const supabaseContractsApi: ContractsApi = {
     const baseOnly: Record<string, unknown> = {};
     if (typeof patch.providerId === "string") baseOnly.provider_id = patch.providerId.trim() ? patch.providerId : null;
     if (typeof patch.productId === "string") baseOnly.product_id = patch.productId.trim() ? patch.productId : null;
+    if ("productPricingId" in patch) {
+      const v = (patch as any).productPricingId as string | null | undefined;
+      if (typeof v === "string") baseOnly.product_pricing_id = v.trim() ? v : null;
+      if (v === null) baseOnly.product_pricing_id = null;
+    }
+    if ("pricingTermMonths" in patch) {
+      const v = (patch as any).pricingTermMonths as number | null | undefined;
+      if (typeof v === "number") baseOnly.pricing_term_months = v;
+      if (v === null) baseOnly.pricing_term_months = null;
+    }
+    if ("pricingTermKm" in patch) {
+      const v = (patch as any).pricingTermKm as number | null | undefined;
+      if (typeof v === "number") baseOnly.pricing_term_km = v;
+      if (v === null) baseOnly.pricing_term_km = null;
+    }
+    if ("pricingDeductibleCents" in patch) {
+      const v = (patch as any).pricingDeductibleCents as number | null | undefined;
+      if (typeof v === "number") baseOnly.pricing_deductible_cents = v;
+      if (v === null) baseOnly.pricing_deductible_cents = null;
+    }
+    if ("pricingBasePriceCents" in patch) {
+      const v = (patch as any).pricingBasePriceCents as number | null | undefined;
+      if (typeof v === "number") baseOnly.pricing_base_price_cents = v;
+      if (v === null) baseOnly.pricing_base_price_cents = null;
+    }
     if (typeof patch.createdByUserId === "string") baseOnly.created_by_user_id = patch.createdByUserId;
     if (typeof patch.createdByEmail === "string") baseOnly.created_by_email = patch.createdByEmail;
     if (typeof patch.soldByUserId === "string") baseOnly.sold_by_user_id = patch.soldByUserId;

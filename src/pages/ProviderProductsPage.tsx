@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -6,8 +6,10 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { PageShell } from "../components/PageShell";
 import { getProductsApi } from "../lib/products/products";
+import { getProductPricingApi } from "../lib/productPricing/productPricing";
 import { sanitizeDigitsOnly, sanitizeMoney, sanitizeWordsOnly } from "../lib/utils";
 import type { CreateProductInput, Product, ProductType } from "../lib/products/types";
+import type { ProductPricing } from "../lib/productPricing/types";
 
 function productTypeLabel(t: ProductType) {
   if (t === "EXTENDED_WARRANTY") return "Extended Warranty";
@@ -75,10 +77,13 @@ type EditorState = {
   id?: string;
   name: string;
   productType: ProductType;
-  basePrice: string;
-  termMonths: string;
-  termKm: string;
-  deductible: string;
+  pricingRows: Array<{
+    key: string;
+    termMonths: string;
+    termKm: string;
+    deductible: string;
+    basePrice: string;
+  }>;
   eligibilityMaxVehicleAgeYears: string;
   eligibilityMaxMileageKm: string;
   eligibilityMakeAllowlist: string;
@@ -95,10 +100,7 @@ function emptyEditor(): EditorState {
   return {
     name: "",
     productType: "EXTENDED_WARRANTY",
-    basePrice: "",
-    termMonths: "",
-    termKm: "",
-    deductible: "",
+    pricingRows: [{ key: crypto.randomUUID(), termMonths: "", termKm: "", deductible: "", basePrice: "" }],
     eligibilityMaxVehicleAgeYears: "",
     eligibilityMaxMileageKm: "",
     eligibilityMakeAllowlist: "",
@@ -111,14 +113,18 @@ function emptyEditor(): EditorState {
 }
 
 function editorFromProduct(p: Product): EditorState {
+  const fallbackRow = {
+    key: crypto.randomUUID(),
+    termMonths: typeof p.termMonths === "number" ? String(p.termMonths) : "",
+    termKm: typeof p.termKm === "number" ? String(p.termKm) : "",
+    deductible: centsToDollars(p.deductibleCents),
+    basePrice: centsToDollars(p.basePriceCents),
+  };
   return {
     id: p.id,
     name: p.name,
     productType: p.productType,
-    basePrice: centsToDollars(p.basePriceCents),
-    termMonths: typeof p.termMonths === "number" ? String(p.termMonths) : "",
-    termKm: typeof p.termKm === "number" ? String(p.termKm) : "",
-    deductible: centsToDollars(p.deductibleCents),
+    pricingRows: [fallbackRow],
     eligibilityMaxVehicleAgeYears:
       typeof p.eligibilityMaxVehicleAgeYears === "number" ? String(p.eligibilityMaxVehicleAgeYears) : "",
     eligibilityMaxMileageKm:
@@ -138,6 +144,7 @@ function textareaClassName() {
 
 export function ProviderProductsPage() {
   const api = useMemo(() => getProductsApi(), []);
+  const pricingApi = useMemo(() => getProductPricingApi(), []);
   const qc = useQueryClient();
 
   const [showEditor, setShowEditor] = useState(false);
@@ -152,6 +159,54 @@ export function ProviderProductsPage() {
     queryKey: ["provider-products"],
     queryFn: () => api.list(),
   });
+
+  const editorProductId = (editor.id ?? "").trim();
+  const pricingQuery = useQuery({
+    queryKey: ["product-pricing", editorProductId],
+    enabled: showEditor && !!editorProductId,
+    queryFn: () => pricingApi.list({ productId: editorProductId }),
+  });
+
+  const pricingRowsFromApi = (pricingQuery.data ?? []) as ProductPricing[];
+  useEffect(() => {
+    if (!showEditor) return;
+    if (!editorProductId) return;
+    if (pricingQuery.isLoading) return;
+    if (pricingQuery.isError) return;
+
+    if (pricingRowsFromApi.length === 0) return;
+
+    setEditor((s) => {
+      if ((s.id ?? "").trim() !== editorProductId) return s;
+      const mapped = pricingRowsFromApi
+        .slice()
+        .sort((a, b) => (a.termMonths - b.termMonths) || (a.termKm - b.termKm) || (a.deductibleCents - b.deductibleCents))
+        .map((r) => ({
+          key: r.id,
+          termMonths: String(r.termMonths),
+          termKm: String(r.termKm),
+          deductible: centsToDollars(r.deductibleCents),
+          basePrice: centsToDollars(r.basePriceCents),
+        }));
+
+      if (mapped.length === 0) return s;
+      const same =
+        s.pricingRows.length === mapped.length &&
+        s.pricingRows.every((row, idx) => {
+          const next = mapped[idx]!;
+          return (
+            row.key === next.key &&
+            row.termMonths === next.termMonths &&
+            row.termKm === next.termKm &&
+            row.deductible === next.deductible &&
+            row.basePrice === next.basePrice
+          );
+        });
+
+      if (same) return s;
+      return { ...s, pricingRows: mapped };
+    });
+  }, [editorProductId, pricingQuery.isError, pricingQuery.isLoading, pricingRowsFromApi, showEditor]);
 
   const createMutation = useMutation({
     mutationFn: (input: CreateProductInput) => api.create(input),
@@ -213,29 +268,72 @@ export function ProviderProductsPage() {
       return;
     }
 
-    if (editor.published) {
-      const base = dollarsToCents(editor.basePrice);
-      if (typeof base !== "number" || base <= 0) {
-        setError("To publish, a valid base price is required.");
+    type ValidatedRow = {
+      key: string;
+      termMonths: number;
+      termKm: number;
+      deductibleCents: number;
+      basePriceCents: number;
+    };
+
+    const normalizedRows = editor.pricingRows
+      .map((r) => ({
+        key: r.key,
+        termMonths: parseOptionalInt(r.termMonths),
+        termKm: parseOptionalInt(r.termKm),
+        deductibleCents: dollarsToCents(r.deductible) ?? 0,
+        basePriceCents: dollarsToCents(r.basePrice),
+      }))
+      .filter((r) => r.termMonths || r.termKm || r.basePriceCents || r.deductibleCents);
+
+    const validatedRows: ValidatedRow[] = normalizedRows.map((r) => {
+      if (typeof r.termMonths !== "number" || r.termMonths <= 0) throw new Error("Each pricing row requires term months.");
+      if (typeof r.termKm !== "number" || r.termKm <= 0) throw new Error("Each pricing row requires term km.");
+      if (typeof r.basePriceCents !== "number" || r.basePriceCents <= 0) throw new Error("Each pricing row requires a valid retail price.");
+      if (!Number.isFinite(r.deductibleCents) || r.deductibleCents < 0) throw new Error("Deductible must be a number >= 0.");
+
+      return {
+        key: r.key,
+        termMonths: r.termMonths,
+        termKm: r.termKm,
+        deductibleCents: r.deductibleCents,
+        basePriceCents: r.basePriceCents,
+      };
+    });
+
+    if (editor.published && validatedRows.length === 0) {
+      setError("To publish, add at least one pricing row.");
+      setActiveTab("PRICING");
+      return;
+    }
+
+    const seen = new Set<string>();
+    for (const r of validatedRows) {
+      const key = `${r.termMonths}|${r.termKm}|${r.deductibleCents}`;
+      if (seen.has(key)) {
+        setError("Duplicate pricing rows found (same term months / km / deductible).");
         setActiveTab("PRICING");
         return;
       }
+      seen.add(key);
     }
+
+    const primary = validatedRows[0];
 
     const input: CreateProductInput = {
       name,
       productType: editor.productType,
       coverageDetails: editor.coverageDetails.trim() || undefined,
       exclusions: editor.exclusions.trim() || undefined,
-      termMonths: parseOptionalInt(editor.termMonths),
-      termKm: parseOptionalInt(editor.termKm),
-      deductibleCents: dollarsToCents(editor.deductible),
+      termMonths: primary ? primary.termMonths : undefined,
+      termKm: primary ? primary.termKm : undefined,
+      deductibleCents: primary ? primary.deductibleCents : undefined,
       eligibilityMaxVehicleAgeYears: parseOptionalInt(editor.eligibilityMaxVehicleAgeYears),
       eligibilityMaxMileageKm: parseOptionalInt(editor.eligibilityMaxMileageKm),
       eligibilityMakeAllowlist: parseAllowlist(editor.eligibilityMakeAllowlist),
       eligibilityModelAllowlist: parseAllowlist(editor.eligibilityModelAllowlist),
       eligibilityTrimAllowlist: parseAllowlist(editor.eligibilityTrimAllowlist),
-      basePriceCents: dollarsToCents(editor.basePrice),
+      basePriceCents: primary ? primary.basePriceCents : undefined,
     };
 
     const allowlistsForUpdate = {
@@ -245,28 +343,47 @@ export function ProviderProductsPage() {
     };
 
     try {
+      let savedProduct: Product | null = null;
       if (!editor.id) {
-        await createMutation.mutateAsync(input);
+        savedProduct = (await createMutation.mutateAsync(input)) as Product;
       } else {
-        await updateMutation.mutateAsync({
+        savedProduct = (await updateMutation.mutateAsync({
           id: editor.id,
           patch: {
             name: input.name,
             productType: input.productType,
             coverageDetails: input.coverageDetails ?? "",
             exclusions: input.exclusions ?? "",
-            termMonths: input.termMonths,
-            termKm: input.termKm,
-            deductibleCents: input.deductibleCents,
+            ...(typeof input.termMonths === "number" ? { termMonths: input.termMonths } : {}),
+            ...(typeof input.termKm === "number" ? { termKm: input.termKm } : {}),
+            ...(typeof input.deductibleCents === "number" ? { deductibleCents: input.deductibleCents } : {}),
             eligibilityMaxVehicleAgeYears: input.eligibilityMaxVehicleAgeYears,
             eligibilityMaxMileageKm: input.eligibilityMaxMileageKm,
             eligibilityMakeAllowlist: allowlistsForUpdate.eligibilityMakeAllowlist,
             eligibilityModelAllowlist: allowlistsForUpdate.eligibilityModelAllowlist,
             eligibilityTrimAllowlist: allowlistsForUpdate.eligibilityTrimAllowlist,
-            basePriceCents: input.basePriceCents,
+            ...(typeof input.basePriceCents === "number" ? { basePriceCents: input.basePriceCents } : {}),
             published: editor.published,
           },
-        });
+        })) as Product;
+      }
+
+      const productId = (savedProduct?.id ?? editor.id ?? "").trim();
+      if (productId) {
+        const existing = await pricingApi.list({ productId });
+        for (const r of existing) {
+          await pricingApi.remove(r.id);
+        }
+        for (const r of validatedRows) {
+          await pricingApi.create({
+            productId,
+            termMonths: r.termMonths,
+            termKm: r.termKm,
+            deductibleCents: r.deductibleCents,
+            basePriceCents: r.basePriceCents,
+          });
+        }
+        await qc.invalidateQueries({ queryKey: ["product-pricing", productId] });
       }
 
       setShowEditor(false);
@@ -473,55 +590,112 @@ export function ProviderProductsPage() {
                   <div className="font-semibold">Pricing</div>
                   <div className="text-sm text-muted-foreground mt-1">Retail price only (dealer pricing comes later).</div>
 
-                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <Input
-                      value={editor.basePrice}
-                      onChange={(e) => setEditor((s) => ({ ...s, basePrice: sanitizeMoney(e.target.value) }))}
-                      placeholder="Retail price (e.g. 799.00)"
-                      inputMode="decimal"
+                  <div className="mt-3 space-y-3">
+                    {editor.pricingRows.map((row, idx) => (
+                      <div key={row.key} className="rounded-lg border p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-medium">Row {idx + 1}</div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setEditor((s) => ({ ...s, pricingRows: s.pricingRows.filter((r) => r.key !== row.key) }))}
+                            disabled={busy || editor.pricingRows.length <= 1}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <Input
+                            value={row.termMonths}
+                            onChange={(e) =>
+                              setEditor((s) => ({
+                                ...s,
+                                pricingRows: s.pricingRows.map((r) =>
+                                  r.key === row.key ? { ...r, termMonths: sanitizeDigitsOnly(e.target.value) } : r,
+                                ),
+                              }))
+                            }
+                            placeholder="Term months"
+                            inputMode="numeric"
+                            disabled={busy}
+                          />
+                          <Input
+                            value={row.termKm}
+                            onChange={(e) =>
+                              setEditor((s) => ({
+                                ...s,
+                                pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, termKm: sanitizeDigitsOnly(e.target.value) } : r)),
+                              }))
+                            }
+                            placeholder="Term km"
+                            inputMode="numeric"
+                            disabled={busy}
+                          />
+                          <Input
+                            value={row.basePrice}
+                            onChange={(e) =>
+                              setEditor((s) => ({
+                                ...s,
+                                pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, basePrice: sanitizeMoney(e.target.value) } : r)),
+                              }))
+                            }
+                            placeholder="Retail price (e.g. 799.00)"
+                            inputMode="decimal"
+                            disabled={busy}
+                          />
+                          <Input
+                            value={row.deductible}
+                            onChange={(e) =>
+                              setEditor((s) => ({
+                                ...s,
+                                pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, deductible: sanitizeMoney(e.target.value) } : r)),
+                              }))
+                            }
+                            placeholder="Deductible (e.g. 100.00)"
+                            inputMode="decimal"
+                            disabled={busy}
+                          />
+                        </div>
+                      </div>
+                    ))}
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() =>
+                        setEditor((s) => ({
+                          ...s,
+                          pricingRows: [...s.pricingRows, { key: crypto.randomUUID(), termMonths: "", termKm: "", deductible: "", basePrice: "" }],
+                        }))
+                      }
                       disabled={busy}
-                    />
-                    <Input
-                      value={editor.deductible}
-                      onChange={(e) => setEditor((s) => ({ ...s, deductible: sanitizeMoney(e.target.value) }))}
-                      placeholder="Deductible (e.g. 100.00)"
-                      inputMode="decimal"
-                      disabled={busy}
-                    />
+                    >
+                      Add Pricing Row
+                    </Button>
                   </div>
 
                   <div className="mt-3 flex items-center justify-between gap-3">
                     <div className="text-sm text-muted-foreground">Published</div>
-                    <label className="inline-flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={editor.published}
-                        onChange={(e) => setEditor((s) => ({ ...s, published: e.target.checked }))}
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant={editor.published ? "default" : "outline"}
+                        onClick={() => setEditor((s) => ({ ...s, published: true }))}
                         disabled={busy}
-                      />
-                      {editor.published ? "Yes" : "No"}
-                    </label>
-                  </div>
-                </div>
-
-                <div className="rounded-xl border p-4">
-                  <div className="font-semibold">Terms</div>
-                  <div className="text-sm text-muted-foreground mt-1">Months + km.</div>
-                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <Input
-                      value={editor.termMonths}
-                      onChange={(e) => setEditor((s) => ({ ...s, termMonths: sanitizeDigitsOnly(e.target.value) }))}
-                      placeholder="Term months"
-                      inputMode="numeric"
-                      disabled={busy}
-                    />
-                    <Input
-                      value={editor.termKm}
-                      onChange={(e) => setEditor((s) => ({ ...s, termKm: sanitizeDigitsOnly(e.target.value) }))}
-                      placeholder="Term km"
-                      inputMode="numeric"
-                      disabled={busy}
-                    />
+                      >
+                        Published
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={!editor.published ? "default" : "outline"}
+                        onClick={() => setEditor((s) => ({ ...s, published: false }))}
+                        disabled={busy}
+                      >
+                        Draft
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
