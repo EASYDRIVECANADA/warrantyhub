@@ -7,6 +7,8 @@ import { PageShell } from "../components/PageShell";
 import { getDocumentsApi } from "../lib/documents/documents";
 import type { ProductDocument } from "../lib/documents/types";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
+import { getProductPricingApi } from "../lib/productPricing/productPricing";
+import type { ProductPricing } from "../lib/productPricing/types";
 import type { Product, ProductType } from "../lib/products/types";
 import { getProvidersApi } from "../lib/providers/providers";
 import type { ProviderPublic } from "../lib/providers/types";
@@ -49,6 +51,7 @@ export function DealerMarketplaceProductDetailPage() {
   const productId = id ?? "";
 
   const marketplaceApi = useMemo(() => getMarketplaceApi(), []);
+  const productPricingApi = useMemo(() => getProductPricingApi(), []);
   const providersApi = useMemo(() => getProvidersApi(), []);
   const documentsApi = useMemo(() => getDocumentsApi(), []);
 
@@ -77,6 +80,17 @@ export function DealerMarketplaceProductDetailPage() {
   });
 
   const docs = (docsQuery.data ?? []) as ProductDocument[];
+
+  const pricingQuery = useQuery({
+    queryKey: ["dealer-product-pricing", productId],
+    enabled: Boolean(productId),
+    queryFn: () => productPricingApi.list({ productId }),
+  });
+
+  const pricingRows = (pricingQuery.data ?? []) as ProductPricing[];
+  const sortedPricingRows = pricingRows
+    .slice()
+    .sort((a, b) => (a.termMonths - b.termMonths) || (a.termKm - b.termKm) || (a.deductibleCents - b.deductibleCents));
 
   return (
     <PageShell
@@ -112,20 +126,56 @@ export function DealerMarketplaceProductDetailPage() {
                   <div className="font-medium mt-1">{productTypeLabel(product.productType)}</div>
                 </div>
 
-                <div className="rounded-xl border p-4">
-                  <div className="text-xs text-muted-foreground">Retail price</div>
-                  <div className="font-semibold mt-1">{money(product.basePriceCents)}</div>
-                  <div className="text-xs text-muted-foreground mt-3">Deductible</div>
-                  <div className="font-medium mt-1">{money(product.deductibleCents)}</div>
-                </div>
-
-                <div className="rounded-xl border p-4">
-                  <div className="text-xs text-muted-foreground">Term</div>
-                  <div className="font-medium mt-1">
-                    {typeof product.termMonths === "number" ? `${product.termMonths} months` : "—"} / {typeof product.termKm === "number" ? `${product.termKm} km` : "—"}
+                <div className="rounded-xl border p-4 md:col-span-2">
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Pricing options</div>
+                      <div className="text-sm text-muted-foreground mt-1">Select pricing (term/km) when creating the contract.</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-muted-foreground">From</div>
+                      <div className="text-sm font-semibold mt-1">{money(sortedPricingRows[0]?.basePriceCents ?? product.basePriceCents)}</div>
+                    </div>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-3">Published</div>
-                  <div className="font-medium mt-1">Yes</div>
+
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left py-2 pr-3 text-xs text-muted-foreground">Term</th>
+                          <th className="text-left py-2 pr-3 text-xs text-muted-foreground">Deductible</th>
+                          <th className="text-left py-2 pr-3 text-xs text-muted-foreground">Retail price</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {pricingQuery.isLoading ? (
+                          <tr>
+                            <td className="py-3 text-sm text-muted-foreground" colSpan={3}>Loading pricing…</td>
+                          </tr>
+                        ) : pricingQuery.isError ? (
+                          <tr>
+                            <td className="py-3 text-sm text-destructive" colSpan={3}>Failed to load pricing.</td>
+                          </tr>
+                        ) : sortedPricingRows.length > 0 ? (
+                          sortedPricingRows.map((r) => (
+                            <tr key={r.id}>
+                              <td className="py-3 pr-3 text-muted-foreground">{r.termMonths} months / {r.termKm.toLocaleString()} km</td>
+                              <td className="py-3 pr-3 text-muted-foreground">{money(r.deductibleCents)}</td>
+                              <td className="py-3 pr-3 font-medium text-foreground">{money(r.basePriceCents)}</td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td className="py-3 pr-3 text-muted-foreground">
+                              {typeof product.termMonths === "number" ? `${product.termMonths} months` : "—"} / {typeof product.termKm === "number" ? `${product.termKm} km` : "—"}
+                            </td>
+                            <td className="py-3 pr-3 text-muted-foreground">{money(product.deductibleCents)}</td>
+                            <td className="py-3 pr-3 font-medium text-foreground">{money(product.basePriceCents)}</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
 
                 <div className="rounded-xl border p-4">
