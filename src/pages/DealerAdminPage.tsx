@@ -153,10 +153,11 @@ export function DealerAdminPage() {
   if (!user) return <Navigate to="/sign-in" replace />;
   if (user.role !== "DEALER_ADMIN") return <Navigate to="/dealer-dashboard" replace />;
 
-  const dealerId = (user.dealerId ?? user.id).trim();
+  const dealerId = (mode === "local" ? (user.dealerId ?? user.id) : (user.dealerId ?? "")).trim();
   const { markupPct: persistedMarkupPct, saveMarkupPct, isSaving: isSavingMarkup } = useDealerMarkupPct(dealerId);
   const [markupPct, setMarkupPct] = useState("");
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const recentAudit = useMemo(() => listAuditEvents({ dealerId, limit: 25 }), [dealerId]);
 
@@ -506,6 +507,7 @@ export function DealerAdminPage() {
                     disabled={!dealerId || isSavingMarkup}
                   />
                   {savedAt ? <div className="mt-2 text-xs text-muted-foreground">Saved {savedAt}</div> : null}
+                  {saveError ? <div className="mt-2 text-xs text-destructive">{saveError}</div> : null}
                 </div>
 
                 <div className="hidden md:block" />
@@ -513,9 +515,15 @@ export function DealerAdminPage() {
                 <Button
                   onClick={() => {
                     void (async () => {
-                      const n = Number(markupPct);
-                      await saveMarkupPct(n);
-                      setSavedAt(new Date().toLocaleString());
+                      try {
+                        const n = Number(markupPct);
+                        await saveMarkupPct(n);
+                        setSavedAt(new Date().toLocaleString());
+                        setSaveError(null);
+                      } catch (err) {
+                        setSavedAt(null);
+                        setSaveError(err instanceof Error ? err.message : "Failed to save markup");
+                      }
                     })();
                   }}
                   disabled={!dealerId || isSavingMarkup}

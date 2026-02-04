@@ -103,7 +103,7 @@ export function DealerContractDetailPage() {
   const mode = useMemo(() => getAppMode(), []);
   const isEmployee = user?.role === "DEALER_EMPLOYEE";
   const canSeeCost = user?.role === "DEALER_ADMIN";
-  const dealerId = (user?.dealerId ?? user?.id ?? "").trim();
+  const dealerId = (mode === "local" ? (user?.dealerId ?? user?.id ?? "") : (user?.dealerId ?? "")).trim();
   const { markupPct } = useDealerMarkupPct(dealerId);
 
   const api = useMemo(() => getContractsApi(), []);

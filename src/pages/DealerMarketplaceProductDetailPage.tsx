@@ -18,6 +18,7 @@ import {
   retailFromCost,
 } from "../lib/dealerPricing";
 import { useDealerMarkupPct } from "../lib/dealerMarkup";
+import { getAppMode } from "../lib/runtime";
 import { useAuth } from "../providers/AuthProvider";
 
 function productTypeLabel(t: ProductType) {
@@ -58,7 +59,8 @@ export function DealerMarketplaceProductDetailPage() {
   const { id } = useParams();
   const productId = id ?? "";
 
-  const dealerId = (user?.dealerId ?? user?.id ?? "").trim();
+  const mode = useMemo(() => getAppMode(), []);
+  const dealerId = (mode === "local" ? (user?.dealerId ?? user?.id ?? "") : (user?.dealerId ?? "")).trim();
   const { markupPct } = useDealerMarkupPct(dealerId);
   const canSeeCost = user?.role === "DEALER_ADMIN";
 

@@ -7,10 +7,11 @@ import { Input } from "../components/ui/input";
 import { PageShell } from "../components/PageShell";
 import { costFromProductOrPricing, marginFromCostAndRetail, retailFromCost } from "../lib/dealerPricing";
 import { useDealerMarkupPct } from "../lib/dealerMarkup";
+import { getAppMode } from "../lib/runtime";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
+import type { Product, ProductType } from "../lib/products/types";
 import { getProvidersApi } from "../lib/providers/providers";
 import type { ProviderPublic } from "../lib/providers/types";
-import type { Product, ProductType } from "../lib/products/types";
 import { decodeVin, type VinDecoded } from "../lib/vin/decodeVin";
 import { alertMissing, confirmProceed, sanitizeDigitsOnly } from "../lib/utils";
 import { useAuth } from "../providers/AuthProvider";
@@ -79,8 +80,9 @@ export function DealerComparisonPage() {
   const api = useMemo(() => getMarketplaceApi(), []);
   const providersApi = useMemo(() => getProvidersApi(), []);
   const { user } = useAuth();
+  const mode = useMemo(() => getAppMode(), []);
 
-  const dealerId = (user?.dealerId ?? user?.id ?? "").trim();
+  const dealerId = (mode === "local" ? (user?.dealerId ?? user?.id ?? "") : user?.dealerId ?? "").trim();
   const { markupPct } = useDealerMarkupPct(dealerId);
   const canSeeCost = user?.role === "DEALER_ADMIN";
   const [vin, setVin] = useState("");

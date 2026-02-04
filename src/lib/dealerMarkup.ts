@@ -17,6 +17,8 @@ async function fetchMarkupPctSupabase(dealerId: string) {
   const { data, error } = await supabase.from("dealers").select("markup_pct").eq("id", dealerId).maybeSingle();
   if (error) throw error;
 
+  if (!data) return 0;
+
   const raw = Number((data as any)?.markup_pct);
   return clampMarkupPct(raw);
 }
@@ -27,10 +29,16 @@ async function updateMarkupPctSupabase(dealerId: string, markupPct: number) {
 
   const pct = clampMarkupPct(markupPct);
 
-  const { error } = await supabase.from("dealers").update({ markup_pct: pct }).eq("id", dealerId);
+  const { data, error } = await supabase
+    .from("dealers")
+    .update({ markup_pct: pct })
+    .eq("id", dealerId)
+    .select("markup_pct")
+    .maybeSingle();
   if (error) throw error;
+  if (!data) throw new Error("Failed to update markup. Dealer not found or access denied.");
 
-  return pct;
+  return clampMarkupPct(Number((data as any)?.markup_pct));
 }
 
 export function useDealerMarkupPct(dealerId: string) {

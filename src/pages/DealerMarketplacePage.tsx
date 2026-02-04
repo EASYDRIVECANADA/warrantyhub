@@ -9,6 +9,7 @@ import { PageShell } from "../components/PageShell";
 import { costFromProductOrPricing, retailFromCost } from "../lib/dealerPricing";
 import { useDealerMarkupPct } from "../lib/dealerMarkup";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
+import { getAppMode } from "../lib/runtime";
 import type { Product, ProductType } from "../lib/products/types";
 import { getProvidersApi } from "../lib/providers/providers";
 import type { ProviderPublic } from "../lib/providers/types";
@@ -74,6 +75,7 @@ export function DealerMarketplacePage() {
   const marketplaceApi = useMemo(() => getMarketplaceApi(), []);
   const providersApi = useMemo(() => getProvidersApi(), []);
   const { user } = useAuth();
+  const mode = useMemo(() => getAppMode(), []);
 
   const [vin, setVin] = useState("");
   const [mileageKm, setMileageKm] = useState("");
@@ -90,7 +92,7 @@ export function DealerMarketplacePage() {
   const [minTermKm, setMinTermKm] = useState("");
   const [maxDeductible, setMaxDeductible] = useState("");
 
-  const dealerId = (user?.dealerId ?? user?.id ?? "").trim();
+  const dealerId = (mode === "local" ? (user?.dealerId ?? user?.id ?? "") : (user?.dealerId ?? "")).trim();
   const { markupPct } = useDealerMarkupPct(dealerId);
   const canSeeCost = user?.role === "DEALER_ADMIN";
 
