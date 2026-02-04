@@ -229,15 +229,7 @@ create policy "dealer_members_member_select"
   on public.dealer_members
   for select
   to authenticated
-  using (
-    exists (
-      select 1
-      from public.dealer_members dm
-      where dm.dealer_id = dealer_members.dealer_id
-        and dm.user_id = auth.uid()
-        and dm.status = 'ACTIVE'
-    )
-  );
+  using (user_id = auth.uid());
 
 -- -----------------
 -- contracts policies
