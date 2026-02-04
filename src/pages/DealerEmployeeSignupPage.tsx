@@ -6,6 +6,7 @@ import { Input } from "../components/ui/input";
 import type { Role } from "../lib/auth/types";
 import { logAuditEvent } from "../lib/auditLog";
 import { getAppMode } from "../lib/runtime";
+import { getSupabaseClient } from "../lib/supabase/client";
 import { useAuth } from "../providers/AuthProvider";
 
 const SIGNUP_INTENT_KEY = "warrantyhub.signup_intent";
@@ -122,11 +123,35 @@ export function DealerEmployeeSignupPage() {
     setSuppressRedirect(true);
     try {
       const mode = getAppMode();
-      if (mode !== "local") {
-        throw new Error("Invite-only employee signup is not enabled in Supabase mode yet");
+      const normalizedCode = normalizeInviteCode(inviteCode);
+
+      if (mode === "supabase") {
+        localStorage.setItem(SIGNUP_INTENT_KEY, "DEALER_EMPLOYEE");
+        localStorage.setItem(SIGNUP_INVITE_CODE_KEY, normalizedCode);
+
+        await signUp(email, password);
+
+        const supabase = getSupabaseClient();
+        if (!supabase) throw new Error("Supabase is not configured");
+
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw new Error(sessionError.message);
+        if (!sessionData.session) {
+          throw new Error("Account created. Please confirm your email, then sign in.");
+        }
+
+        const { error: joinError } = await supabase.rpc("join_dealer_by_invite", { invite_code: normalizedCode });
+        if (joinError) throw new Error(joinError.message);
+
+        const refreshed = await refreshUser();
+        navigate(roleToDashboardPath(refreshed?.role ?? "DEALER_EMPLOYEE"), { replace: true });
+        return;
       }
 
-      const normalizedCode = normalizeInviteCode(inviteCode);
+      if (mode !== "local") {
+        throw new Error("Supabase is not configured");
+      }
+
       const invite = findInviteByCode(normalizedCode);
       if (!invite) {
         throw new Error("Invalid invite code");

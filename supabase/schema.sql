@@ -2,13 +2,25 @@ create extension if not exists pgcrypto;
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
-  role text not null check (role in ('UNASSIGNED','ADMIN','SUPER_ADMIN','DEALER','DEALER_ADMIN','PROVIDER')),
+  role text not null check (role in ('UNASSIGNED','ADMIN','SUPER_ADMIN','DEALER','DEALER_ADMIN','DEALER_EMPLOYEE','PROVIDER')),
   email text,
   display_name text,
   company_name text,
   is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
+
+do $$
+begin
+  alter table public.profiles
+    drop constraint if exists profiles_role_check;
+
+  alter table public.profiles
+    add constraint profiles_role_check
+    check (role in ('UNASSIGNED','ADMIN','SUPER_ADMIN','DEALER','DEALER_ADMIN','DEALER_EMPLOYEE','PROVIDER'));
+exception
+  when duplicate_object then null;
+end $$;
 
 alter table public.profiles
   add column if not exists display_name text;
@@ -72,7 +84,7 @@ set search_path = public
 as $$
   select exists (
     select 1 from public.profiles p
-    where p.id = auth.uid() and p.role in ('DEALER','DEALER_ADMIN','ADMIN','SUPER_ADMIN')
+    where p.id = auth.uid() and p.role in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE','ADMIN','SUPER_ADMIN')
   );
 $$;
 
@@ -482,11 +494,23 @@ create table if not exists public.dealer_members (
   id uuid primary key default gen_random_uuid(),
   dealer_id uuid not null references public.dealers(id) on delete cascade,
   user_id uuid not null references public.profiles(id) on delete cascade,
-  role text not null check (role in ('DEALER','DEALER_ADMIN')),
+  role text not null check (role in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE')),
   status text not null default 'ACTIVE' check (status in ('INVITED','ACTIVE','DISABLED')),
   created_at timestamptz not null default now(),
   unique (dealer_id, user_id)
 );
+
+do $$
+begin
+  alter table public.dealer_members
+    drop constraint if exists dealer_members_role_check;
+
+  alter table public.dealer_members
+    add constraint dealer_members_role_check
+    check (role in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE'));
+exception
+  when duplicate_object then null;
+end $$;
 
 alter table public.dealers enable row level security;
 alter table public.dealer_members enable row level security;
@@ -531,11 +555,7 @@ create policy "dealers_dealer_admin_update_markup"
         and dm.role = 'DEALER_ADMIN'
     )
   )
-  with check (
-    markup_pct >= 0 and markup_pct <= 200
-    and name is not distinct from (select old.name from public.dealers old where old.id = dealers.id)
-    and created_at is not distinct from (select old.created_at from public.dealers old where old.id = dealers.id)
-  );
+  with check (markup_pct >= 0 and markup_pct <= 200);
 
 drop policy if exists "dealer_members_all_authenticated" on public.dealer_members;
 
@@ -553,6 +573,90 @@ create policy "dealer_members_member_select"
   for select
   to authenticated
   using (user_id = auth.uid());
+
+create table if not exists public.dealer_employee_invites (
+  dealer_id uuid primary key references public.dealers(id) on delete cascade,
+  code text not null unique,
+  created_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.dealer_employee_invites enable row level security;
+
+drop policy if exists "dealer_employee_invites_admin_all" on public.dealer_employee_invites;
+create policy "dealer_employee_invites_admin_all"
+  on public.dealer_employee_invites
+  for all
+  to authenticated
+  using (public.current_role() in ('ADMIN','SUPER_ADMIN'))
+  with check (public.current_role() in ('ADMIN','SUPER_ADMIN'));
+
+drop policy if exists "dealer_employee_invites_dealer_admin_manage" on public.dealer_employee_invites;
+create policy "dealer_employee_invites_dealer_admin_manage"
+  on public.dealer_employee_invites
+  for all
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.dealer_members dm
+      where dm.dealer_id = dealer_employee_invites.dealer_id
+        and dm.user_id = auth.uid()
+        and dm.status = 'ACTIVE'
+        and dm.role = 'DEALER_ADMIN'
+    )
+  )
+  with check (
+    exists (
+      select 1
+      from public.dealer_members dm
+      where dm.dealer_id = dealer_employee_invites.dealer_id
+        and dm.user_id = auth.uid()
+        and dm.status = 'ACTIVE'
+        and dm.role = 'DEALER_ADMIN'
+    )
+  );
+
+create or replace function public.join_dealer_by_invite(invite_code text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  did uuid;
+  dname text;
+begin
+  if auth.uid() is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  select i.dealer_id into did
+  from public.dealer_employee_invites i
+  where upper(trim(i.code)) = upper(trim(invite_code))
+  limit 1;
+
+  if did is null then
+    raise exception 'Invalid invite code';
+  end if;
+
+  select d.name into dname
+  from public.dealers d
+  where d.id = did;
+
+  insert into public.dealer_members (dealer_id, user_id, role, status)
+  values (did, auth.uid(), 'DEALER_EMPLOYEE', 'ACTIVE')
+  on conflict (dealer_id, user_id)
+  do update set role = 'DEALER_EMPLOYEE', status = 'ACTIVE';
+
+  update public.profiles
+  set role = 'DEALER_EMPLOYEE',
+      is_active = true,
+      company_name = coalesce(dname, company_name)
+  where id = auth.uid();
+end;
+$$;
 
 create table if not exists public.access_requests (
   id uuid primary key default gen_random_uuid(),
@@ -951,7 +1055,7 @@ create policy "products_select_published_dealer"
     published = true
     and exists (
       select 1 from public.profiles p
-      where p.id = auth.uid() and p.role in ('DEALER','DEALER_ADMIN','ADMIN','SUPER_ADMIN')
+      where p.id = auth.uid() and p.role in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE','ADMIN','SUPER_ADMIN')
     )
   );
 
@@ -990,8 +1094,8 @@ create policy "product_pricing_provider_own"
   using (provider_id = auth.uid())
   with check (provider_id = auth.uid());
 
-drop policy if exists "product_pricing_select_dealer_published" on public.product_pricing;
-create policy "product_pricing_select_dealer_published"
+drop policy if exists "product_pricing_select_published_dealer" on public.product_pricing;
+create policy "product_pricing_select_published_dealer"
   on public.product_pricing
   for select
   to authenticated
@@ -1004,7 +1108,7 @@ create policy "product_pricing_select_dealer_published"
     )
     and exists (
       select 1 from public.profiles p
-      where p.id = auth.uid() and p.role in ('DEALER','DEALER_ADMIN','ADMIN','SUPER_ADMIN')
+      where p.id = auth.uid() and p.role in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE','ADMIN','SUPER_ADMIN')
     )
   );
 
@@ -1017,6 +1121,25 @@ create policy "product_pricing_select_admin_all"
     select 1 from public.profiles p
     where p.id = auth.uid() and p.role in ('ADMIN','SUPER_ADMIN')
   ));
+
+drop policy if exists "product_documents_select_dealer" on public.product_documents;
+create policy "product_documents_select_dealer"
+  on public.product_documents
+  for select
+  to authenticated
+  using (
+    exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid() and p.role in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE','ADMIN','SUPER_ADMIN')
+    )
+    and product_id is not null
+    and exists (
+      select 1
+      from public.products pr
+      where pr.id = product_documents.product_id
+        and pr.published = true
+    )
+  );
 
 create table if not exists public.product_documents (
   id uuid primary key default gen_random_uuid(),
@@ -1039,24 +1162,6 @@ create policy "product_documents_provider_own"
   to authenticated
   using (provider_id = auth.uid())
   with check (provider_id = auth.uid());
-
-drop policy if exists "product_documents_dealer_select_published" on public.product_documents;
-create policy "product_documents_dealer_select_published"
-  on public.product_documents
-  for select
-  to authenticated
-  using (
-    exists (
-      select 1 from public.profiles p
-      where p.id = auth.uid() and p.role in ('DEALER','DEALER_ADMIN','ADMIN','SUPER_ADMIN')
-    )
-    and product_id is not null
-    and exists (
-      select 1 from public.products pr
-      where pr.id = product_documents.product_id
-        and pr.published = true
-    )
-  );
 
 create table if not exists public.provider_team_members (
   id uuid primary key default gen_random_uuid(),

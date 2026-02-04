@@ -522,7 +522,22 @@ export function DealerAdminPage() {
                         setSaveError(null);
                       } catch (err) {
                         setSavedAt(null);
-                        setSaveError(err instanceof Error ? err.message : "Failed to save markup");
+                        const anyErr = err as any;
+                        const msg =
+                          err instanceof Error
+                            ? err.message
+                            : typeof anyErr?.message === "string"
+                              ? anyErr.message
+                              : typeof err === "string"
+                                ? err
+                                : (() => {
+                                    try {
+                                      return JSON.stringify(err);
+                                    } catch {
+                                      return "Failed to save markup";
+                                    }
+                                  })();
+                        setSaveError(msg || "Failed to save markup");
                       }
                     })();
                   }}

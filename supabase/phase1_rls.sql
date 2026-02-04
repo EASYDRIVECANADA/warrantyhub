@@ -126,7 +126,7 @@ create policy "products_dealer_select_published"
   to authenticated
   using (
     published = true
-    and public.current_role() in ('DEALER','DEALER_ADMIN','ADMIN','SUPER_ADMIN')
+    and public.current_role() in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE','ADMIN','SUPER_ADMIN')
   );
 
 drop policy if exists "products_admin_select_all" on public.products;
@@ -150,7 +150,7 @@ create policy "product_pricing_dealer_select_published"
   for select
   to authenticated
   using (
-    public.current_role() in ('DEALER','DEALER_ADMIN')
+    public.current_role() in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE')
     and exists (
       select 1
       from public.products pr
@@ -255,7 +255,7 @@ create policy "contracts_select_dealer_scope"
   for select
   to authenticated
   using (
-    public.current_role() in ('DEALER','DEALER_ADMIN')
+    public.current_role() in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE')
     and contracts.dealer_id = public.current_dealer_id()
   );
 
@@ -309,7 +309,7 @@ create policy "remittances_select_dealer_scope"
   for select
   to authenticated
   using (
-    public.current_role() in ('DEALER','DEALER_ADMIN')
+    public.current_role() in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE')
     and remittances.dealer_id = public.current_dealer_id()
   );
 
@@ -319,7 +319,7 @@ create policy "remittances_dealer_admin_write"
   for insert
   to authenticated
   with check (
-    public.current_role() in ('DEALER','DEALER_ADMIN')
+    public.current_role() in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE')
     and remittances.dealer_id = public.current_dealer_id()
   );
 
@@ -349,7 +349,7 @@ create policy "batches_select_dealer_scope"
   for select
   to authenticated
   using (
-    public.current_role() in ('DEALER','DEALER_ADMIN')
+    public.current_role() in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE')
     and batches.dealer_id = public.current_dealer_id()
   );
 
@@ -359,7 +359,7 @@ create policy "batches_dealer_admin_write"
   for insert
   to authenticated
   with check (
-    public.current_role() in ('DEALER','DEALER_ADMIN')
+    public.current_role() in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE')
     and batches.dealer_id = public.current_dealer_id()
   );
 
@@ -389,21 +389,21 @@ create policy "employees_select_dealer_scope"
   for select
   to authenticated
   using (
-    public.current_role() in ('DEALER','DEALER_ADMIN')
+    public.current_role() in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE')
     and employees.dealer_id = public.current_dealer_id()
   );
 
-drop policy if exists "employees_dealer_admin_write" on public.employees;
-create policy "employees_dealer_admin_write"
+drop policy if exists "employees_dealer_all" on public.employees;
+create policy "employees_dealer_all"
   on public.employees
   for all
   to authenticated
   using (
-    public.current_role() in ('DEALER','DEALER_ADMIN')
+    public.current_role() in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE')
     and employees.dealer_id = public.current_dealer_id()
   )
   with check (
-    public.current_role() in ('DEALER','DEALER_ADMIN')
+    public.current_role() in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE')
     and employees.dealer_id = public.current_dealer_id()
   );
 
@@ -424,7 +424,7 @@ create policy "product_documents_dealer_select_published"
   for select
   to authenticated
   using (
-    public.current_role() in ('DEALER','DEALER_ADMIN')
+    public.current_role() in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE')
     and product_id is not null
     and exists (
       select 1
@@ -467,7 +467,7 @@ create policy "product_documents_storage_select"
     and (
       (storage.foldername(name))[1] = auth.uid()::text
       or (
-        public.current_role() in ('DEALER','DEALER_ADMIN')
+        public.current_role() in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE')
         and exists (
           select 1
           from public.product_documents pd

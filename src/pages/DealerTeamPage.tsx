@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -6,6 +6,8 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { PageShell } from "../components/PageShell";
 import { logAuditEvent } from "../lib/auditLog";
+import { getAppMode } from "../lib/runtime";
+import { getSupabaseClient } from "../lib/supabase/client";
 import { alertMissing, confirmProceed } from "../lib/utils";
 import { useAuth } from "../providers/AuthProvider";
 
@@ -161,15 +163,52 @@ function statusLabel(s: DealerTeamStatus) {
 export function DealerTeamPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
+  const mode = useMemo(() => getAppMode(), []);
 
   if (!user) return <Navigate to="/sign-in" replace />;
   if (user.role !== "DEALER_ADMIN") return <Navigate to="/dealer-dashboard" replace />;
 
-  const dealerId = user.dealerId ?? user.id;
+  const dealerId = (mode === "local" ? (user.dealerId ?? user.id) : (user.dealerId ?? "")).trim();
 
-  const invites = readInvites();
-  const invite = dealerId ? invites[dealerId] : undefined;
-  const inviteCode = (invite?.code ?? "").trim();
+  const inviteQuery = useQuery({
+    queryKey: ["dealer-employee-invite", mode, dealerId],
+    enabled: Boolean(dealerId),
+    queryFn: async () => {
+      if (!dealerId) return null;
+      if (mode === "local") {
+        const inv = readInvites()[dealerId];
+        const code = (inv?.code ?? "").toString().trim();
+        if (!code) return null;
+        return {
+          code,
+          dealerName: (inv?.dealerName ?? "").toString() || undefined,
+          createdAt: (inv?.createdAt ?? new Date().toISOString()).toString(),
+        };
+      }
+
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error("Supabase is not configured");
+
+      const { data, error } = await supabase
+        .from("dealer_employee_invites")
+        .select("code, created_at, updated_at")
+        .eq("dealer_id", dealerId)
+        .maybeSingle();
+
+      if (error) throw new Error(error.message);
+      if (!data) return null;
+
+      const code = (data as any)?.code;
+      if (!code) return null;
+
+      return {
+        code: code.toString(),
+        createdAt: ((data as any)?.updated_at ?? (data as any)?.created_at ?? new Date().toISOString()).toString(),
+      };
+    },
+  });
+
+  const inviteCode = (inviteQuery.data?.code ?? "").trim();
   const inviteLink = inviteCode ? `${window.location.origin}/dealer-employee-signup?code=${encodeURIComponent(inviteCode)}` : "";
 
   const [email, setEmail] = useState("");
@@ -180,6 +219,7 @@ export function DealerTeamPage() {
     queryKey: ["dealer-team"],
     queryFn: async () => {
       if (!dealerId) return [];
+      if (mode !== "local") return [];
       return read()
         .filter((m) => m.dealerId === dealerId)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -188,6 +228,7 @@ export function DealerTeamPage() {
 
   const inviteMutation = useMutation({
     mutationFn: async () => {
+      if (mode !== "local") throw new Error("Invite by email is not enabled in Supabase mode yet");
       const em = normalizeEmail(email);
       if (!em) throw new Error("Email is required");
       if (!dealerId) throw new Error("Not authenticated");
@@ -229,6 +270,7 @@ export function DealerTeamPage() {
 
   const updateRoleMutation = useMutation({
     mutationFn: async (input: { id: string; role: DealerTeamRole }) => {
+      if (mode !== "local") throw new Error("Role changes are not enabled in Supabase mode yet");
       const items = read();
       const idx = items.findIndex((m) => m.id === input.id);
       if (idx < 0) throw new Error("Team member not found");
@@ -287,6 +329,7 @@ export function DealerTeamPage() {
 
   const disableMutation = useMutation({
     mutationFn: async (id: string) => {
+      if (mode !== "local") throw new Error("Disabling staff is not enabled in Supabase mode yet");
       const items = read();
       const current = items.find((m) => m.id === id);
       if (!current) return;
@@ -344,6 +387,7 @@ export function DealerTeamPage() {
 
   const enableMutation = useMutation({
     mutationFn: async (id: string) => {
+      if (mode !== "local") throw new Error("Enabling staff is not enabled in Supabase mode yet");
       const items = read();
       const idx = items.findIndex((m) => m.id === id);
       if (idx < 0) throw new Error("Team member not found");
@@ -434,12 +478,32 @@ export function DealerTeamPage() {
                   if (!dealerId) return;
                   if (!(await confirmProceed(inviteCode ? "Regenerate invite code?" : "Generate invite code?"))) return;
 
-                  const users = readLocalUsers();
-                  const dealerName = (users.find((u) => u.id === dealerId)?.companyName ?? "").toString().trim() || undefined;
-
                   const nextCode = generateInviteCode();
                   const now = new Date().toISOString();
-                  writeInvites({ ...invites, [dealerId]: { code: nextCode, dealerName, createdAt: now } });
+
+                  if (mode === "local") {
+                    const invites = readInvites();
+                    const users = readLocalUsers();
+                    const dealerName = (users.find((u) => u.id === dealerId)?.companyName ?? "").toString().trim() || undefined;
+                    writeInvites({ ...invites, [dealerId]: { code: nextCode, dealerName, createdAt: now } });
+                  } else {
+                    const supabase = getSupabaseClient();
+                    if (!supabase) throw new Error("Supabase is not configured");
+
+                    const { error } = await supabase
+                      .from("dealer_employee_invites")
+                      .upsert(
+                        {
+                          dealer_id: dealerId,
+                          code: nextCode,
+                          created_by: user?.id ?? null,
+                          updated_at: now,
+                        },
+                        { onConflict: "dealer_id" },
+                      );
+
+                    if (error) throw new Error(error.message);
+                  }
 
                   logAuditEvent({
                     kind: "DEALER_INVITE_CODE_GENERATED",
@@ -452,7 +516,7 @@ export function DealerTeamPage() {
                     message: inviteCode ? "Regenerated invite code" : "Generated invite code",
                   });
 
-                  await qc.invalidateQueries({ queryKey: ["dealer-team"] });
+                  await qc.invalidateQueries({ queryKey: ["dealer-employee-invite"] });
                 })();
               }}
             >
@@ -499,7 +563,9 @@ export function DealerTeamPage() {
             <div className="mt-2 font-mono text-lg tracking-wider rounded-lg border bg-background px-4 py-3">
               {inviteCode || "Not generated yet"}
             </div>
-            {invite?.createdAt ? <div className="mt-2 text-xs text-muted-foreground">Updated {new Date(invite.createdAt).toLocaleString()}</div> : null}
+            {inviteQuery.data?.createdAt ? (
+              <div className="mt-2 text-xs text-muted-foreground">Updated {new Date(inviteQuery.data.createdAt).toLocaleString()}</div>
+            ) : null}
           </div>
           <div className="lg:col-span-6">
             <div className="text-xs text-muted-foreground">Invite Link</div>
