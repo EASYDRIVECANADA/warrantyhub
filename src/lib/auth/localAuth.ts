@@ -3,12 +3,16 @@ import type { AuthUser, Role } from "./types";
 
 const STORAGE_USERS = "warrantyhub.local.users";
 const STORAGE_SESSION = "warrantyhub.local.session";
+const STORAGE_DEALER_MEMBERSHIPS = "warrantyhub.local.dealer_memberships";
+const STORAGE_AUTH_NOTICE = "warrantyhub.local.auth_notice";
 
 type LocalUserRecord = {
   id: string;
   email: string;
   passwordHash: string;
-  role: Role;
+  role: Role | "DEALER";
+  companyName?: string;
+  dealerId?: string;
   isActive?: boolean;
 };
 
@@ -61,9 +65,51 @@ function writeSession(session: LocalSession | null) {
   localStorage.setItem(STORAGE_SESSION, JSON.stringify(session));
 }
 
+function writeAuthNotice(message: string) {
+  const m = message.trim();
+  if (!m) return;
+  localStorage.setItem(STORAGE_AUTH_NOTICE, m);
+}
+
+function readDealerMemberships(): any[] {
+  const raw = localStorage.getItem(STORAGE_DEALER_MEMBERSHIPS);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as any[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 function toAuthUser(u: LocalUserRecord): AuthUser {
   const active = u.isActive !== false;
-  return { id: u.id, email: u.email, role: active ? u.role : "UNASSIGNED" };
+  const rawRole = u.role;
+  let effectiveRole: Role = !active
+    ? "UNASSIGNED"
+    : rawRole === "DEALER"
+      ? "DEALER_ADMIN"
+      : rawRole;
+  let effectiveDealerId =
+    effectiveRole === "DEALER_ADMIN" ? (u.dealerId ?? u.id) : effectiveRole === "DEALER_EMPLOYEE" ? u.dealerId : undefined;
+
+  if ((effectiveRole === "DEALER_ADMIN" || effectiveRole === "DEALER_EMPLOYEE") && effectiveDealerId) {
+    const memberships = readDealerMemberships();
+    const m = memberships.find(
+      (x) => (x?.dealerId ?? "").toString().trim() === effectiveDealerId && (x?.userId ?? "").toString().trim() === u.id,
+    );
+    const status = (m?.status ?? "").toString().trim().toUpperCase();
+    if (status && status !== "ACTIVE") {
+      effectiveRole = "UNASSIGNED";
+      effectiveDealerId = undefined;
+    }
+    if (effectiveRole === "DEALER_EMPLOYEE" && !m) {
+      effectiveRole = "UNASSIGNED";
+      effectiveDealerId = undefined;
+    }
+  }
+
+  return { id: u.id, email: u.email, role: effectiveRole, dealerId: effectiveDealerId, companyName: u.companyName };
 }
 
 const listeners = new Set<() => void>();
@@ -78,7 +124,25 @@ export const localAuthApi: AuthApi = {
     if (!session) return null;
     const users = readUsers();
     const u = users.find((x) => x.id === session.userId);
-    return u ? toAuthUser(u) : null;
+    if (!u) return null;
+
+    if (u.isActive === false && u.role !== "UNASSIGNED") {
+      writeAuthNotice("Account disabled");
+      writeSession(null);
+      notify();
+      return null;
+    }
+
+    const mapped = toAuthUser(u);
+    if (mapped.role === "UNASSIGNED" && u.role !== "UNASSIGNED") {
+      const revokedMessage =
+        u.role === "DEALER" || u.role === "DEALER_ADMIN" || u.role === "DEALER_EMPLOYEE" ? "Dealer access revoked" : "Access revoked";
+      writeAuthNotice(revokedMessage);
+      writeSession(null);
+      notify();
+      return null;
+    }
+    return mapped;
   },
 
   async signInWithGoogle() {
@@ -90,12 +154,25 @@ export const localAuthApi: AuthApi = {
     const u = users.find((x) => x.email.toLowerCase() === email.toLowerCase());
     if (!u) throw new Error("Invalid email or password");
 
+    if (u.isActive === false) {
+      if (u.role === "UNASSIGNED") throw new Error("Account pending approval");
+      throw new Error("Account disabled");
+    }
+
     const passwordHash = await sha256(password);
     if (u.passwordHash !== passwordHash) throw new Error("Invalid email or password");
 
+    const mapped = toAuthUser(u);
+    if (mapped.role === "UNASSIGNED" && u.role !== "UNASSIGNED") {
+      if (u.role === "DEALER" || u.role === "DEALER_ADMIN" || u.role === "DEALER_EMPLOYEE") {
+        throw new Error("Dealer access revoked");
+      }
+      throw new Error("Access revoked");
+    }
+
     writeSession({ userId: u.id });
     notify();
-    return toAuthUser(u);
+    return mapped;
   },
 
   async signUpWithPassword(email, password) {

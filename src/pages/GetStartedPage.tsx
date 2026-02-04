@@ -8,9 +8,11 @@ import { useAuth } from "../providers/AuthProvider";
 
 function roleToDashboardPath(role: Role) {
   if (role === "UNASSIGNED") return "/request-access";
-  if (role === "ADMIN" || role === "SUPER_ADMIN") return "/company-dashboard";
+  if (role === "SUPER_ADMIN") return "/platform";
+  if (role === "ADMIN") return "/company-dashboard";
   if (role === "PROVIDER") return "/provider-dashboard";
   if (role === "DEALER_ADMIN") return "/dealer-admin";
+  if (role === "DEALER_EMPLOYEE") return "/dealer-dashboard";
   return "/dealer-dashboard";
 }
 

@@ -12,6 +12,13 @@ import type { ProductPricing } from "../lib/productPricing/types";
 import type { Product, ProductType } from "../lib/products/types";
 import { getProvidersApi } from "../lib/providers/providers";
 import type { ProviderPublic } from "../lib/providers/types";
+import {
+  costFromProductOrPricing,
+  getDealerMarkupPct,
+  marginFromCostAndRetail,
+  retailFromCost,
+} from "../lib/dealerPricing";
+import { useAuth } from "../providers/AuthProvider";
 
 function productTypeLabel(t: ProductType) {
   if (t === "EXTENDED_WARRANTY") return "Extended Warranty";
@@ -47,8 +54,13 @@ function allowListLabel(items?: string[]) {
 }
 
 export function DealerMarketplaceProductDetailPage() {
+  const { user } = useAuth();
   const { id } = useParams();
   const productId = id ?? "";
+
+  const dealerId = (user?.dealerId ?? user?.id ?? "").trim();
+  const markupPct = useMemo(() => getDealerMarkupPct(dealerId), [dealerId]);
+  const canSeeCost = user?.role === "DEALER_ADMIN";
 
   const marketplaceApi = useMemo(() => getMarketplaceApi(), []);
   const productPricingApi = useMemo(() => getProductPricingApi(), []);
@@ -100,9 +112,9 @@ export function DealerMarketplaceProductDetailPage() {
       actions={
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" asChild>
-            <Link to="/dealer-marketplace">Back to marketplace</Link>
+            <Link to="/dealer-marketplace">Back to Find Products</Link>
           </Button>
-          <Button asChild>
+          <Button asChild className="bg-yellow-400 text-black hover:bg-yellow-300">
             <Link to={`/dealer-contracts?productId=${encodeURIComponent(productId)}`}>Select product</Link>
           </Button>
         </div>
@@ -133,8 +145,27 @@ export function DealerMarketplaceProductDetailPage() {
                       <div className="text-sm text-muted-foreground mt-1">Select pricing (term/km) when creating the contract.</div>
                     </div>
                     <div className="text-right">
-                      <div className="text-xs text-muted-foreground">From</div>
-                      <div className="text-sm font-semibold mt-1">{money(sortedPricingRows[0]?.basePriceCents ?? product.basePriceCents)}</div>
+                      {(() => {
+                        const cost = costFromProductOrPricing({
+                          dealerCostCents: sortedPricingRows[0]?.dealerCostCents ?? product.dealerCostCents,
+                          basePriceCents: sortedPricingRows[0]?.basePriceCents ?? product.basePriceCents,
+                        });
+                        const retail = retailFromCost(cost, markupPct) ?? cost;
+                        const margin = marginFromCostAndRetail(cost, retail);
+                        const primary = canSeeCost ? cost : retail;
+
+                        return (
+                          <>
+                            <div className="text-xs text-muted-foreground">{canSeeCost ? "Cost price" : "Price"}</div>
+                            <div className="text-sm font-semibold mt-1">{money(primary)}</div>
+                            {canSeeCost ? (
+                              <div className="text-xs text-muted-foreground mt-1">
+                                Price {money(retail)}{typeof margin === "number" ? ` • Margin ${money(margin)}` : ""} • Markup {markupPct}%
+                              </div>
+                            ) : null}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -144,7 +175,7 @@ export function DealerMarketplaceProductDetailPage() {
                         <tr className="border-b">
                           <th className="text-left py-2 pr-3 text-xs text-muted-foreground">Term</th>
                           <th className="text-left py-2 pr-3 text-xs text-muted-foreground">Deductible</th>
-                          <th className="text-left py-2 pr-3 text-xs text-muted-foreground">Retail price</th>
+                          <th className="text-left py-2 pr-3 text-xs text-muted-foreground">{canSeeCost ? "Cost price" : "Price"}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
@@ -161,7 +192,22 @@ export function DealerMarketplaceProductDetailPage() {
                             <tr key={r.id}>
                               <td className="py-3 pr-3 text-muted-foreground">{r.termMonths} months / {r.termKm.toLocaleString()} km</td>
                               <td className="py-3 pr-3 text-muted-foreground">{money(r.deductibleCents)}</td>
-                              <td className="py-3 pr-3 font-medium text-foreground">{money(r.basePriceCents)}</td>
+                              <td className="py-3 pr-3 font-medium text-foreground">
+                                {(() => {
+                                  const cost = costFromProductOrPricing({ dealerCostCents: r.dealerCostCents, basePriceCents: r.basePriceCents });
+                                  const retail = retailFromCost(cost, markupPct) ?? cost;
+                                  const margin = marginFromCostAndRetail(cost, retail);
+                                  const primary = canSeeCost ? cost : retail;
+                                  return (
+                                    <div>
+                                      <div>{money(primary)}</div>
+                                      {canSeeCost ? (
+                                        <div className="text-xs text-muted-foreground">Price {money(retail)}{typeof margin === "number" ? ` • Margin ${money(margin)}` : ""}</div>
+                                      ) : null}
+                                    </div>
+                                  );
+                                })()}
+                              </td>
                             </tr>
                           ))
                         ) : (
@@ -170,7 +216,22 @@ export function DealerMarketplaceProductDetailPage() {
                               {typeof product.termMonths === "number" ? `${product.termMonths} months` : "—"} / {typeof product.termKm === "number" ? `${product.termKm} km` : "—"}
                             </td>
                             <td className="py-3 pr-3 text-muted-foreground">{money(product.deductibleCents)}</td>
-                            <td className="py-3 pr-3 font-medium text-foreground">{money(product.basePriceCents)}</td>
+                            <td className="py-3 pr-3 font-medium text-foreground">
+                              {(() => {
+                                const cost = costFromProductOrPricing({ dealerCostCents: product.dealerCostCents, basePriceCents: product.basePriceCents });
+                                const retail = retailFromCost(cost, markupPct) ?? cost;
+                                const margin = marginFromCostAndRetail(cost, retail);
+                                const primary = canSeeCost ? cost : retail;
+                                return (
+                                  <div>
+                                    <div>{money(primary)}</div>
+                                    {canSeeCost ? (
+                                      <div className="text-xs text-muted-foreground">Price {money(retail)}{typeof margin === "number" ? ` • Margin ${money(margin)}` : ""}</div>
+                                    ) : null}
+                                  </div>
+                                );
+                              })()}
+                            </td>
                           </tr>
                         )}
                       </tbody>

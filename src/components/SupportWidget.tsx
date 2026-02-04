@@ -59,8 +59,8 @@ export function SupportWidget() {
   const [draft, setDraft] = useState("");
 
   const canUseSupport =
-    user?.role === "DEALER" ||
     user?.role === "DEALER_ADMIN" ||
+    user?.role === "DEALER_EMPLOYEE" ||
     user?.role === "PROVIDER" ||
     user?.role === "ADMIN" ||
     user?.role === "SUPER_ADMIN";

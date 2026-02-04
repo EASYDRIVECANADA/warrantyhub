@@ -3,10 +3,18 @@ import type { ProviderPublic, UpdateMyProviderProfileInput } from "./types";
 
 const STORAGE_KEY = "warrantyhub.local.provider_profiles";
 const DEV_BYPASS_KEY = "warrantyhub.dev.bypass_user";
+const LOCAL_USERS_KEY = "warrantyhub.local.users";
 
 type StoredProfile = {
   id: string;
   displayName?: string;
+  companyName?: string;
+};
+
+type LocalUserRecord = {
+  id: string;
+  role?: string;
+  isActive?: boolean;
   companyName?: string;
 };
 
@@ -53,6 +61,20 @@ function readProfiles(): StoredProfile[] {
   }
 }
 
+function readUsers(): LocalUserRecord[] {
+  const raw = localStorage.getItem(LOCAL_USERS_KEY);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw) as LocalUserRecord[];
+  } catch {
+    return [];
+  }
+}
+
+function writeUsers(items: LocalUserRecord[]) {
+  localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(items));
+}
+
 function writeProfiles(items: StoredProfile[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
 }
@@ -64,14 +86,34 @@ function toPublic(p: StoredProfile): ProviderPublic {
 export const localProvidersApi: ProvidersApi = {
   async listByIds(ids) {
     const wanted = new Set(ids.filter(Boolean));
+
     const items = readProfiles().filter((p) => wanted.has(p.id));
-    return items.map(toPublic);
+    const byId = new Map(items.map((p) => [p.id, p] as const));
+
+    const userById = new Map(readUsers().map((u) => [u.id, u] as const));
+
+    return Array.from(wanted)
+      .map((id) => {
+        const p = byId.get(id);
+        if (p) return toPublic(p);
+
+        const u = userById.get(id);
+        const active = u?.isActive !== false;
+        const role = (u?.role ?? "").toString();
+        if (!u || !active || role !== "PROVIDER") return null;
+        return { id, companyName: u.companyName };
+      })
+      .filter(Boolean) as ProviderPublic[];
   },
 
   async getMyProfile() {
     const uid = currentUserId();
     const found = readProfiles().find((p) => p.id === uid);
-    return found ? toPublic(found) : { id: uid };
+    if (found) return toPublic(found);
+
+    const u = readUsers().find((x) => x.id === uid);
+    if (u) return { id: uid, companyName: u.companyName };
+    return { id: uid };
   },
 
   async updateMyProfile(patch: UpdateMyProviderProfileInput) {
@@ -90,6 +132,16 @@ export const localProvidersApi: ProvidersApi = {
     else updated.unshift(next);
 
     writeProfiles(updated);
+
+    if (typeof patch.companyName === "string") {
+      const users = readUsers();
+      const uidx = users.findIndex((u) => u.id === uid);
+      if (uidx >= 0) {
+        const copy = [...users];
+        copy[uidx] = { ...copy[uidx], companyName: patch.companyName };
+        writeUsers(copy);
+      }
+    }
     return toPublic(next);
   },
 };

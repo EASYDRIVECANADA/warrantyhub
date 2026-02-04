@@ -222,6 +222,23 @@ export function ProviderProductsPage() {
     },
   });
 
+  const removeMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const productId = (id ?? "").trim();
+      if (!productId) return;
+
+      const existing = await pricingApi.list({ productId });
+      for (const r of existing) {
+        await pricingApi.remove(r.id);
+      }
+
+      await api.remove(productId);
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["provider-products"] });
+    },
+  });
+
   const products = (productsQuery.data ?? []) as Product[];
 
   const filteredProducts = products
@@ -334,6 +351,7 @@ export function ProviderProductsPage() {
       eligibilityModelAllowlist: parseAllowlist(editor.eligibilityModelAllowlist),
       eligibilityTrimAllowlist: parseAllowlist(editor.eligibilityTrimAllowlist),
       basePriceCents: primary ? primary.basePriceCents : undefined,
+      dealerCostCents: primary ? primary.basePriceCents : undefined,
     };
 
     const allowlistsForUpdate = {
@@ -363,6 +381,7 @@ export function ProviderProductsPage() {
             eligibilityModelAllowlist: allowlistsForUpdate.eligibilityModelAllowlist,
             eligibilityTrimAllowlist: allowlistsForUpdate.eligibilityTrimAllowlist,
             ...(typeof input.basePriceCents === "number" ? { basePriceCents: input.basePriceCents } : {}),
+            ...(typeof input.dealerCostCents === "number" ? { dealerCostCents: input.dealerCostCents } : {}),
             published: editor.published,
           },
         })) as Product;
@@ -381,6 +400,7 @@ export function ProviderProductsPage() {
             termKm: r.termKm,
             deductibleCents: r.deductibleCents,
             basePriceCents: r.basePriceCents,
+            dealerCostCents: r.basePriceCents,
           });
         }
         await qc.invalidateQueries({ queryKey: ["product-pricing", productId] });
@@ -393,7 +413,29 @@ export function ProviderProductsPage() {
     }
   };
 
-  const busy = createMutation.isPending || updateMutation.isPending;
+  const busy = createMutation.isPending || updateMutation.isPending || removeMutation.isPending;
+
+  const onDelete = (p: Product) => {
+    void (async () => {
+      const id = (p?.id ?? "").trim();
+      if (!id) return;
+
+      const confirmed = window.confirm(`Delete "${p.name}"? This cannot be undone.`);
+      if (!confirmed) return;
+
+      setError(null);
+      try {
+        await removeMutation.mutateAsync(id);
+
+        if ((editor.id ?? "").trim() === id) {
+          setShowEditor(false);
+          setEditor(emptyEditor());
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to delete product");
+      }
+    })();
+  };
 
   return (
     <PageShell
@@ -588,7 +630,7 @@ export function ProviderProductsPage() {
               <div className="space-y-4">
                 <div className="rounded-xl border p-4">
                   <div className="font-semibold">Pricing</div>
-                  <div className="text-sm text-muted-foreground mt-1">Retail price only (dealer pricing comes later).</div>
+                  <div className="text-sm text-muted-foreground mt-1">Provider cost (dealer markup is applied later).</div>
 
                   <div className="mt-3 space-y-3">
                     {editor.pricingRows.map((row, idx) => (
@@ -641,7 +683,7 @@ export function ProviderProductsPage() {
                                 pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, basePrice: sanitizeMoney(e.target.value) } : r)),
                               }))
                             }
-                            placeholder="Retail price (e.g. 799.00)"
+                            placeholder="Provider cost (e.g. 799.00)"
                             inputMode="decimal"
                             disabled={busy}
                           />
@@ -751,7 +793,7 @@ export function ProviderProductsPage() {
             <div className="col-span-1">Status</div>
             <div className="col-span-3">Coverage</div>
             <div className="col-span-2">Terms</div>
-            <div className="col-span-1">Retail</div>
+            <div className="col-span-1">Cost</div>
             <div className="col-span-1">Eligibility</div>
             <div className="col-span-1 text-right">Action</div>
           </div>
@@ -779,9 +821,18 @@ export function ProviderProductsPage() {
                   </div>
                   <div className="md:col-span-1 text-sm text-muted-foreground">{money(p.basePriceCents)}</div>
                   <div className="md:col-span-1 text-xs text-muted-foreground">{eligibilitySummary(p)}</div>
-                  <div className="md:col-span-1 flex md:justify-end">
+                  <div className="md:col-span-1 flex md:justify-end gap-2">
                     <Button size="sm" variant="outline" onClick={() => beginEdit(p)} disabled={busy}>
                       Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onDelete(p)}
+                      disabled={busy}
+                      className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      Delete
                     </Button>
                   </div>
                 </div>

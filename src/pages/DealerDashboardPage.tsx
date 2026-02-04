@@ -10,11 +10,37 @@ import { getBatchesApi } from "../lib/batches/batches";
 import type { Batch } from "../lib/batches/types";
 import { getContractsApi } from "../lib/contracts/contracts";
 import type { Contract } from "../lib/contracts/types";
+import { getAppMode } from "../lib/runtime";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
 import type { Product } from "../lib/products/types";
 import { getProvidersApi } from "../lib/providers/providers";
 import type { ProviderPublic } from "../lib/providers/types";
 import { useAuth } from "../providers/AuthProvider";
+
+const LOCAL_DEALER_MEMBERSHIPS_KEY = "warrantyhub.local.dealer_memberships";
+
+function readLocalDealerMemberships(): Array<{ dealerId?: string; userId?: string }> {
+  const raw = localStorage.getItem(LOCAL_DEALER_MEMBERSHIPS_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as any[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function dealershipUserIds(dealerId: string) {
+  const memberships = readLocalDealerMemberships();
+  const ids = new Set<string>();
+  ids.add(dealerId);
+  for (const m of memberships) {
+    const did = (m?.dealerId ?? "").toString();
+    const uid = (m?.userId ?? "").toString();
+    if (did && uid && did === dealerId) ids.add(uid);
+  }
+  return ids;
+}
 
 function formatMoney(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;
@@ -40,6 +66,37 @@ function iconForSummary(kind: SummaryCard["icon"]) {
   if (kind === "marketplace") return Store;
   if (kind === "team") return Users;
   return DollarSign;
+}
+
+function accentForSummary(kind: SummaryCard["icon"]) {
+  if (kind === "contracts") {
+    return {
+      ring: "ring-sky-500/15",
+      iconWrap: "bg-gradient-to-br from-sky-500/20 to-indigo-500/15 border-sky-500/20 text-sky-700",
+    };
+  }
+  if (kind === "money") {
+    return {
+      ring: "ring-amber-500/15",
+      iconWrap: "bg-gradient-to-br from-amber-500/25 to-orange-500/15 border-amber-500/25 text-amber-700",
+    };
+  }
+  if (kind === "calendar") {
+    return {
+      ring: "ring-emerald-500/15",
+      iconWrap: "bg-gradient-to-br from-emerald-500/20 to-cyan-500/15 border-emerald-500/20 text-emerald-700",
+    };
+  }
+  if (kind === "marketplace") {
+    return {
+      ring: "ring-violet-500/15",
+      iconWrap: "bg-gradient-to-br from-violet-500/20 to-fuchsia-500/15 border-violet-500/20 text-violet-700",
+    };
+  }
+  return {
+    ring: "ring-indigo-500/15",
+    iconWrap: "bg-gradient-to-br from-indigo-500/20 to-blue-500/15 border-indigo-500/20 text-indigo-700",
+  };
 }
 
 function monthKey(d: Date) {
@@ -87,6 +144,10 @@ export function DealerDashboardPage() {
   const marketplaceApi = useMemo(() => getMarketplaceApi(), []);
   const providersApi = useMemo(() => getProvidersApi(), []);
   const { user } = useAuth();
+
+  const mode = useMemo(() => getAppMode(), []);
+  const isEmployee = user?.role === "DEALER_EMPLOYEE";
+  const isDealerAdmin = user?.role === "DEALER_ADMIN";
 
   const [query, setQuery] = useState("");
 
@@ -236,17 +297,44 @@ export function DealerDashboardPage() {
       createdAt: c.updatedAt ?? c.createdAt,
       label: `Contract ${c.contractNumber} • ${c.customerName}`,
     })),
-    ...myRemittances.map((r) => ({
-      kind: "remittance" as const,
-      id: r.id,
-      createdAt: r.createdAt,
-      label: `Remittance ${r.batchNumber} • ${formatMoney(r.totalCents)}`,
-    })),
+    ...(isEmployee
+      ? []
+      : myRemittances.map((r) => ({
+          kind: "remittance" as const,
+          id: r.id,
+          createdAt: r.createdAt,
+          label: `Remittance ${r.batchNumber} • ${formatMoney(r.totalCents)}`,
+        }))),
   ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  const visibleContracts = useMemo(() => {
+    if (!user) return [] as Contract[];
+    if (isEmployee) return contracts.filter(isMine);
+    if (!isDealerAdmin) return contracts.filter(isMine);
+    if (mode !== "local") return contracts.filter(isMine);
+
+    const did = (user.dealerId ?? "").trim();
+    if (!did) return contracts.filter(isMine);
+    const ids = dealershipUserIds(did);
+    return contracts.filter((c) => {
+      const cdid = (c.dealerId ?? "").trim();
+      if (cdid && cdid === did) return true;
+      const byId = (c.createdByUserId ?? "").trim();
+      return byId && ids.has(byId);
+    });
+  }, [contracts, isDealerAdmin, isEmployee, mode, user, uid, uem]);
+
+  const visibleContractIds = useMemo(() => new Set(visibleContracts.map((c) => c.id)), [visibleContracts]);
+  const visibleRemittances = useMemo(() => {
+    if (isEmployee) return [] as Batch[];
+    return batches
+      .filter((b) => Array.isArray(b.contractIds) && (b.contractIds as string[]).length > 0)
+      .filter((b) => (b.contractIds as string[]).some((id) => visibleContractIds.has(id)));
+  }, [batches, isEmployee, visibleContractIds]);
 
   const q = query.trim().toLowerCase();
   const filteredContracts = q
-    ? myContracts.filter(
+    ? visibleContracts.filter(
         (c) =>
           c.contractNumber.toLowerCase().includes(q) ||
           c.customerName.toLowerCase().includes(q) ||
@@ -254,7 +342,7 @@ export function DealerDashboardPage() {
       )
     : [];
   const filteredRemittances = q
-    ? myRemittances.filter((r) => r.batchNumber.toLowerCase().includes(q) || r.status.toLowerCase().includes(q))
+    ? visibleRemittances.filter((r) => r.batchNumber.toLowerCase().includes(q) || r.status.toLowerCase().includes(q))
     : [];
 
   const kpiCards: SummaryCard[] = [
@@ -272,25 +360,29 @@ export function DealerDashboardPage() {
       icon: "calendar",
       href: "/dealer-contracts",
     },
-    {
-      title: "Pending remittances",
-      value: `${counts.remittancesPending}`,
-      subtitle: formatMoney(pendingCents),
-      icon: "money",
-      href: "/dealer-remittances",
-    },
-    {
-      title: "Submitted remittances",
-      value: `${counts.remittancesSubmitted}`,
-      subtitle: formatMoney(submittedCents),
-      icon: "money",
-      href: "/dealer-remittances",
-    },
+    ...(isEmployee
+      ? []
+      : [
+          {
+            title: "Pending remittances",
+            value: `${counts.remittancesPending}`,
+            subtitle: formatMoney(pendingCents),
+            icon: "money" as const,
+            href: "/dealer-remittances",
+          },
+          {
+            title: "Submitted remittances",
+            value: `${counts.remittancesSubmitted}`,
+            subtitle: formatMoney(submittedCents),
+            icon: "money" as const,
+            href: "/dealer-remittances",
+          },
+        ]),
   ];
 
   const quickActions: SummaryCard[] = [
     {
-      title: "Marketplace",
+      title: "Find Products",
       value: "Browse",
       subtitle: "Published products",
       icon: "marketplace",
@@ -303,13 +395,17 @@ export function DealerDashboardPage() {
       icon: "contracts",
       href: "/dealer-contracts",
     },
-    {
-      title: "Remittances",
-      value: "Manage",
-      subtitle: "Pending / submitted",
-      icon: "money",
-      href: "/dealer-remittances",
-    },
+    ...(isEmployee
+      ? []
+      : [
+          {
+            title: "Remittances",
+            value: "Manage",
+            subtitle: "Pending / submitted",
+            icon: "money" as const,
+            href: "/dealer-remittances",
+          },
+        ]),
   ];
 
   const recentContracts = myContracts.slice(0, 6);
@@ -328,25 +424,35 @@ export function DealerDashboardPage() {
         </div>
       }
     >
+      <div className="relative">
+        <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-yellow-400/10 blur-2xl" />
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-8">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className={`grid grid-cols-1 sm:grid-cols-2 ${isEmployee ? "lg:grid-cols-2" : "xl:grid-cols-4"} gap-6`}>
               {kpiCards.map((c) => {
                 const Icon = iconForSummary(c.icon);
+                const a = accentForSummary(c.icon);
                 const body = (
-                  <div className="rounded-2xl border bg-card shadow-card p-6">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-sm text-muted-foreground">{c.title}</div>
-                        <div className="text-3xl font-bold text-foreground mt-2">{c.value}</div>
-                        {c.subtitle ? (
-                          <div className="text-xs text-muted-foreground mt-2">{c.subtitle}</div>
-                        ) : null}
-                      </div>
-                      <div className="p-3 rounded-xl bg-muted text-primary border">
-                        <Icon className="w-5 h-5" />
+                  <div
+                    className={
+                      "rounded-2xl border bg-card shadow-card p-6 ring-1 transition-all hover:-translate-y-0.5 hover:shadow-md h-full overflow-hidden flex flex-col " +
+                      a.ring
+                    }
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="text-sm text-muted-foreground">{c.title}</div>
+                      <div
+                        className={
+                          "shrink-0 h-12 w-12 rounded-2xl border ring-1 ring-white/30 flex items-center justify-center " +
+                          a.iconWrap
+                        }
+                      >
+                        <Icon className="w-6 h-6" />
                       </div>
                     </div>
+                    <div className="text-3xl font-bold text-foreground mt-3 leading-none break-all">{c.value}</div>
+                    {c.subtitle ? <div className="text-xs text-muted-foreground mt-3 leading-relaxed">{c.subtitle}</div> : null}
                   </div>
                 );
 
@@ -360,20 +466,21 @@ export function DealerDashboardPage() {
               })}
             </div>
 
-            <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden">
-              <div className="px-6 py-4 border-b">
+            {!isEmployee ? (
+            <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-yellow-500/10">
+              <div className="px-6 py-4 border-b bg-gradient-to-r from-yellow-500/10 to-blue-600/10">
                 <div className="font-semibold text-lg">Insights</div>
                 <div className="text-sm text-muted-foreground mt-1">Dealer-only analytics based on your contracts and remittances.</div>
               </div>
 
               <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="rounded-xl border p-4">
+                <div className="rounded-xl border p-4 bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10">
                   <div className="font-semibold">Sales trends</div>
                   <div className="text-sm text-muted-foreground mt-1">Contracts sold per month (last 6 months).</div>
                   <SmallBarChart points={salesTrend} />
                 </div>
 
-                <div className="rounded-xl border p-4">
+                <div className="rounded-xl border p-4 bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10">
                   <div className="font-semibold">Provider mix</div>
                   <div className="text-sm text-muted-foreground mt-1">Share of contracts sold by provider.</div>
                   <div className="mt-4 space-y-3">
@@ -396,7 +503,7 @@ export function DealerDashboardPage() {
                   </div>
                 </div>
 
-                <div className="rounded-xl border p-4 md:col-span-2">
+                <div className="rounded-xl border p-4 md:col-span-2 bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10">
                   <div className="font-semibold">Product performance</div>
                   <div className="text-sm text-muted-foreground mt-1">Top products by contracts sold.</div>
                   <div className="mt-4 rounded-lg border overflow-hidden">
@@ -419,22 +526,32 @@ export function DealerDashboardPage() {
                 </div>
               </div>
             </div>
+            ) : null}
 
-            <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className={`mt-8 grid grid-cols-1 sm:grid-cols-2 ${isEmployee ? "lg:grid-cols-2" : "lg:grid-cols-3"} gap-6`}>
               {quickActions.map((c) => {
                 const Icon = iconForSummary(c.icon);
+                const a = accentForSummary(c.icon);
                 const body = (
-                  <div className="rounded-2xl border bg-card shadow-card p-6">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-sm text-muted-foreground">{c.title}</div>
-                        <div className="text-3xl font-bold text-foreground mt-2">{c.value}</div>
-                        {c.subtitle ? <div className="text-xs text-muted-foreground mt-2">{c.subtitle}</div> : null}
-                      </div>
-                      <div className="p-3 rounded-xl bg-muted text-primary border">
-                        <Icon className="w-5 h-5" />
+                  <div
+                    className={
+                      "rounded-2xl border bg-card shadow-card p-6 ring-1 transition-all hover:-translate-y-0.5 hover:shadow-md h-full overflow-hidden flex flex-col " +
+                      a.ring
+                    }
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="text-sm text-muted-foreground">{c.title}</div>
+                      <div
+                        className={
+                          "shrink-0 h-12 w-12 rounded-2xl border ring-1 ring-white/30 flex items-center justify-center " +
+                          a.iconWrap
+                        }
+                      >
+                        <Icon className="w-6 h-6" />
                       </div>
                     </div>
+                    <div className="text-3xl font-bold text-foreground mt-3 leading-none break-all">{c.value}</div>
+                    {c.subtitle ? <div className="text-xs text-muted-foreground mt-3 leading-relaxed">{c.subtitle}</div> : null}
                   </div>
                 );
 
@@ -448,8 +565,8 @@ export function DealerDashboardPage() {
               })}
             </div>
 
-            <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden">
-              <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap">
+            <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
+              <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
                 <div>
                   <div className="font-semibold text-lg">Contracts Overview</div>
                   <div className="text-sm text-muted-foreground mt-1">Draft → Sold → Remitted → Paid</div>
@@ -458,7 +575,7 @@ export function DealerDashboardPage() {
                   <Button variant="outline" size="sm" asChild>
                     <Link to="/dealer-contracts">View all</Link>
                   </Button>
-                  <Button size="sm" asChild>
+                  <Button size="sm" asChild className="bg-yellow-400 text-black hover:bg-yellow-300">
                     <Link to="/dealer-contracts">New Contract</Link>
                   </Button>
                 </div>
@@ -492,20 +609,20 @@ export function DealerDashboardPage() {
                     </div>
                   </div>
                 ))}
-
-                {contractsQuery.isLoading ? (
-                  <div className="px-6 py-6 text-sm text-muted-foreground">Loading…</div>
-                ) : null}
-                {!contractsQuery.isLoading && recentContracts.length === 0 ? (
-                  <div className="px-6 py-10 text-sm text-muted-foreground">
-                    No contracts yet.
-                    <div className="mt-2">
-                      <Button size="sm" asChild>
-                        <Link to="/dealer-marketplace">Browse marketplace</Link>
-                      </Button>
+  
+                  {contractsQuery.isLoading ? (
+                    <div className="px-6 py-6 text-sm text-muted-foreground">Loading…</div>
+                  ) : null}
+                  {!contractsQuery.isLoading && recentContracts.length === 0 ? (
+                    <div className="px-6 py-10 text-sm text-muted-foreground">
+                      No contracts yet.
+                      <div className="mt-2">
+                        <Button size="sm" asChild className="bg-yellow-400 text-black hover:bg-yellow-300">
+                          <Link to="/dealer-marketplace">Find Products</Link>
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                ) : null}
+                  ) : null}
               </div>
             </div>
 
@@ -532,6 +649,7 @@ export function DealerDashboardPage() {
                   </div>
                 </div>
 
+                {!isEmployee ? (
                 <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
                   <div className="px-6 py-4 border-b">
                     <div className="font-semibold">Search results: Remittances</div>
@@ -552,6 +670,7 @@ export function DealerDashboardPage() {
                     ) : null}
                   </div>
                 </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -561,8 +680,8 @@ export function DealerDashboardPage() {
           </div>
 
           <div className="lg:col-span-4">
-            <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
-              <div className="px-6 py-4 border-b">
+            <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-yellow-500/10">
+              <div className="px-6 py-4 border-b bg-gradient-to-r from-yellow-500/10 to-blue-600/10">
                 <div className="font-semibold">Recent Activity</div>
                 <div className="text-sm text-muted-foreground mt-1">Latest updates for transparency.</div>
               </div>
@@ -579,6 +698,7 @@ export function DealerDashboardPage() {
             </div>
           </div>
         </div>
+      </div>
     </PageShell>
   );
 }

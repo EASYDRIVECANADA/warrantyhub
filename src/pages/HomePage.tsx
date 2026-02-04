@@ -136,23 +136,24 @@ export function HomePage() {
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-accent" />
               </span>
               <span className="text-sm font-medium text-primary-foreground">
-                <span className="text-yellow-300 font-semibold">Ontario</span> warranty providers directory
+                Dealer-only marketplace • Ontario launch
               </span>
             </div>
 
             <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold text-primary-foreground leading-tight mb-6">
-              Warranty Companies in <span className="text-yellow-300">Ontario</span>
+              Bridge Warranty
             </h1>
 
             <p className="text-lg md:text-xl text-primary-foreground/80 mb-12 max-w-2xl mx-auto">
-              Below are independent vehicle warranty providers you can explore through our marketplace. We do not sell warranties directly-all warranties are provided and administered by third-party companies.
+              The marketplace connecting dealerships with warranty, protection, and vehicle service providers.
+              <span className="block mt-3">One platform. Multiple providers. Full transparency.</span>
             </p>
 
             <div className="max-w-3xl mx-auto mb-12 rounded-2xl bg-primary-foreground/10 backdrop-blur-sm border border-primary-foreground/25 px-6 py-6">
               <div className="flex flex-col md:flex-row items-center justify-between gap-6">
                 <div className="text-left">
-                  <div className="text-sm font-semibold text-primary-foreground">Soft launch in</div>
-                  <div className="text-xs text-primary-foreground/80 mt-1">February 28</div>
+                  <div className="text-sm font-semibold text-primary-foreground">⏳ Soft Launch – Coming February 28</div>
+                  <div className="text-xs text-primary-foreground/80 mt-1">We’re preparing to open full contract creation.</div>
                   <div className="mt-4 grid grid-cols-4 gap-3">
                     <div className="rounded-xl border border-primary-foreground/25 bg-primary-foreground/10 px-3 py-2 text-center">
                       <div className="text-xl font-bold text-primary-foreground">{days}</div>
@@ -175,11 +176,13 @@ export function HomePage() {
 
                 <div className="flex flex-col items-center md:items-end gap-3">
                   <div className="text-sm text-primary-foreground/80 text-center md:text-right max-w-xs">
-                    Dealerships: register now to get early access.
+                    Dealerships can register now to secure early access, invite staff with an admin code, and explore the platform before launch.
                   </div>
-                  <Button asChild className="bg-yellow-300 text-slate-900 hover:bg-yellow-200">
-                    <Link to="/get-started">Register your dealership</Link>
-                  </Button>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <Button asChild className="bg-yellow-300 text-slate-900 hover:bg-yellow-200">
+                      <Link to="/register-dealership">Register Your Dealership</Link>
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -209,14 +212,170 @@ export function HomePage() {
         </div>
       </section>
 
-      <section className="py-20 bg-background">
-        <div className="container mx-auto px-4">
+      <section className="py-20 bg-gradient-to-b from-background via-primary/5 to-background relative overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute -top-24 -left-24 w-80 h-80 rounded-full bg-primary/10 blur-3xl" />
+          <div className="absolute -bottom-24 -right-24 w-80 h-80 rounded-full bg-yellow-300/10 blur-3xl" />
+        </div>
+
+        <div className="container mx-auto px-4 relative">
+          <div className="text-center mb-12">
+            <h2 className="font-display text-3xl md:text-4xl font-bold text-foreground mb-4">What Is Bridge Warranty?</h2>
+            <p className="text-muted-foreground max-w-3xl mx-auto">
+              Bridge Warranty is a dealer-only wholesale platform built to modernize how dealerships sell warranties and vehicle protection products.
+              Instead of being locked into a single provider, dealerships can compare providers, pricing, and coverage in one centralized system.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-16">
+            <div className="rounded-2xl border border-primary/10 bg-gradient-to-br from-card to-primary/5 p-6 shadow-card hover:shadow-lg hover:border-yellow-300/30 transition-all duration-300">
+              <div className="text-sm font-semibold text-foreground">One platform</div>
+              <div className="text-sm text-muted-foreground mt-2">Draft contracts, manage records, remittances, and payments in one place.</div>
+            </div>
+            <div className="rounded-2xl border border-primary/10 bg-gradient-to-br from-card to-primary/5 p-6 shadow-card hover:shadow-lg hover:border-yellow-300/30 transition-all duration-300">
+              <div className="text-sm font-semibold text-foreground">Multiple providers</div>
+              <div className="text-sm text-muted-foreground mt-2">View multiple warranty and service providers without juggling portals.</div>
+            </div>
+            <div className="rounded-2xl border border-primary/10 bg-gradient-to-br from-card to-primary/5 p-6 shadow-card hover:shadow-lg hover:border-yellow-300/30 transition-all duration-300">
+              <div className="text-sm font-semibold text-foreground">Full transparency</div>
+              <div className="text-sm text-muted-foreground mt-2">Compare products side-by-side with clear pricing and coverage visibility.</div>
+            </div>
+          </div>
+
+          <div className="text-center mb-12">
+            <h3 className="font-display text-2xl md:text-3xl font-bold text-foreground mb-4">Built for Dealerships</h3>
+            <p className="text-muted-foreground max-w-2xl mx-auto">Designed for professional dealership teams — not retail buyers.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
+            {["Franchise & independent dealerships", "Finance managers", "Sales managers", "Authorized dealer employees"].map((label) => (
+              <div
+                key={label}
+                className="rounded-2xl border border-primary/10 bg-gradient-to-br from-card to-primary/5 p-6 shadow-card hover:shadow-lg hover:border-yellow-300/30 transition-all duration-300"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-300/25 to-primary/10 flex items-center justify-center border border-primary/10">
+                    <Users className="w-5 h-5 text-primary" />
+                  </div>
+                  <div className="text-sm font-semibold text-foreground">{label}</div>
+                </div>
+                <div className="text-xs text-muted-foreground mt-3">Dealer-only access with role-based visibility.</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-2xl border border-primary/10 bg-gradient-to-br from-primary/5 to-yellow-300/5 p-6 mb-16 shadow-card">
+            <div className="text-sm font-semibold text-foreground">Not for private retail buyers</div>
+            <div className="text-sm text-muted-foreground mt-2">
+              This is a professional, dealer-only platform. Retail customers do not purchase warranties through Bridge Warranty.
+            </div>
+          </div>
+
+          <div className="text-center mb-12">
+            <h3 className="font-display text-2xl md:text-3xl font-bold text-foreground mb-4">What You Can Sell (At Launch & Beyond)</h3>
+            <p className="text-muted-foreground max-w-2xl mx-auto">
+              As new providers join, options expand automatically.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
+            {[
+              "Vehicle Service Contracts (Extended Warranties)",
+              "GAP Insurance",
+              "Tire & Rim Protection",
+              "Paint Protection Film (PPF)",
+              "Appearance & protection packages",
+              "Future vehicle services & add-ons",
+            ].map((label) => (
+              <div
+                key={label}
+                className="rounded-2xl border border-primary/10 bg-gradient-to-br from-card to-primary/5 p-6 shadow-card hover:shadow-lg hover:border-yellow-300/30 transition-all duration-300"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-300/25 to-primary/10 flex items-center justify-center border border-primary/10">
+                    <Car className="w-5 h-5 text-primary" />
+                  </div>
+                  <div className="text-sm font-semibold text-foreground">{label}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="text-center mb-12">
+            <h3 className="font-display text-2xl md:text-3xl font-bold text-foreground mb-4">Why Dealerships Use Bridge Warranty</h3>
+            <p className="text-muted-foreground max-w-2xl mx-auto">More choice. Better deals. Faster closes.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
+            {[
+              "Access multiple providers in one login",
+              "Compare products side-by-side",
+              "No exclusivity agreements",
+              "Faster quoting and contract drafting",
+              "Centralized contract history",
+              "Simplified remittance & payments",
+              "Full transparency for staff and management",
+            ].map((label) => (
+              <div
+                key={label}
+                className="rounded-2xl border border-primary/10 bg-gradient-to-br from-card to-primary/5 p-6 shadow-card hover:shadow-lg hover:border-yellow-300/30 transition-all duration-300"
+              >
+                <div className="text-sm font-semibold text-foreground">{label}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="text-center mb-12">
+            <h3 className="font-display text-2xl md:text-3xl font-bold text-foreground mb-4">For Warranty & Service Providers</h3>
+            <p className="text-muted-foreground max-w-3xl mx-auto">
+              Bridge Warranty opens the door to dealerships that are historically difficult to access — grow distribution without exclusivity barriers.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
+            {[
+              "List products and services",
+              "Define pricing, coverage, and eligibility",
+              "Control availability by vehicle, VIN, or region",
+              "Manage contracts and reporting",
+              "One integration. Hundreds of dealer relationships.",
+            ].map((label) => (
+              <div
+                key={label}
+                className="rounded-2xl border border-primary/10 bg-gradient-to-br from-card to-primary/5 p-6 shadow-card hover:shadow-lg hover:border-yellow-300/30 transition-all duration-300"
+              >
+                <div className="text-sm font-semibold text-foreground">{label}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="text-center mb-12">
+            <h3 className="font-display text-2xl md:text-3xl font-bold text-foreground mb-4">One Login. Role-Based Access.</h3>
+            <p className="text-muted-foreground max-w-2xl mx-auto">Each role sees only what they need — clean, fast, and intuitive.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+            {[
+              { title: "Dealership Admin", desc: "Manage staff access and oversee activity." },
+              { title: "Dealer Employee", desc: "Draft and manage contracts based on permissions." },
+              { title: "Warranty / Service Provider", desc: "Manage products, pricing, terms, and reporting." },
+            ].map((r) => (
+              <div
+                key={r.title}
+                className="rounded-2xl border border-primary/10 bg-gradient-to-br from-card to-primary/5 p-6 shadow-card hover:shadow-lg hover:border-yellow-300/30 transition-all duration-300"
+              >
+                <div className="text-sm font-semibold text-foreground">{r.title}</div>
+                <div className="text-sm text-muted-foreground mt-2">{r.desc}</div>
+              </div>
+            ))}
+          </div>
+
           <div className="text-center mb-12">
             <h2 className="font-display text-3xl md:text-4xl font-bold text-foreground mb-4">
-              Why Choose <span className="gradient-text">{BRAND.name}</span>?
+              Ontario Warranty Providers Available on Bridge Warranty
             </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              We partner with the nation's top warranty providers to bring you the best rates and coverage options.
+            <p className="text-muted-foreground max-w-3xl mx-auto">
+              Below are independent third-party warranty providers available through our marketplace. Bridge Warranty does not sell warranties directly.
             </p>
           </div>
 
@@ -269,6 +428,20 @@ export function HomePage() {
                 <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-primary/0 via-primary/20 to-primary/0 rounded-b-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               </div>
             ))}
+          </div>
+
+          <div className="mt-16 rounded-2xl border border-border/50 bg-gradient-to-br from-card to-card/80 p-8 shadow-card">
+            <div className="text-center">
+              <h3 className="font-display text-2xl md:text-3xl font-bold text-foreground">Ready to Be Part of the Launch?</h3>
+              <p className="text-muted-foreground mt-3 max-w-2xl mx-auto">
+                Register now. Get early access. Sell smarter when we go live.
+              </p>
+              <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
+                <Button asChild className="bg-yellow-300 text-slate-900 hover:bg-yellow-200">
+                  <Link to="/register-dealership">Register Your Dealership</Link>
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       </section>

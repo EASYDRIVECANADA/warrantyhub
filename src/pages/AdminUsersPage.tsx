@@ -25,7 +25,7 @@ type LocalUserRecord = {
   id: string;
   email: string;
   passwordHash: string;
-  role: Role;
+  role: Role | "DEALER";
 };
 
 function readLocalUsers(): LocalUserRecord[] {
@@ -46,7 +46,8 @@ function roleLabel(r: Role) {
   if (r === "ADMIN") return "Admin";
   if (r === "PROVIDER") return "Provider";
   if (r === "DEALER_ADMIN") return "Dealer Admin";
-  return "Dealer";
+  if (r === "DEALER_EMPLOYEE") return "Dealer Employee";
+  return "Unassigned";
 }
 
 export function AdminUsersPage() {
@@ -72,7 +73,7 @@ export function AdminUsersPage() {
         return (data as any[]).map((r) => ({
           id: r.id,
           email: r.email ?? undefined,
-          role: r.role as Role,
+          role: ((r.role ?? "UNASSIGNED") === "DEALER" ? "DEALER_ADMIN" : r.role) as Role,
           displayName: r.display_name ?? undefined,
           companyName: r.company_name ?? undefined,
           createdAt: r.created_at ?? undefined,
@@ -80,7 +81,11 @@ export function AdminUsersPage() {
       }
 
       return readLocalUsers()
-        .map((u) => ({ id: u.id, email: u.email, role: u.role } as AdminProfile))
+        .map((u) => ({
+          id: u.id,
+          email: u.email,
+          role: (u.role === "DEALER" ? "DEALER_ADMIN" : u.role) as Role,
+        }))
         .sort((a, b) => (a.email ?? "").localeCompare(b.email ?? ""));
     },
   });
@@ -188,8 +193,7 @@ export function AdminUsersPage() {
                     }}
                     className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
                   >
-                    <option value="DEALER">Dealer</option>
-                    {user?.role === "ADMIN" ? <option value="DEALER_ADMIN">Dealer Admin</option> : null}
+                    <option value="DEALER_ADMIN">Dealer</option>
                     <option value="PROVIDER">Provider</option>
                     {user?.role === "SUPER_ADMIN" ? <option value="ADMIN">Admin</option> : null}
                   </select>

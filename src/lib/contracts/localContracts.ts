@@ -20,6 +20,7 @@ function read(): Contract[] {
           warrantyId: c.warrantyId ?? warrantyIdFromContractId(id),
           contractNumber: c.contractNumber ?? "",
           customerName: c.customerName ?? "",
+          dealerId: c.dealerId,
           providerId: c.providerId,
           productId: c.productId,
           productPricingId: c.productPricingId,
@@ -27,6 +28,7 @@ function read(): Contract[] {
           pricingTermKm: typeof c.pricingTermKm === "number" ? c.pricingTermKm : undefined,
           pricingDeductibleCents: typeof c.pricingDeductibleCents === "number" ? c.pricingDeductibleCents : undefined,
           pricingBasePriceCents: typeof c.pricingBasePriceCents === "number" ? c.pricingBasePriceCents : undefined,
+          pricingDealerCostCents: typeof c.pricingDealerCostCents === "number" ? c.pricingDealerCostCents : undefined,
           createdByUserId: c.createdByUserId,
           createdByEmail: c.createdByEmail,
           soldByUserId: c.soldByUserId,
@@ -95,6 +97,7 @@ export const localContractsApi: ContractsApi = {
       warrantyId: warrantyIdFromContractId(id),
       contractNumber: input.contractNumber,
       customerName: input.customerName,
+      dealerId: input.dealerId,
       providerId: input.providerId,
       productId: input.productId,
       productPricingId: input.productPricingId,
@@ -102,6 +105,7 @@ export const localContractsApi: ContractsApi = {
       pricingTermKm: typeof input.pricingTermKm === "number" ? input.pricingTermKm : undefined,
       pricingDeductibleCents: typeof input.pricingDeductibleCents === "number" ? input.pricingDeductibleCents : undefined,
       pricingBasePriceCents: typeof input.pricingBasePriceCents === "number" ? input.pricingBasePriceCents : undefined,
+      pricingDealerCostCents: typeof input.pricingDealerCostCents === "number" ? input.pricingDealerCostCents : undefined,
       createdByUserId: input.createdByUserId,
       createdByEmail: input.createdByEmail,
       customerEmail: input.customerEmail,
@@ -172,6 +176,10 @@ export const localContractsApi: ContractsApi = {
     if ("pricingBasePriceCents" in patch) {
       const v = (patch as any).pricingBasePriceCents as number | null | undefined;
       normalizedPatch.pricingBasePriceCents = typeof v === "number" ? v : undefined;
+    }
+    if ("pricingDealerCostCents" in patch) {
+      const v = (patch as any).pricingDealerCostCents as number | null | undefined;
+      normalizedPatch.pricingDealerCostCents = typeof v === "number" ? v : undefined;
     }
 
     const next: Contract = {

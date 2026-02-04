@@ -61,7 +61,17 @@ function displayUserLabel(c: ConversationRow) {
   const display = (c.user?.display_name ?? "").toString().trim();
   const role = (c.user?.role ?? c.user_role ?? "").toString().trim();
 
-  const roleLabel = role === "PROVIDER" ? "Provider" : role === "DEALER" ? "Dealer" : role ? role : "User";
+  const normalizedRole = role === "DEALER" ? "DEALER_ADMIN" : role;
+  const roleLabel =
+    normalizedRole === "PROVIDER"
+      ? "Provider"
+      : normalizedRole === "DEALER_ADMIN"
+        ? "Dealer Admin"
+        : normalizedRole === "DEALER_EMPLOYEE"
+          ? "Dealer Employee"
+          : normalizedRole
+            ? normalizedRole
+            : "User";
 
   if (company && email) return `${roleLabel} — ${company} (${email})`;
   if (company) return `${roleLabel} — ${company}`;
@@ -114,7 +124,12 @@ export function AdminSupportInboxPage() {
   const filtered = conversations.filter((c) => {
     if (roleFilter !== "ALL") {
       const role = (c.user?.role ?? c.user_role ?? "").toString();
-      if (role !== roleFilter) return false;
+      const normalizedRole = role === "DEALER" ? "DEALER_ADMIN" : role;
+      if (roleFilter === "DEALER") {
+        if (normalizedRole !== "DEALER_ADMIN" && normalizedRole !== "DEALER_EMPLOYEE") return false;
+      } else {
+        if (normalizedRole !== roleFilter) return false;
+      }
     }
     if (statusFilter !== "ALL") {
       if (c.status !== statusFilter) return false;

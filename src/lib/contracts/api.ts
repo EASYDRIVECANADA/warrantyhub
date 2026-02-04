@@ -46,6 +46,7 @@ export type ContractsApi = {
       pricingTermKm?: number | null;
       pricingDeductibleCents?: number | null;
       pricingBasePriceCents?: number | null;
+      pricingDealerCostCents?: number | null;
     },
   ): Promise<Contract>;
 };

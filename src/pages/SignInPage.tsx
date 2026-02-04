@@ -6,11 +6,15 @@ import { Input } from "../components/ui/input";
 import type { Role } from "../lib/auth/types";
 import { useAuth } from "../providers/AuthProvider";
 
+const LOCAL_AUTH_NOTICE_KEY = "warrantyhub.local.auth_notice";
+
 function roleToDashboardPath(role: string) {
   if (role === "UNASSIGNED") return "/request-access";
-  if (role === "ADMIN" || role === "SUPER_ADMIN") return "/company-dashboard";
+  if (role === "SUPER_ADMIN") return "/platform";
+  if (role === "ADMIN") return "/company-dashboard";
   if (role === "PROVIDER") return "/provider-dashboard";
   if (role === "DEALER_ADMIN") return "/dealer-admin";
+  if (role === "DEALER_EMPLOYEE") return "/dealer-dashboard";
   return "/dealer-dashboard";
 }
 
@@ -23,6 +27,16 @@ export function SignInPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const v = (localStorage.getItem(LOCAL_AUTH_NOTICE_KEY) ?? "").trim();
+      if (!v) return;
+      localStorage.removeItem(LOCAL_AUTH_NOTICE_KEY);
+      setNotice((prev) => prev ?? v);
+    } catch {
+    }
+  }, []);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,7 +83,7 @@ export function SignInPage() {
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 pt-28 pb-16">
         <div className="max-w-md mx-auto">
-          <div className="rounded-lg border bg-card text-card-foreground shadow-sm">
+          <div className="rounded-2xl border bg-card text-card-foreground shadow-card overflow-hidden">
             <div className="flex flex-col space-y-1.5 p-6">
               <h1 className="text-2xl font-semibold leading-none tracking-tight font-display">Sign In</h1>
               <p className="text-sm text-muted-foreground">Sign in to access your account.</p>
@@ -109,14 +123,14 @@ export function SignInPage() {
 
                 {error ? <div className="text-sm text-destructive">{error}</div> : null}
 
-                <Button type="submit" className="w-full" disabled={isLoading}>
+                <Button type="submit" className="w-full bg-yellow-300 text-slate-900 hover:bg-yellow-200" disabled={isLoading}>
                   Sign In
                 </Button>
 
                 <div className="text-sm text-muted-foreground">
                   Don't have an account?{" "}
-                  <Link to="/get-started" className="text-primary underline underline-offset-4">
-                    Get Started
+                  <Link to="/register-dealership" className="text-primary underline underline-offset-4">
+                    Register Your Dealership
                   </Link>
                 </div>
               </form>
@@ -128,7 +142,7 @@ export function SignInPage() {
                     Temporarily enter a portal without logging in.
                   </div>
                   <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {(["ADMIN", "SUPER_ADMIN", "DEALER", "DEALER_ADMIN", "PROVIDER"] as Role[]).map((r) => (
+                    {(["ADMIN", "SUPER_ADMIN", "DEALER_ADMIN", "DEALER_EMPLOYEE", "PROVIDER"] as Role[]).map((r) => (
                       <Button
                         key={r}
                         type="button"

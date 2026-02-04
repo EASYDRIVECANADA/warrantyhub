@@ -5,8 +5,9 @@ import { RootLayout } from "../layouts/RootLayout";
 import { AdminDashboardPage } from "../pages/AdminDashboardPage";
 import { AdminUsersPage } from "../pages/AdminUsersPage";
 import { AdminAccessRequestsPage } from "../pages/AdminAccessRequestsPage";
-import { BatchesPage } from "../pages/BatchesPage";
-import { ContractsPage } from "../pages/ContractsPage";
+import { AdminDealersPage } from "../pages/AdminDealersPage";
+import { AdminProvidersPage } from "../pages/AdminProvidersPage";
+import { AuditLogsPage } from "../pages/AuditLogsPage";
 import { DealerContractDetailPage } from "../pages/DealerContractDetailPage";
 import { DealerContractPrintPage } from "../pages/DealerContractPrintPage";
 import { DealerContractsPage } from "../pages/DealerContractsPage";
@@ -19,17 +20,21 @@ import { DealerRemittanceBatchPrintPage } from "../pages/DealerRemittanceBatchPr
 import { DealerRemittancesPage } from "../pages/DealerRemittancesPage";
 import { DealerDashboardPage } from "../pages/DealerDashboardPage";
 import { DealerTeamPage } from "../pages/DealerTeamPage";
-import { EmployeesPage } from "../pages/EmployeesPage";
+import { DealerReportingPage } from "../pages/DealerReportingPage";
 import { HomePage } from "../pages/HomePage";
+import { RegisterDealershipPage } from "../pages/RegisterDealershipPage";
+import { DealerEmployeeSignupPage } from "../pages/DealerEmployeeSignupPage";
 import { ProviderContractDetailPage } from "../pages/ProviderContractDetailPage";
 import { ProviderContractPrintPage } from "../pages/ProviderContractPrintPage";
 import { ProviderContractsPage } from "../pages/ProviderContractsPage";
 import { ProviderDashboardPage } from "../pages/ProviderDashboardPage";
 import { ProviderDocumentsPage } from "../pages/ProviderDocumentsPage";
 import { ProviderProductsPage } from "../pages/ProviderProductsPage";
-import { GetStartedPage } from "../pages/GetStartedPage";
+import { ProviderRemittancePrintPage } from "../pages/ProviderRemittancePrintPage";
+import { ProviderRemittancesPage } from "../pages/ProviderRemittancesPage";
 import { SignInPage } from "../pages/SignInPage";
 import { SuperAdminPlatformPage } from "../pages/SuperAdminPlatformPage";
+import { SuperAdminCompaniesPage } from "../pages/SuperAdminCompaniesPage";
 import { RequestAccessPage } from "../pages/RequestAccessPage";
 import { ProfilePage } from "../pages/ProfilePage";
 import { RemittancesPage } from "../pages/RemittancesPage";
@@ -43,8 +48,11 @@ export function AppRouter() {
         <Route index element={<Navigate to="/find-insurance" replace />} />
         <Route path="find-insurance" element={<HomePage />} />
 
+        <Route path="register-dealership" element={<RegisterDealershipPage />} />
+        <Route path="dealer-employee-signup" element={<DealerEmployeeSignupPage />} />
+
         <Route path="sign-in" element={<SignInPage />} />
-        <Route path="get-started" element={<GetStartedPage />} />
+        <Route path="get-started" element={<Navigate to="/register-dealership" replace />} />
 
         <Route path="login" element={<Navigate to="/sign-in" replace />} />
         <Route element={<ProtectedRoute />}>
@@ -52,38 +60,40 @@ export function AppRouter() {
           <Route path="profile" element={<ProfilePage />} />
         </Route>
 
-        <Route element={<ProtectedRoute allowedRoles={["DEALER", "DEALER_ADMIN", "PROVIDER", "ADMIN", "SUPER_ADMIN"]} />}>
+        <Route element={<ProtectedRoute allowedRoles={["DEALER_ADMIN", "DEALER_EMPLOYEE", "PROVIDER"]} />}>
           <Route path="support" element={<SupportPage />} />
         </Route>
 
-        <Route element={<ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]} />}>
+        <Route element={<ProtectedRoute allowedRoles={["ADMIN"]} />}>
           <Route path="company-dashboard" element={<AdminDashboardPage />} />
-          <Route path="admin-users" element={<AdminUsersPage />} />
-          <Route path="admin-access-requests" element={<AdminAccessRequestsPage />} />
-          <Route path="admin-support" element={<AdminSupportInboxPage />} />
-          <Route path="admin-contracts" element={<ContractsPage title="Admin Contracts" />} />
           <Route path="admin-remittances" element={<RemittancesPage title="Admin Remittances" />} />
-          <Route path="admin-batches" element={<BatchesPage title="Admin Batches" />} />
-          <Route path="admin-employees" element={<EmployeesPage title="Employees" />} />
+          <Route path="admin-support" element={<AdminSupportInboxPage />} />
+          <Route path="admin-providers" element={<AdminProvidersPage />} />
+          <Route path="admin-dealers" element={<AdminDealersPage />} />
         </Route>
 
         <Route element={<ProtectedRoute allowedRoles={["SUPER_ADMIN"]} />}>
           <Route path="platform" element={<SuperAdminPlatformPage />} />
+          <Route path="admin-access-requests" element={<AdminAccessRequestsPage />} />
+          <Route path="admin-companies" element={<SuperAdminCompaniesPage />} />
+          <Route path="admin-users" element={<AdminUsersPage />} />
+          <Route path="audit-logs" element={<AuditLogsPage />} />
         </Route>
 
         <Route element={<ProtectedRoute allowedRoles={["DEALER_ADMIN"]} />}>
           <Route path="dealer-admin" element={<DealerAdminPage />} />
           <Route path="dealer-contracts-admin" element={<DealerAdminContractsPage />} />
-          <Route path="dealer-employees" element={<EmployeesPage title="Employees" />} />
+          <Route path="dealer-employees" element={<DealerTeamPage />} />
           <Route path="dealer-team" element={<DealerTeamPage />} />
+          <Route path="dealer-reporting" element={<DealerReportingPage />} />
         </Route>
 
-        <Route element={<ProtectedRoute allowedRoles={["DEALER", "DEALER_ADMIN"]} />}>
+        <Route element={<ProtectedRoute allowedRoles={["DEALER_ADMIN"]} />}>
           <Route path="dealer-remittances" element={<DealerRemittancesPage />} />
           <Route path="dealer-remittances/batches/:id/print" element={<DealerRemittanceBatchPrintPage />} />
         </Route>
 
-        <Route element={<ProtectedRoute allowedRoles={["DEALER"]} />}>
+        <Route element={<ProtectedRoute allowedRoles={["DEALER_ADMIN", "DEALER_EMPLOYEE"]} />}>
           <Route path="dealer-dashboard" element={<DealerDashboardPage />} />
           <Route path="dealer-marketplace" element={<DealerMarketplacePage />} />
           <Route path="dealer-marketplace/compare" element={<DealerComparisonPage />} />
@@ -98,6 +108,8 @@ export function AppRouter() {
           <Route path="provider-contracts" element={<ProviderContractsPage />} />
           <Route path="provider-contracts/:id" element={<ProviderContractDetailPage />} />
           <Route path="provider-contracts/:id/print" element={<ProviderContractPrintPage />} />
+          <Route path="provider-remittances" element={<ProviderRemittancesPage />} />
+          <Route path="provider-remittances/:id/print" element={<ProviderRemittancePrintPage />} />
           <Route path="provider-products" element={<ProviderProductsPage />} />
           <Route path="provider-documents" element={<ProviderDocumentsPage />} />
         </Route>

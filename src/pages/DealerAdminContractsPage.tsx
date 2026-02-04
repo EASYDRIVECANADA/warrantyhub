@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { Button } from "../components/ui/button";
@@ -10,6 +10,7 @@ import type { Contract, ContractStatus } from "../lib/contracts/types";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
 import type { Product } from "../lib/products/types";
 import { confirmProceed } from "../lib/utils";
+import { useAuth } from "../providers/AuthProvider";
 
 type TabKey = "ALL" | ContractStatus;
 
@@ -53,6 +54,10 @@ function downloadTextFile(filename: string, content: string, mime: string) {
 }
 
 export function DealerAdminContractsPage() {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/sign-in" replace />;
+  if (user.role !== "DEALER_ADMIN") return <Navigate to="/dealer-dashboard" replace />;
+
   const contractsApi = useMemo(() => getContractsApi(), []);
   const marketplaceApi = useMemo(() => getMarketplaceApi(), []);
 

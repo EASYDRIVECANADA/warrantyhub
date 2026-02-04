@@ -5,12 +5,14 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { PageShell } from "../components/PageShell";
+import { costFromProductOrPricing, getDealerMarkupPct, marginFromCostAndRetail, retailFromCost } from "../lib/dealerPricing";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
 import { getProvidersApi } from "../lib/providers/providers";
 import type { ProviderPublic } from "../lib/providers/types";
 import type { Product, ProductType } from "../lib/products/types";
 import { decodeVin, type VinDecoded } from "../lib/vin/decodeVin";
 import { alertMissing, confirmProceed, sanitizeDigitsOnly } from "../lib/utils";
+import { useAuth } from "../providers/AuthProvider";
 
 type CompareMetric = "PRICE" | "COVERAGE" | "DEDUCTIBLE" | "TERM" | "EXCLUSIONS";
 
@@ -67,9 +69,19 @@ function clampSelection(ids: string[], max: number) {
   return ids.slice(0, max);
 }
 
+function retailCentsFor(p: Product, markupPct: number) {
+  const cost = costFromProductOrPricing({ dealerCostCents: p.dealerCostCents, basePriceCents: p.basePriceCents });
+  return retailFromCost(cost, markupPct) ?? cost;
+}
+
 export function DealerComparisonPage() {
   const api = useMemo(() => getMarketplaceApi(), []);
   const providersApi = useMemo(() => getProvidersApi(), []);
+  const { user } = useAuth();
+
+  const dealerId = (user?.dealerId ?? user?.id ?? "").trim();
+  const markupPct = useMemo(() => getDealerMarkupPct(dealerId), [dealerId]);
+  const canSeeCost = user?.role === "DEALER_ADMIN";
   const [vin, setVin] = useState("");
   const [decoded, setDecoded] = useState<VinDecoded | null>(null);
   const [mileageKm, setMileageKm] = useState("");
@@ -175,6 +187,9 @@ export function DealerComparisonPage() {
     .map((id) => products.find((p) => p.id === id))
     .filter(Boolean) as Product[];
 
+  const selectedRetailValues = selectedProducts.map((p) => retailCentsFor(p, markupPct)).filter((n) => typeof n === "number") as number[];
+  const minSelectedRetail = selectedRetailValues.length > 0 ? Math.min(...selectedRetailValues) : undefined;
+
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
       const exists = prev.includes(id);
@@ -192,68 +207,82 @@ export function DealerComparisonPage() {
       subtitle="Decode the VIN first to show only eligible coverages across providers."
       actions={
         <Button variant="outline" asChild>
-          <Link to="/dealer-marketplace">Back to marketplace</Link>
+          <Link to="/dealer-marketplace">Back to Find Products</Link>
         </Button>
       }
     >
-      <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
-        <div className="px-6 py-4 border-b flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <div className="font-semibold">Step 1: VIN decode</div>
-            <div className="text-sm text-muted-foreground mt-1">Enter a VIN to filter plans by vehicle eligibility.</div>
+      <div className="relative">
+        <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-yellow-400/10 blur-2xl" />
+
+        <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
+          <div className="px-6 py-4 border-b flex items-start justify-between gap-4 flex-wrap bg-gradient-to-r from-blue-600/10 to-yellow-500/10">
+            <div>
+              <div className="font-semibold">Step 1: VIN decode</div>
+              <div className="text-sm text-muted-foreground mt-1">Enter a VIN to filter plans by vehicle eligibility.</div>
+            </div>
+            <Button
+              className="bg-yellow-400 text-black hover:bg-yellow-300"
+              onClick={() => {
+                void (async () => {
+                  setDecodeError(null);
+                  const v = vin.trim();
+                  if (!v) return alertMissing("VIN is required.");
+                  if (!(await confirmProceed("Decode VIN?"))) return;
+                  decodeMutation.mutate(v);
+                })();
+              }}
+              disabled={decodeMutation.isPending}
+            >
+              Decode VIN
+            </Button>
           </div>
-          <Button
-            onClick={() => {
-              void (async () => {
-                setDecodeError(null);
-                const v = vin.trim();
-                if (!v) return alertMissing("VIN is required.");
-                if (!(await confirmProceed("Decode VIN?"))) return;
-                decodeMutation.mutate(v);
-              })();
-            }}
-            disabled={decodeMutation.isPending}
-          >
-            Decode VIN
-          </Button>
+
+          <div className="p-6 grid grid-cols-1 md:grid-cols-12 gap-3">
+            <div className="md:col-span-5">
+              <div className="text-xs text-muted-foreground mb-1">VIN</div>
+              <Input value={vin} onChange={(e) => setVin(e.target.value)} placeholder="VIN (17 characters)" />
+            </div>
+            <div className="md:col-span-3">
+              <div className="text-xs text-muted-foreground mb-1">Mileage (km)</div>
+              <Input
+                value={mileageKm}
+                onChange={(e) => setMileageKm(sanitizeDigitsOnly(e.target.value))}
+                placeholder="e.g. 85000"
+                inputMode="numeric"
+                disabled={!decoded}
+              />
+            </div>
+            <div className="md:col-span-4 rounded-xl border p-3 text-sm text-muted-foreground bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10">
+              {decoded ? (
+                <div>
+                  <div className="font-medium text-foreground">Vehicle</div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {decoded.vehicleYear ?? "—"} {decoded.vehicleMake ?? ""} {decoded.vehicleModel ?? ""} {decoded.vehicleTrim ?? ""}
+                  </div>
+                </div>
+              ) : (
+                <div>Decode VIN to see the vehicle and eligible plans.</div>
+              )}
+            </div>
+          </div>
+
+          {decodeError ? <div className="px-6 pb-6 text-sm text-destructive">{decodeError}</div> : null}
         </div>
 
-        <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-3">
-          <Input value={vin} onChange={(e) => setVin(e.target.value)} placeholder="VIN (17 characters)" />
-          <Input
-            value={mileageKm}
-            onChange={(e) => setMileageKm(sanitizeDigitsOnly(e.target.value))}
-            placeholder="Mileage km (optional)"
-            inputMode="numeric"
-            disabled={!decoded}
-          />
-          <div className="rounded-xl border p-3 text-sm text-muted-foreground">
-            {decoded ? (
-              <div>
-                {decoded.vehicleYear ?? "—"} {decoded.vehicleMake ?? ""} {decoded.vehicleModel ?? ""} {decoded.vehicleTrim ?? ""}
-              </div>
-            ) : (
-              <div>Decode VIN to see the vehicle and eligible plans.</div>
-            )}
-          </div>
-        </div>
-
-        {decodeError ? <div className="px-6 pb-6 text-sm text-destructive">{decodeError}</div> : null}
-      </div>
-
-      <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
-          <div className="px-6 py-4 border-b">
-            <div className="font-semibold">Pick options to compare (up to 4)</div>
-            <div className="text-sm text-muted-foreground mt-1">
-              Select eligible plans to present to the customer.
+        <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-yellow-500/10">
+          <div className="px-6 py-4 border-b flex items-start justify-between gap-4 flex-wrap bg-gradient-to-r from-yellow-500/10 to-blue-600/10">
+            <div>
+              <div className="font-semibold">Pick options to compare (up to 4)</div>
+              <div className="text-sm text-muted-foreground mt-1">Select eligible plans to present to the customer.</div>
+            </div>
+            <div className="inline-flex items-center rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground">
+              {selectedProducts.length} selected
             </div>
           </div>
 
           <div className="p-6">
-            {!decoded ? (
-              <div className="text-sm text-muted-foreground">Decode a VIN above to show eligible plans.</div>
-            ) : null}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {!decoded ? <div className="text-sm text-muted-foreground">Decode a VIN above to show eligible plans.</div> : null}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredProducts.map((p) => {
                 const selected = selectedIds.includes(p.id);
                 return (
@@ -262,8 +291,10 @@ export function DealerComparisonPage() {
                     type="button"
                     onClick={() => toggleSelect(p.id)}
                     className={
-                      "text-left rounded-xl border p-4 transition-colors " +
-                      (selected ? "border-primary bg-primary/5" : "bg-background hover:bg-muted")
+                      "group text-left rounded-2xl border p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md " +
+                      (selected
+                        ? "border-blue-500/40 ring-2 ring-blue-500/20 bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10"
+                        : "bg-background hover:bg-muted/50")
                     }
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -273,7 +304,28 @@ export function DealerComparisonPage() {
                           {providerDisplayName(providerById.get(p.providerId), p.providerId)} • {productTypeLabel(p.productType)}
                         </div>
                       </div>
-                      <div className="text-sm font-medium">{money(p.basePriceCents)}</div>
+                      {(() => {
+                        const cost = costFromProductOrPricing({ dealerCostCents: p.dealerCostCents, basePriceCents: p.basePriceCents });
+                        const retail = retailFromCost(cost, markupPct) ?? cost;
+                        const margin = marginFromCostAndRetail(cost, retail);
+                        return (
+                          <div className="text-right">
+                            <div className="inline-flex items-center justify-end gap-2">
+                              <div className="text-sm font-semibold">{money(retail)}</div>
+                              {selected ? (
+                                <span className="inline-flex items-center rounded-full border bg-background px-2 py-0.5 text-[11px] text-muted-foreground">
+                                  Selected
+                                </span>
+                              ) : null}
+                            </div>
+                            {canSeeCost ? (
+                              <div className="text-[11px] text-muted-foreground">
+                                Cost {money(cost)}{typeof margin === "number" ? ` • Margin ${money(margin)}` : ""}
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div className="text-xs text-muted-foreground mt-2">Term: {termLabel(p)}</div>
                   </button>
@@ -290,7 +342,7 @@ export function DealerComparisonPage() {
               ) : null}
             </div>
 
-            <div className="mt-6 rounded-xl border p-4">
+            <div className="mt-6 rounded-2xl border p-5 ring-1 ring-blue-500/10 bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <select
                   value={providerId}
@@ -319,7 +371,7 @@ export function DealerComparisonPage() {
                 </select>
               </div>
 
-              <div className="font-semibold">Comparison criteria</div>
+              <div className="font-semibold mt-4">Comparison criteria</div>
               <div className="text-sm text-muted-foreground mt-1">Show/hide rows to keep the conversation focused.</div>
               <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-3">
                 {(Object.keys(metrics) as CompareMetric[]).map((m) => (
@@ -337,8 +389,8 @@ export function DealerComparisonPage() {
           </div>
         </div>
 
-      <div className="mt-10 rounded-2xl border bg-card shadow-card overflow-hidden">
-          <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap">
+        <div className="mt-10 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
+          <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
             <div>
               <div className="font-semibold">Decision Table</div>
               <div className="text-sm text-muted-foreground mt-1">Clear, persuasive, and easy to walk through.</div>
@@ -352,7 +404,7 @@ export function DealerComparisonPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b">
+                  <tr className="border-b bg-muted/30">
                     <th className="text-left px-6 py-3 text-xs text-muted-foreground w-[220px]">Criteria</th>
                     {selectedProducts.map((p) => (
                       <th key={p.id} className="text-left px-6 py-3">
@@ -364,18 +416,36 @@ export function DealerComparisonPage() {
                     ))}
                   </tr>
                 </thead>
+
                 <tbody className="divide-y">
                   {activeMetrics.includes("PRICE") ? (
-                    <tr>
+                    <tr className="odd:bg-muted/20">
                       <td className="px-6 py-4 font-medium">Price</td>
                       {selectedProducts.map((p) => (
-                        <td key={p.id} className="px-6 py-4">{money(p.basePriceCents)}</td>
+                        <td
+                          key={p.id}
+                          className={
+                            "px-6 py-4 font-medium " +
+                            (typeof minSelectedRetail === "number" && retailCentsFor(p, markupPct) === minSelectedRetail
+                              ? "text-foreground"
+                              : "text-foreground")
+                          }
+                        >
+                          <div className="inline-flex items-center gap-2">
+                            <span>{money(retailCentsFor(p, markupPct))}</span>
+                            {typeof minSelectedRetail === "number" && retailCentsFor(p, markupPct) === minSelectedRetail ? (
+                              <span className="inline-flex items-center rounded-full border bg-background px-2 py-0.5 text-[11px] text-muted-foreground">
+                                Best price
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
                       ))}
                     </tr>
                   ) : null}
 
                   {activeMetrics.includes("DEDUCTIBLE") ? (
-                    <tr>
+                    <tr className="odd:bg-muted/20">
                       <td className="px-6 py-4 font-medium">Deductible</td>
                       {selectedProducts.map((p) => (
                         <td key={p.id} className="px-6 py-4">{money(p.deductibleCents)}</td>
@@ -384,7 +454,7 @@ export function DealerComparisonPage() {
                   ) : null}
 
                   {activeMetrics.includes("TERM") ? (
-                    <tr>
+                    <tr className="odd:bg-muted/20">
                       <td className="px-6 py-4 font-medium">Term</td>
                       {selectedProducts.map((p) => (
                         <td key={p.id} className="px-6 py-4">{termLabel(p)}</td>
@@ -393,7 +463,7 @@ export function DealerComparisonPage() {
                   ) : null}
 
                   {activeMetrics.includes("COVERAGE") ? (
-                    <tr>
+                    <tr className="odd:bg-muted/20">
                       <td className="px-6 py-4 font-medium">Coverage</td>
                       {selectedProducts.map((p) => (
                         <td key={p.id} className="px-6 py-4 text-muted-foreground whitespace-pre-wrap">
@@ -404,7 +474,7 @@ export function DealerComparisonPage() {
                   ) : null}
 
                   {activeMetrics.includes("EXCLUSIONS") ? (
-                    <tr>
+                    <tr className="odd:bg-muted/20">
                       <td className="px-6 py-4 font-medium">Exclusions</td>
                       {selectedProducts.map((p) => (
                         <td key={p.id} className="px-6 py-4 text-muted-foreground whitespace-pre-wrap">
@@ -418,6 +488,7 @@ export function DealerComparisonPage() {
             </div>
           )}
         </div>
+      </div>
     </PageShell>
   );
 }

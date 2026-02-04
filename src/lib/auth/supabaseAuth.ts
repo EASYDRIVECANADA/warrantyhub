@@ -3,7 +3,21 @@ import type { Role } from "./types";
 
 import { getSupabaseClient } from "../supabase/client";
 
-async function ensureProfileAndGetRole(userId: string, email: string): Promise<Role> {
+const AUTH_NOTICE_KEY = "warrantyhub.local.auth_notice";
+
+function writeAuthNotice(message: string) {
+  const m = message.trim();
+  if (!m) return;
+  localStorage.setItem(AUTH_NOTICE_KEY, m);
+}
+
+type ProfileAuthState = {
+  effectiveRole: Role;
+  rawRole: unknown;
+  isActive: boolean;
+};
+
+async function getProfileAuthState(userId: string, email: string): Promise<ProfileAuthState> {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error("Supabase is not configured");
 
@@ -16,14 +30,16 @@ async function ensureProfileAndGetRole(userId: string, email: string): Promise<R
   if (error) throw new Error(error.message);
 
   if (data) {
-    const active = (data as any).is_active !== false;
-    if (!active) return "UNASSIGNED";
-    return ((data as any).role ?? "UNASSIGNED") as Role;
+    const rawRole = (data as any).role ?? "UNASSIGNED";
+    const isActive = (data as any).is_active !== false;
+    const normalized = rawRole === "DEALER" ? "DEALER_ADMIN" : rawRole;
+    const effectiveRole = (isActive ? (normalized ?? "UNASSIGNED") : "UNASSIGNED") as Role;
+    return { effectiveRole, rawRole, isActive };
   }
 
   const insertRes = await supabase.from("profiles").insert({ id: userId, role: "UNASSIGNED", email, is_active: false });
   if (insertRes.error && (insertRes.error as any).code !== "23505") throw new Error(insertRes.error.message);
-  return "UNASSIGNED";
+  return { effectiveRole: "UNASSIGNED", rawRole: "UNASSIGNED", isActive: false };
 }
 
 export const supabaseAuthApi: AuthApi = {
@@ -37,8 +53,27 @@ export const supabaseAuthApi: AuthApi = {
     const user = data.session?.user;
     if (!user?.email) return null;
 
-    const role = await ensureProfileAndGetRole(user.id, user.email);
-    return { id: user.id, email: user.email, role };
+    const state = await getProfileAuthState(user.id, user.email);
+
+    if (!state.isActive && state.rawRole !== "UNASSIGNED") {
+      writeAuthNotice("Account disabled");
+      try {
+        await supabase.auth.signOut();
+      } catch {
+      }
+      return null;
+    }
+
+    if (state.isActive && state.effectiveRole === "UNASSIGNED" && state.rawRole !== "UNASSIGNED") {
+      writeAuthNotice("Access revoked");
+      try {
+        await supabase.auth.signOut();
+      } catch {
+      }
+      return null;
+    }
+
+    return { id: user.id, email: user.email, role: state.effectiveRole };
   },
 
   async signInWithGoogle() {
@@ -65,8 +100,24 @@ export const supabaseAuthApi: AuthApi = {
     const user = data.user;
     if (!user?.email) throw new Error("No user returned");
 
-    const role = await ensureProfileAndGetRole(user.id, user.email);
-    return { id: user.id, email: user.email, role };
+    const state = await getProfileAuthState(user.id, user.email);
+    if (!state.isActive && state.rawRole !== "UNASSIGNED") {
+      writeAuthNotice("Account disabled");
+      try {
+        await supabase.auth.signOut();
+      } catch {
+      }
+      throw new Error("Account disabled");
+    }
+    if (state.isActive && state.effectiveRole === "UNASSIGNED" && state.rawRole !== "UNASSIGNED") {
+      writeAuthNotice("Access revoked");
+      try {
+        await supabase.auth.signOut();
+      } catch {
+      }
+      throw new Error("Access revoked");
+    }
+    return { id: user.id, email: user.email, role: state.effectiveRole };
   },
 
   async signUpWithPassword(email, password) {

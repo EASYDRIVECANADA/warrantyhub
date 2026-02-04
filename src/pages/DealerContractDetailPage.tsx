@@ -5,10 +5,19 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { PageShell } from "../components/PageShell";
+import { logAuditEvent } from "../lib/auditLog";
 import { decodeVin } from "../lib/vin/decodeVin";
 import { getContractsApi } from "../lib/contracts/contracts";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
 import { getProductPricingApi } from "../lib/productPricing/productPricing";
+import {
+  costFromProductOrPricing,
+  getDealerMarkupPct,
+  marginFromCostAndRetail,
+  marginPctFromCostAndRetail,
+  retailFromCost,
+} from "../lib/dealerPricing";
+import { getAppMode } from "../lib/runtime";
 import { alertMissing, confirmProceed, sanitizeDigitsOnly, sanitizeLettersOnly, sanitizeWordsOnly } from "../lib/utils";
 import { getProvidersApi } from "../lib/providers/providers";
 import type { ProviderPublic } from "../lib/providers/types";
@@ -17,6 +26,31 @@ import type { Contract } from "../lib/contracts/types";
 import type { Product } from "../lib/products/types";
 import type { ProductPricing } from "../lib/productPricing/types";
 import { useAuth } from "../providers/AuthProvider";
+
+const LOCAL_DEALER_MEMBERSHIPS_KEY = "warrantyhub.local.dealer_memberships";
+
+function readLocalDealerMemberships(): Array<{ dealerId?: string; userId?: string }> {
+  const raw = localStorage.getItem(LOCAL_DEALER_MEMBERSHIPS_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as any[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function dealershipUserIds(dealerId: string) {
+  const memberships = readLocalDealerMemberships();
+  const ids = new Set<string>();
+  ids.add(dealerId);
+  for (const m of memberships) {
+    const did = (m?.dealerId ?? "").toString();
+    const uid = (m?.userId ?? "").toString();
+    if (did && uid && did === dealerId) ids.add(uid);
+  }
+  return ids;
+}
 
 type WizardStep = "CUSTOMER" | "VEHICLE" | "PLAN" | "PRICING" | "CONFIRM";
 
@@ -66,6 +100,12 @@ export function DealerContractDetailPage() {
   const { id } = useParams();
   const contractId = id ?? "";
 
+  const mode = useMemo(() => getAppMode(), []);
+  const isEmployee = user?.role === "DEALER_EMPLOYEE";
+  const canSeeCost = user?.role === "DEALER_ADMIN";
+  const dealerId = (user?.dealerId ?? user?.id ?? "").trim();
+  const markupPct = useMemo(() => getDealerMarkupPct(dealerId), [dealerId]);
+
   const api = useMemo(() => getContractsApi(), []);
   const marketplaceApi = useMemo(() => getMarketplaceApi(), []);
   const productPricingApi = useMemo(() => getProductPricingApi(), []);
@@ -101,7 +141,24 @@ export function DealerContractDetailPage() {
     return false;
   };
 
-  const unauthorized = contract != null && !isMine(contract);
+  const canView = (c: Contract) => {
+    if (!user) return false;
+    if (isEmployee) return isMine(c);
+    if (user.role !== "DEALER_ADMIN") return isMine(c);
+    if (mode !== "local") return isMine(c);
+
+    const did = (user.dealerId ?? "").trim();
+    if (!did) return isMine(c);
+
+    const cdid = (c.dealerId ?? "").trim();
+    if (cdid && cdid === did) return true;
+
+    const ids = dealershipUserIds(did);
+    const byId = (c.createdByUserId ?? "").trim();
+    return Boolean(byId) && ids.has(byId);
+  };
+
+  const unauthorized = contract != null && !canView(contract);
   if (!contractQuery.isLoading && unauthorized) {
     return (
       <PageShell
@@ -185,6 +242,7 @@ export function DealerContractDetailPage() {
     pricingTermKm?: number | null;
     pricingDeductibleCents?: number | null;
     pricingBasePriceCents?: number | null;
+    pricingDealerCostCents?: number | null;
   };
 
   const updateMutation = useMutation({
@@ -281,6 +339,17 @@ export function DealerContractDetailPage() {
       soldByUserId: user?.id,
       soldByEmail: user?.email,
       soldAt: now,
+    });
+
+    logAuditEvent({
+      kind: "CONTRACT_SOLD",
+      actorUserId: user?.id,
+      actorEmail: user?.email,
+      actorRole: user?.role,
+      dealerId: (user?.dealerId ?? "").trim() || undefined,
+      entityType: "contract",
+      entityId: contract.id,
+      message: `Sold contract ${contract.contractNumber}`,
     });
     setStep("CONFIRM");
   };
@@ -410,19 +479,26 @@ export function DealerContractDetailPage() {
       pricingTermKm: null,
       pricingDeductibleCents: null,
       pricingBasePriceCents: null,
+      pricingDealerCostCents: null,
     });
   };
 
   const selectPricing = async (row: ProductPricing) => {
     if (!contract) return;
     if (!(await confirmProceed(`Select ${row.termMonths} mo / ${row.termKm} km for this contract?`))) return;
+
+    const costCents = costFromProductOrPricing({ dealerCostCents: row.dealerCostCents, basePriceCents: row.basePriceCents });
+    if (typeof costCents !== "number") throw new Error("Pricing row is missing a cost");
+    const retailCents = retailFromCost(costCents, markupPct) ?? costCents;
+
     setPricingId(row.id);
     await updateMutation.mutateAsync({
       productPricingId: row.id,
       pricingTermMonths: row.termMonths,
       pricingTermKm: row.termKm,
       pricingDeductibleCents: row.deductibleCents,
-      pricingBasePriceCents: row.basePriceCents,
+      pricingBasePriceCents: retailCents,
+      pricingDealerCostCents: costCents,
     });
   };
 
@@ -507,9 +583,11 @@ export function DealerContractDetailPage() {
           <Button variant="outline" onClick={() => navigate(`/dealer-contracts/${contractId}/print/dealer`)} disabled={!contractId}>
             Dealer Copy
           </Button>
-          <Button variant="outline" onClick={() => navigate(`/dealer-contracts/${contractId}/print/provider`)} disabled={!contractId}>
-            Provider Copy
-          </Button>
+          {isEmployee ? null : (
+            <Button variant="outline" onClick={() => navigate(`/dealer-contracts/${contractId}/print/provider`)} disabled={!contractId}>
+              Provider Copy
+            </Button>
+          )}
           <Button variant="outline" onClick={() => navigate(`/dealer-contracts/${contractId}/print/customer`)} disabled={!contractId}>
             Customer Copy
           </Button>
@@ -826,7 +904,13 @@ export function DealerContractDetailPage() {
                               See pricing
                             </td>
                             <td className="px-6 py-4 text-muted-foreground">See pricing</td>
-                            <td className="px-6 py-4 font-medium">{money(p.basePriceCents)}</td>
+                            <td className="px-6 py-4 font-medium">
+                              {(() => {
+                                const cost = costFromProductOrPricing({ dealerCostCents: p.dealerCostCents, basePriceCents: p.basePriceCents });
+                                const retail = retailFromCost(cost, markupPct) ?? cost;
+                                return money(retail);
+                              })()}
+                            </td>
                             <td className="px-6 py-4 text-right">
                               <Button
                                 size="sm"
@@ -900,7 +984,11 @@ export function DealerContractDetailPage() {
                             Deductible {money(r.deductibleCents)}
                           </div>
                           <div className={"text-sm font-semibold mt-2 " + (r.id === selectedPricingId ? "text-primary-foreground" : "text-foreground")}>
-                            {money(r.basePriceCents)}
+                            {(() => {
+                              const cost = costFromProductOrPricing({ dealerCostCents: r.dealerCostCents, basePriceCents: r.basePriceCents });
+                              const retail = retailFromCost(cost, markupPct) ?? cost;
+                              return money(retail);
+                            })()}
                           </div>
                         </button>
                       ))}
@@ -911,12 +999,40 @@ export function DealerContractDetailPage() {
                   <div className="flex items-start justify-between gap-6">
                     <div>
                       <div className="text-xs text-muted-foreground">Retail price</div>
-                      <div className="text-lg font-semibold mt-1">{money(selectedPricing?.basePriceCents)}</div>
-                      <div className="text-xs text-muted-foreground mt-1">Price is pulled from the selected pricing option.</div>
+                      {(() => {
+                        const cost = costFromProductOrPricing({
+                          dealerCostCents: selectedPricing?.dealerCostCents,
+                          basePriceCents: selectedPricing?.basePriceCents,
+                        });
+                        const retail = retailFromCost(cost, markupPct) ?? cost;
+                        const margin = marginFromCostAndRetail(cost, retail);
+                        const marginPct = marginPctFromCostAndRetail(cost, retail);
+                        return (
+                          <>
+                            <div className="text-lg font-semibold mt-1">{money(retail)}</div>
+                            {canSeeCost ? (
+                              <div className="text-xs text-muted-foreground mt-1">
+                                Cost {money(cost)}
+                                {typeof margin === "number" ? ` • Margin ${money(margin)}` : ""}
+                                {typeof marginPct === "number" ? ` (${marginPct.toFixed(1)}%)` : ""}
+                              </div>
+                            ) : (
+                              <div className="text-xs text-muted-foreground mt-1">Price is pulled from the selected pricing option.</div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                     <div className="text-right">
                       <div className="text-xs text-muted-foreground">Total</div>
-                      <div className="text-lg font-semibold mt-1">{money(selectedPricing?.basePriceCents)}</div>
+                      {(() => {
+                        const cost = costFromProductOrPricing({
+                          dealerCostCents: selectedPricing?.dealerCostCents,
+                          basePriceCents: selectedPricing?.basePriceCents,
+                        });
+                        const retail = retailFromCost(cost, markupPct) ?? cost;
+                        return <div className="text-lg font-semibold mt-1">{money(retail)}</div>;
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -960,7 +1076,14 @@ export function DealerContractDetailPage() {
                     <div className="flex items-start justify-between gap-6">
                       <div>
                         <div className="text-xs text-muted-foreground">Total</div>
-                        <div className="text-lg font-semibold mt-1">{money(selectedPricing?.basePriceCents)}</div>
+                        {(() => {
+                          const cost = costFromProductOrPricing({
+                            dealerCostCents: selectedPricing?.dealerCostCents,
+                            basePriceCents: selectedPricing?.basePriceCents,
+                          });
+                          const retail = retailFromCost(cost, markupPct) ?? cost;
+                          return <div className="text-lg font-semibold mt-1">{money(retail)}</div>;
+                        })()}
                       </div>
                       <div className="text-right">
                         <div className="text-xs text-muted-foreground">Status</div>

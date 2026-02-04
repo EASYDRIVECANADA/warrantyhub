@@ -83,7 +83,11 @@ export function SuperAdminPlatformPage() {
         const { data, error } = await supabase.from("profiles").select("id, email, role");
         if (error) throw error;
 
-        return (data as any[]).map((r) => ({ id: r.id, email: r.email ?? undefined, role: r.role as Role }));
+        return (data as any[]).map((r) => ({
+          id: r.id,
+          email: r.email ?? undefined,
+          role: ((r.role ?? "UNASSIGNED") === "DEALER" ? "DEALER_ADMIN" : r.role) as Role,
+        }));
       }
 
       return readLocalProfiles();
@@ -123,7 +127,7 @@ export function SuperAdminPlatformPage() {
   const accessRequests = accessRequestsQuery.data ?? [];
 
   const totalUsers = profiles.length;
-  const activeDealers = profiles.filter((p) => p.role === "DEALER" || p.role === "DEALER_ADMIN").length;
+  const activeDealers = profiles.filter((p) => p.role === "DEALER_ADMIN").length;
   const activeProviders = profiles.filter((p) => p.role === "PROVIDER").length;
 
   const pendingApprovals = accessRequests.filter((r) => r.status === "PENDING");
@@ -261,10 +265,7 @@ export function SuperAdminPlatformPage() {
             </Link>
           </Button>
           <Button variant="outline" asChild>
-            <Link to="/admin-support">Support Inbox</Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link to="/admin-users">
+            <Link to="/profile">
               <span className="inline-flex items-center gap-2">
                 <UserCircle className="w-4 h-4" />
                 Profile

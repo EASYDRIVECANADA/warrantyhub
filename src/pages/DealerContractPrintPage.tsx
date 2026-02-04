@@ -9,7 +9,33 @@ import type { Contract } from "../lib/contracts/types";
 import type { Product } from "../lib/products/types";
 import type { ProviderPublic } from "../lib/providers/types";
 import { BRAND } from "../lib/brand";
+import { getAppMode } from "../lib/runtime";
 import { useAuth } from "../providers/AuthProvider";
+
+const LOCAL_DEALER_MEMBERSHIPS_KEY = "warrantyhub.local.dealer_memberships";
+
+function readLocalDealerMemberships(): Array<{ dealerId?: string; userId?: string }> {
+  const raw = localStorage.getItem(LOCAL_DEALER_MEMBERSHIPS_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as any[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function dealershipUserIds(dealerId: string) {
+  const memberships = readLocalDealerMemberships();
+  const ids = new Set<string>();
+  ids.add(dealerId);
+  for (const m of memberships) {
+    const did = (m?.dealerId ?? "").toString();
+    const uid = (m?.userId ?? "").toString();
+    if (did && uid && did === dealerId) ids.add(uid);
+  }
+  return ids;
+}
 
 type CopyType = "dealer" | "provider" | "customer";
 
@@ -24,6 +50,9 @@ export function DealerContractPrintPage() {
   const { id, copyType } = useParams();
   const contractId = id ?? "";
   const type = (copyType ?? "dealer") as CopyType;
+
+  const mode = useMemo(() => getAppMode(), []);
+  const isEmployee = user?.role === "DEALER_EMPLOYEE";
 
   const api = useMemo(() => getContractsApi(), []);
   const marketplaceApi = useMemo(() => getMarketplaceApi(), []);
@@ -63,16 +92,18 @@ export function DealerContractPrintPage() {
     enabled: providerIds.length > 0,
   });
 
-  const providerById = new Map(((providersQuery.data ?? []) as ProviderPublic[]).map((p) => [p.id, p] as const));
+  const providers = (providersQuery.data ?? []) as ProviderPublic[];
+  const providerById = new Map(providers.map((p) => [p.id, p] as const));
 
   const providerDisplay = (id: string | undefined) => {
-    if (!id) return "—";
-    const p = providerById.get(id);
+    const pid = (id ?? "").trim();
+    if (!pid) return "—";
+    const p = providerById.get(pid);
     const company = (p?.companyName ?? "").trim();
     if (company) return company;
     const display = (p?.displayName ?? "").trim();
     if (display) return display;
-    return `Provider ${id.slice(0, 8)}`;
+    return `Provider ${pid.slice(0, 8)}`;
   };
 
   const money = (cents?: number) => {
@@ -90,6 +121,23 @@ export function DealerContractPrintPage() {
     return false;
   };
 
+  const canView = (c: Contract) => {
+    if (!user) return false;
+    if (isEmployee) return isMine(c);
+    if (user.role !== "DEALER_ADMIN") return isMine(c);
+    if (mode !== "local") return isMine(c);
+
+    const did = (user.dealerId ?? "").trim();
+    if (!did) return isMine(c);
+
+    const cdid = (c.dealerId ?? "").trim();
+    if (cdid && cdid === did) return true;
+
+    const ids = dealershipUserIds(did);
+    const byId = (c.createdByUserId ?? "").trim();
+    return Boolean(byId) && ids.has(byId);
+  };
+
   useEffect(() => {
     if (!contract) return;
     const t = window.setTimeout(() => {
@@ -102,7 +150,7 @@ export function DealerContractPrintPage() {
     return <div className="container mx-auto px-4 py-10 text-sm text-muted-foreground">Loading…</div>;
   }
 
-  if (!contract || !isMine(contract)) {
+  if (!contract || !canView(contract) || (isEmployee && type === "provider")) {
     return <div className="container mx-auto px-4 py-10 text-sm text-muted-foreground">Contract not found.</div>;
   }
 
@@ -196,13 +244,15 @@ export function DealerContractPrintPage() {
                   <div className="text-[11px] text-slate-500 mt-1">Provider: {providerDisplay(selectedProduct?.providerId ?? contract.providerId)}</div>
                 </div>
                 <div>
-                  <div className="text-[11px] text-slate-500">Retail price</div>
-                  <div className="font-medium">{money(selectedProduct?.basePriceCents)}</div>
-                  <div className="text-[11px] text-slate-500 mt-1">Deductible: {money(selectedProduct?.deductibleCents)}</div>
+                  <div className="text-[11px] text-slate-500">{type === "provider" ? "Provider cost" : "Retail price"}</div>
+                  <div className="font-medium">
+                    {type === "provider" ? money(contract.pricingDealerCostCents) : money(contract.pricingBasePriceCents)}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-1">Deductible: {money(contract.pricingDeductibleCents ?? selectedProduct?.deductibleCents)}</div>
                 </div>
               </div>
               <div className="mt-3 text-[11px] text-slate-500">
-                Term: {typeof selectedProduct?.termMonths === "number" ? `${selectedProduct.termMonths} mo` : "—"} / {typeof selectedProduct?.termKm === "number" ? `${selectedProduct.termKm} km` : "—"}
+                Term: {typeof contract.pricingTermMonths === "number" ? `${contract.pricingTermMonths} mo` : "—"} / {typeof contract.pricingTermKm === "number" ? `${contract.pricingTermKm} km` : "—"}
               </div>
             </div>
 

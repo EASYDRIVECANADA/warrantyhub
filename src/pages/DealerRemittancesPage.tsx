@@ -1,24 +1,46 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { PageShell } from "../components/PageShell";
 import { getBatchesApi } from "../lib/batches/batches";
+import type { Batch, RemittanceWorkflowStatus } from "../lib/batches/types";
 import { getContractsApi } from "../lib/contracts/contracts";
 import type { Contract } from "../lib/contracts/types";
-import { alertMissing, confirmProceed, sanitizeMoney } from "../lib/utils";
+import { getAppMode } from "../lib/runtime";
+import { alertMissing, confirmProceed } from "../lib/utils";
+import { logAuditEvent } from "../lib/auditLog";
 import { useAuth } from "../providers/AuthProvider";
-
-function dollarsToCents(raw: string) {
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return 0;
-  return Math.round(n * 100);
-}
 
 function money(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+const LOCAL_DEALER_MEMBERSHIPS_KEY = "warrantyhub.local.dealer_memberships";
+
+function readLocalDealerMemberships(): Array<{ dealerId?: string; userId?: string }> {
+  const raw = localStorage.getItem(LOCAL_DEALER_MEMBERSHIPS_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as any[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function dealershipUserIds(dealerId: string) {
+  const memberships = readLocalDealerMemberships();
+  const ids = new Set<string>();
+  ids.add(dealerId);
+  for (const m of memberships) {
+    const did = (m?.dealerId ?? "").toString();
+    const uid = (m?.userId ?? "").toString();
+    if (did && uid && did === dealerId) ids.add(uid);
+  }
+  return ids;
 }
 
 export function DealerRemittancesPage() {
@@ -26,6 +48,11 @@ export function DealerRemittancesPage() {
   const batchesApi = useMemo(() => getBatchesApi(), []);
   const qc = useQueryClient();
   const { user } = useAuth();
+
+  const mode = useMemo(() => getAppMode(), []);
+
+  if (!user) return <Navigate to="/sign-in" replace />;
+  if (user.role !== "DEALER_ADMIN") return <Navigate to="/dealer-dashboard" replace />;
 
   const [remittanceNumber, setRemittanceNumber] = useState("");
   const [amount, setAmount] = useState("");
@@ -52,25 +79,84 @@ export function DealerRemittancesPage() {
     return false;
   };
 
-  const myContracts = allContracts.filter(isMine);
-  const myContractIds = new Set(myContracts.map((c) => c.id));
-  const soldContracts = myContracts.filter((c) => c.status === "SOLD");
+  const visibleContracts = useMemo(() => {
+    if (!user) return [] as Contract[];
+    if (user.role !== "DEALER_ADMIN") return allContracts.filter(isMine);
+    if (mode !== "local") return allContracts.filter(isMine);
+
+    const did = (user.dealerId ?? "").trim();
+    if (!did) return allContracts.filter(isMine);
+    const ids = dealershipUserIds(did);
+    return allContracts.filter((c) => {
+      const cdid = (c.dealerId ?? "").trim();
+      if (cdid && cdid === did) return true;
+      const byId = (c.createdByUserId ?? "").trim();
+      return byId && ids.has(byId);
+    });
+  }, [allContracts, isMine, mode, user]);
+
+  const visibleContractIds = useMemo(() => new Set(visibleContracts.map((c) => c.id)), [visibleContracts]);
+  const soldContracts = visibleContracts.filter((c) => c.status === "SOLD");
 
   const selectedIds = soldContracts.filter((c) => selected[c.id]).map((c) => c.id);
+  const selectedContracts = soldContracts.filter((c) => selected[c.id]);
+
+  const calculatedTotalCents = useMemo(() => {
+    return selectedContracts.reduce((sum, c) => {
+      const cost =
+        typeof c.pricingDealerCostCents === "number"
+          ? c.pricingDealerCostCents
+          : typeof c.pricingBasePriceCents === "number"
+            ? c.pricingBasePriceCents
+            : 0;
+      return sum + cost;
+    }, 0);
+  }, [selectedContracts]);
+
+  useEffect(() => {
+    if (selectedIds.length === 0) {
+      setAmount("");
+      return;
+    }
+    setAmount((calculatedTotalCents / 100).toFixed(2));
+  }, [calculatedTotalCents, selectedIds.length]);
 
   const createRemittanceMutation = useMutation({
     mutationFn: async () => {
       const r = remittanceNumber.trim();
-      const a = amount.trim();
       if (!r) throw new Error("Remittance # is required");
-      if (!a) throw new Error("Amount is required");
       if (selectedIds.length === 0) throw new Error("Select at least 1 SOLD contract");
 
+      const providerIds = new Set<string>();
+      for (const c of selectedContracts) {
+        const pid = (c.providerId ?? "").trim();
+        if (!pid) throw new Error("Selected contracts must have a provider");
+        providerIds.add(pid);
+      }
+      if (providerIds.size !== 1) throw new Error("A remittance can only contain contracts from ONE provider");
+      const providerId = Array.from(providerIds)[0]!;
+
       const created = await batchesApi.create({ batchNumber: r });
-      const cents = dollarsToCents(a);
+      const cents = calculatedTotalCents;
       await batchesApi.update(created.id, {
         contractIds: selectedIds,
         totalCents: cents,
+        remittanceStatus: "DRAFT",
+        dealerUserId: user?.id,
+        dealerEmail: user?.email,
+        providerId,
+      });
+
+      logAuditEvent({
+        kind: "REMITTANCE_CREATED",
+        actorUserId: user?.id,
+        actorEmail: user?.email,
+        actorRole: user?.role,
+        dealerId: (user?.dealerId ?? "").trim() || undefined,
+        entityType: "remittance",
+        entityId: created.id,
+        message: `Created remittance ${r}`,
+        meta: { totalCents: cents, contractCount: selectedIds.length, providerId },
       });
 
       return created;
@@ -88,12 +174,30 @@ export function DealerRemittancesPage() {
     mutationFn: async (remittanceId: string) => {
       const now = new Date().toISOString();
       const all = await batchesApi.list();
-      const r = all.find((x) => x.id === remittanceId);
+      const r = (all as Batch[]).find((x) => x.id === remittanceId);
       if (!r) throw new Error("Remittance not found");
-      if (r.status !== "OPEN") throw new Error("Remittance is already submitted");
+      const workflow = (r.remittanceStatus ?? (r.status === "CLOSED" ? "SUBMITTED" : "DRAFT")) as RemittanceWorkflowStatus;
+      if (workflow !== "DRAFT") throw new Error("Remittance is already submitted");
       if (!Array.isArray(r.contractIds) || r.contractIds.length === 0) throw new Error("No contracts linked");
 
-      await batchesApi.update(remittanceId, { status: "CLOSED" });
+      await batchesApi.update(remittanceId, {
+        status: "CLOSED",
+        remittanceStatus: "SUBMITTED",
+        submittedAt: now,
+        dealerUserId: user?.id,
+        dealerEmail: user?.email,
+      });
+
+      logAuditEvent({
+        kind: "REMITTANCE_SUBMITTED",
+        actorUserId: user?.id,
+        actorEmail: user?.email,
+        actorRole: user?.role,
+        dealerId: (user?.dealerId ?? "").trim() || undefined,
+        entityType: "remittance",
+        entityId: remittanceId,
+        message: `Submitted remittance ${r.batchNumber}`,
+      });
 
       for (const id of r.contractIds) {
         await contractsApi.update(id, {
@@ -113,18 +217,30 @@ export function DealerRemittancesPage() {
   const busy = createRemittanceMutation.isPending || submitRemittanceMutation.isPending;
 
   const allBatches = batchesQuery.data ?? [];
-  const myRemittances = allBatches
-    .filter((b) => Array.isArray(b.contractIds) && (b.contractIds as string[]).length > 0)
-    .filter((b) => (b.contractIds as string[]).every((id) => myContractIds.has(id)));
+  const myRemittances = (allBatches as Batch[])
+    .filter((b) => Array.isArray(b.contractIds) && b.contractIds.length > 0)
+    .filter((b) => (b.contractIds ?? []).every((id) => visibleContractIds.has(id)));
 
-  const pending = myRemittances.filter((r) => r.status === "OPEN");
-  const submitted = myRemittances.filter((r) => r.status === "CLOSED");
+  const derivedWorkflow = (b: Batch): RemittanceWorkflowStatus => {
+    const s = b.remittanceStatus;
+    if (s) return s;
+    if (b.paymentStatus === "PAID") return "PAID";
+    if (b.status === "CLOSED") return "SUBMITTED";
+    return "DRAFT";
+  };
 
-  const statusBadge = (status: "OPEN" | "CLOSED") => {
-    return (
-      "inline-flex items-center text-xs px-2 py-1 rounded-md border " +
-      (status === "CLOSED" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-800 border-amber-200")
-    );
+  const pending = myRemittances.filter((r) => derivedWorkflow(r) === "DRAFT");
+  const submitted = myRemittances.filter((r) => derivedWorkflow(r) === "SUBMITTED");
+  const approved = myRemittances.filter((r) => derivedWorkflow(r) === "APPROVED");
+  const rejected = myRemittances.filter((r) => derivedWorkflow(r) === "REJECTED");
+  const paid = myRemittances.filter((r) => derivedWorkflow(r) === "PAID");
+
+  const statusBadge = (status: RemittanceWorkflowStatus) => {
+    if (status === "PAID") return "inline-flex items-center text-xs px-2 py-1 rounded-md border bg-emerald-50 text-emerald-700 border-emerald-200";
+    if (status === "APPROVED") return "inline-flex items-center text-xs px-2 py-1 rounded-md border bg-sky-50 text-sky-800 border-sky-200";
+    if (status === "REJECTED") return "inline-flex items-center text-xs px-2 py-1 rounded-md border bg-rose-50 text-rose-700 border-rose-200";
+    if (status === "SUBMITTED") return "inline-flex items-center text-xs px-2 py-1 rounded-md border bg-amber-50 text-amber-800 border-amber-200";
+    return "inline-flex items-center text-xs px-2 py-1 rounded-md border bg-muted text-muted-foreground";
   };
 
   return (
@@ -154,11 +270,12 @@ export function DealerRemittancesPage() {
             <div className="text-xs text-muted-foreground mb-1">Amount (e.g. 199.99)</div>
             <Input
               value={amount}
-              onChange={(e) => setAmount(sanitizeMoney(e.target.value))}
+              onChange={() => {}}
               placeholder="199.99"
               inputMode="decimal"
-              disabled={busy}
+              disabled={true}
             />
+            <div className="mt-2 text-xs text-muted-foreground">Total is calculated from selected contracts using provider cost.</div>
           </div>
 
           <Button
@@ -166,9 +283,7 @@ export function DealerRemittancesPage() {
             onClick={() => {
               void (async () => {
                 const r = remittanceNumber.trim();
-                const a = amount.trim();
                 if (!r) return alertMissing("Remittance # is required.");
-                if (!a) return alertMissing("Amount is required.");
                 if (selectedIds.length === 0) return alertMissing("Select at least 1 SOLD contract.");
                 if (!(await confirmProceed(`Create remittance ${r} for ${selectedIds.length} contract(s)?`))) return;
                 createRemittanceMutation.mutate();
@@ -242,7 +357,7 @@ export function DealerRemittancesPage() {
 
                 <div className="flex items-center gap-2">
                   <div className="text-sm font-medium">{money(r.totalCents)}</div>
-                  <span className={statusBadge("OPEN")}>Pending</span>
+                  <span className={statusBadge("DRAFT")}>Draft</span>
                   <Button
                     size="sm"
                     onClick={() => {
@@ -293,7 +408,7 @@ export function DealerRemittancesPage() {
 
                 <div className="flex items-center gap-2">
                   <div className="text-sm font-medium">{money(r.totalCents)}</div>
-                  <span className={statusBadge("CLOSED")}>Submitted</span>
+                  <span className={statusBadge("SUBMITTED")}>Submitted</span>
                 </div>
               </div>
             </div>
@@ -304,6 +419,86 @@ export function DealerRemittancesPage() {
             <div className="px-6 py-10 text-sm text-muted-foreground">No submitted remittances yet.</div>
           ) : null}
           {batchesQuery.isError ? <div className="px-6 py-6 text-sm text-destructive">Failed to load remittances.</div> : null}
+        </div>
+      </div>
+
+      <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
+          <div className="px-6 py-4 border-b">
+            <div className="font-semibold">Approved</div>
+            <div className="text-sm text-muted-foreground mt-1">Approved remittances are awaiting provider payment.</div>
+          </div>
+          <div className="divide-y">
+            {approved.map((r) => (
+              <div key={r.id} className="px-6 py-4">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div>
+                    <div className="text-sm font-medium">Remittance {r.batchNumber}</div>
+                    <div className="text-xs text-muted-foreground mt-1">{r.contractIds.length} contract(s)</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-medium">{money(r.totalCents)}</div>
+                    <span className={statusBadge("APPROVED")}>Approved</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!batchesQuery.isLoading && approved.length === 0 ? (
+              <div className="px-6 py-10 text-sm text-muted-foreground">No approved remittances yet.</div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
+          <div className="px-6 py-4 border-b">
+            <div className="font-semibold">Rejected</div>
+            <div className="text-sm text-muted-foreground mt-1">Rejected remittances require admin follow-up.</div>
+          </div>
+          <div className="divide-y">
+            {rejected.map((r) => (
+              <div key={r.id} className="px-6 py-4">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div>
+                    <div className="text-sm font-medium">Remittance {r.batchNumber}</div>
+                    <div className="text-xs text-muted-foreground mt-1">Reason: {(r.rejectionReason ?? "—").trim() || "—"}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-medium">{money(r.totalCents)}</div>
+                    <span className={statusBadge("REJECTED")}>Rejected</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!batchesQuery.isLoading && rejected.length === 0 ? (
+              <div className="px-6 py-10 text-sm text-muted-foreground">No rejected remittances.</div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
+          <div className="px-6 py-4 border-b">
+            <div className="font-semibold">Paid</div>
+            <div className="text-sm text-muted-foreground mt-1">Completed remittances.</div>
+          </div>
+          <div className="divide-y">
+            {paid.map((r) => (
+              <div key={r.id} className="px-6 py-4">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div>
+                    <div className="text-sm font-medium">Remittance {r.batchNumber}</div>
+                    <div className="text-xs text-muted-foreground mt-1">Paid {new Date(r.paidAt ?? r.createdAt).toLocaleDateString()}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-medium">{money(r.totalCents)}</div>
+                    <span className={statusBadge("PAID")}>Paid</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!batchesQuery.isLoading && paid.length === 0 ? (
+              <div className="px-6 py-10 text-sm text-muted-foreground">No paid remittances yet.</div>
+            ) : null}
+          </div>
         </div>
       </div>
     </PageShell>

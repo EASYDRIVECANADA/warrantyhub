@@ -161,14 +161,25 @@ export function AdminAccessRequestsPage() {
         const current = (listQuery.data ?? []).find((r) => r.id === input.id);
         const fromStatus = current?.status ?? "PENDING";
 
+        const effectiveAssignedRole: Role | undefined =
+          current?.requestType === "PROVIDER" && input.status === "APPROVED" ? "PROVIDER" : input.assignedRole;
+        const effectiveAssignedCompany: string | undefined =
+          current?.requestType === "PROVIDER" && input.status === "APPROVED" ? current?.company : input.assignedCompany;
+
         if (input.status === "APPROVED") {
-          if (!input.assignedRole) throw new Error("Assigned role is required for approval");
-          if (!input.assignedCompany?.trim()) throw new Error("Assigned company is required for approval");
-          if (input.assignedRole === "ADMIN" && user?.role !== "SUPER_ADMIN") {
+          if (!effectiveAssignedRole) throw new Error("Assigned role is required for approval");
+          if (!effectiveAssignedCompany?.trim()) throw new Error("Assigned company is required for approval");
+          if (mode === "supabase" && effectiveAssignedRole === "DEALER_EMPLOYEE") {
+            throw new Error("DEALER_EMPLOYEE approval is not enabled in Supabase mode yet");
+          }
+          if (current?.requestType === "PROVIDER" && user?.role !== "SUPER_ADMIN") {
+            throw new Error("Only Super Admin can approve Provider access requests");
+          }
+          if (effectiveAssignedRole === "ADMIN" && user?.role !== "SUPER_ADMIN") {
             throw new Error("Only Super Admin can assign Admin role");
           }
-          if (input.assignedRole === "DEALER_ADMIN" && user?.role !== "ADMIN") {
-            throw new Error("Only Admin can assign Dealer Admin role");
+          if (effectiveAssignedRole === "DEALER_ADMIN" && user?.role !== "ADMIN" && user?.role !== "SUPER_ADMIN") {
+            throw new Error("Only Admin or Super Admin can assign Dealer Admin role");
           }
         }
 
@@ -179,8 +190,8 @@ export function AdminAccessRequestsPage() {
           reviewed_by_email: actorEmail ?? null,
         };
 
-        if (typeof input.assignedRole === "string") updateRow.assigned_role = input.assignedRole;
-        if (typeof input.assignedCompany === "string") updateRow.assigned_company = input.assignedCompany;
+        if (typeof effectiveAssignedRole === "string") updateRow.assigned_role = effectiveAssignedRole;
+        if (typeof effectiveAssignedCompany === "string") updateRow.assigned_company = effectiveAssignedCompany;
         if (input.status === "REJECTED") updateRow.rejection_message = input.rejectionMessage?.trim() || null;
         if (input.status === "APPROVED") updateRow.rejection_message = null;
 
@@ -191,15 +202,52 @@ export function AdminAccessRequestsPage() {
 
         if (error) throw new Error(toErrorMessage(error));
 
-        if (input.status === "APPROVED" && input.assignedRole && input.assignedCompany) {
+        if (input.status === "APPROVED" && effectiveAssignedRole && effectiveAssignedCompany) {
           const email = (current?.email ?? "").trim().toLowerCase();
           if (email) {
             const profileLookup = await supabase.from("profiles").select("id, email").eq("email", email).maybeSingle();
             if (!profileLookup.error && profileLookup.data?.id) {
               const profileId = profileLookup.data.id as string;
+
+              let providerCompanyId: string | null = null;
+              if (current?.requestType === "PROVIDER") {
+                const requestedName = effectiveAssignedCompany.trim();
+
+                const existingCompany = await supabase
+                  .from("provider_companies")
+                  .select("id")
+                  .eq("provider_company_name", requestedName)
+                  .maybeSingle();
+
+                if (existingCompany.error) throw new Error(toErrorMessage(existingCompany.error));
+
+                if (existingCompany.data?.id) {
+                  providerCompanyId = existingCompany.data.id as string;
+                } else {
+                  const insertCompany = await supabase
+                    .from("provider_companies")
+                    .insert({
+                      provider_company_name: requestedName,
+                      legal_business_name: requestedName,
+                      contact_email: (current?.email ?? "").trim(),
+                      status: "ACTIVE",
+                    })
+                    .select("id")
+                    .single();
+
+                  if (insertCompany.error) throw new Error(toErrorMessage(insertCompany.error));
+                  providerCompanyId = (insertCompany.data as any).id as string;
+                }
+              }
+
               const profileUpdate = await supabase
                 .from("profiles")
-                .update({ role: input.assignedRole, company_name: input.assignedCompany, is_active: true })
+                .update({
+                  role: effectiveAssignedRole,
+                  company_name: effectiveAssignedCompany,
+                  is_active: true,
+                  provider_company_id: providerCompanyId,
+                })
                 .eq("id", profileId);
 
               if (profileUpdate.error) throw new Error(toErrorMessage(profileUpdate.error));
@@ -212,8 +260,8 @@ export function AdminAccessRequestsPage() {
           action: input.status === "APPROVED" ? "APPROVED" : "REJECTED",
           from_status: fromStatus,
           to_status: input.status,
-          assigned_role: input.assignedRole ?? null,
-          assigned_company: input.assignedCompany ?? null,
+          assigned_role: effectiveAssignedRole ?? null,
+          assigned_company: effectiveAssignedCompany ?? null,
           actor_user_id: actorId ?? null,
           actor_email: actorEmail ?? null,
         });
@@ -242,8 +290,8 @@ export function AdminAccessRequestsPage() {
         if (input.assignedRole === "ADMIN" && user?.role !== "SUPER_ADMIN") {
           throw new Error("Only Super Admin can assign Admin role");
         }
-        if (input.assignedRole === "DEALER_ADMIN" && user?.role !== "ADMIN") {
-          throw new Error("Only Admin can assign Dealer Admin role");
+        if (input.assignedRole === "DEALER_ADMIN" && user?.role !== "ADMIN" && user?.role !== "SUPER_ADMIN") {
+          throw new Error("Only Admin or Super Admin can assign Dealer role");
         }
         const targetEmail = (next[idx].email ?? "").trim().toLowerCase();
         if (targetEmail) {
@@ -272,7 +320,7 @@ export function AdminAccessRequestsPage() {
   const resolveAssign = (r: AccessRequest) => {
     const existing = assignById[r.id];
     if (existing) return existing;
-    const defaultRole: Role = r.requestType === "PROVIDER" ? "PROVIDER" : "DEALER";
+    const defaultRole: Role = r.requestType === "PROVIDER" ? "PROVIDER" : "DEALER_ADMIN";
     return {
       role: (r.assignedRole ?? defaultRole) as Role,
       company: (r.assignedCompany ?? r.company ?? "").trim(),
@@ -314,7 +362,7 @@ export function AdminAccessRequestsPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <Input
                       value={assigned.company}
-                      disabled={!canAct || busy}
+                      disabled={!canAct || busy || r.requestType === "PROVIDER"}
                       onChange={(e) => {
                         const company = e.target.value;
                         setAssignById((prev) => ({
@@ -326,7 +374,7 @@ export function AdminAccessRequestsPage() {
                     />
                     <select
                       value={assigned.role}
-                      disabled={!canAct || busy}
+                      disabled={!canAct || busy || r.requestType === "PROVIDER"}
                       onChange={(e) => {
                         const role = e.target.value as Role;
                         setAssignById((prev) => ({
@@ -336,8 +384,8 @@ export function AdminAccessRequestsPage() {
                       }}
                       className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
                     >
-                      <option value="DEALER">Dealer</option>
-                      {user?.role === "ADMIN" ? <option value="DEALER_ADMIN">Dealer Admin</option> : null}
+                      <option value="DEALER_ADMIN">Dealer</option>
+                      {mode !== "supabase" ? <option value="DEALER_EMPLOYEE">Dealer Employee</option> : null}
                       <option value="PROVIDER">Provider</option>
                       {user?.role === "SUPER_ADMIN" ? <option value="ADMIN">Admin</option> : null}
                     </select>

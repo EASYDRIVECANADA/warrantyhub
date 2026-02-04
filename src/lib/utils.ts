@@ -20,13 +20,13 @@ export function sanitizeMoney(value: string) {
 
 export function sanitizeLettersOnly(value: string) {
   return value
-    .replace(/[^\p{L}\s'\-]/gu, "")
+    .replace(/[^\p{L}\s'-]/gu, "")
     .replace(/\s+/g, " ");
 }
 
 export function sanitizeWordsOnly(value: string) {
   return value
-    .replace(/[^\p{L}\p{N}\s'\-]/gu, "")
+    .replace(/[^\p{L}\p{N}\s'-]/gu, "")
     .replace(/\s+/g, " ");
 }
 

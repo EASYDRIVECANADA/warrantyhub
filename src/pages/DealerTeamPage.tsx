@@ -1,15 +1,16 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { PageShell } from "../components/PageShell";
+import { logAuditEvent } from "../lib/auditLog";
 import { alertMissing, confirmProceed } from "../lib/utils";
 import { useAuth } from "../providers/AuthProvider";
 
-type DealerTeamRole = "DEALER_ADMIN" | "SALES" | "ACCOUNTING" | "READ_ONLY";
-type DealerTeamStatus = "INVITED" | "ACTIVE";
+type DealerTeamRole = "DEALER_ADMIN" | "DEALER_EMPLOYEE";
+type DealerTeamStatus = "INVITED" | "ACTIVE" | "DISABLED";
 
 type DealerTeamMember = {
   id: string;
@@ -21,6 +22,90 @@ type DealerTeamMember = {
 };
 
 const STORAGE_KEY = "warrantyhub.local.dealer_team_members";
+const DEALER_INVITES_KEY = "warrantyhub.local.dealer_employee_invites";
+const LOCAL_USERS_KEY = "warrantyhub.local.users";
+const LOCAL_DEALER_MEMBERSHIPS_KEY = "warrantyhub.local.dealer_memberships";
+
+type DealerInvite = {
+  code: string;
+  dealerName?: string;
+  createdAt: string;
+};
+
+function readLocalUsers(): Array<{ id?: string; companyName?: string }> {
+  const raw = localStorage.getItem(LOCAL_USERS_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as any[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function readLocalUsersRaw(): any[] {
+  const raw = localStorage.getItem(LOCAL_USERS_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as any[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalUsersRaw(items: any[]) {
+  localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(items));
+}
+
+function readLocalDealerMemberships(): any[] {
+  const raw = localStorage.getItem(LOCAL_DEALER_MEMBERSHIPS_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as any[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalDealerMemberships(items: any[]) {
+  localStorage.setItem(LOCAL_DEALER_MEMBERSHIPS_KEY, JSON.stringify(items));
+}
+
+function readInvites(): Record<string, DealerInvite> {
+  const raw = localStorage.getItem(DEALER_INVITES_KEY);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as Record<string, Partial<DealerInvite>>;
+    const out: Record<string, DealerInvite> = {};
+    for (const [dealerId, v] of Object.entries(parsed ?? {})) {
+      const code = (v?.code ?? "").toString().trim();
+      if (!code) continue;
+      out[dealerId] = {
+        code,
+        dealerName: (v?.dealerName ?? "").toString() || undefined,
+        createdAt: (v?.createdAt ?? new Date().toISOString()).toString(),
+      };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function writeInvites(next: Record<string, DealerInvite>) {
+  localStorage.setItem(DEALER_INVITES_KEY, JSON.stringify(next));
+}
+
+function generateInviteCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let out = "";
+  for (let i = 0; i < 8; i += 1) {
+    out += chars[Math.floor(Math.random() * chars.length)]!;
+  }
+  return `${out.slice(0, 4)}-${out.slice(4)}`;
+}
 
 function read(): DealerTeamMember[] {
   const raw = localStorage.getItem(STORAGE_KEY);
@@ -30,11 +115,14 @@ function read(): DealerTeamMember[] {
     return parsed
       .map((m): DealerTeamMember => {
         const createdAt = m.createdAt ?? new Date().toISOString();
+        const rawRole = (m.role ?? "DEALER_EMPLOYEE") as unknown;
+        const normalizedRole: DealerTeamRole =
+          rawRole === "DEALER_ADMIN" ? "DEALER_ADMIN" : rawRole === "DEALER_EMPLOYEE" ? "DEALER_EMPLOYEE" : "DEALER_EMPLOYEE";
         return {
           id: m.id ?? crypto.randomUUID(),
           dealerId: m.dealerId ?? "",
           email: m.email ?? "",
-          role: (m.role ?? "SALES") as DealerTeamRole,
+          role: normalizedRole,
           status: (m.status ?? "INVITED") as DealerTeamStatus,
           createdAt,
         };
@@ -55,18 +143,18 @@ function normalizeEmail(email: string) {
 
 function roleLabel(r: DealerTeamRole) {
   if (r === "DEALER_ADMIN") return "Dealer Admin";
-  if (r === "ACCOUNTING") return "Accounting";
-  if (r === "READ_ONLY") return "Read-only";
-  return "Sales";
+  return "Dealer Employee";
 }
 
 function statusBadgeClass(s: DealerTeamStatus) {
   if (s === "ACTIVE") return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  if (s === "DISABLED") return "bg-red-50 text-red-700 border-red-200";
   return "bg-amber-50 text-amber-800 border-amber-200";
 }
 
 function statusLabel(s: DealerTeamStatus) {
   if (s === "ACTIVE") return "Active";
+  if (s === "DISABLED") return "Disabled";
   return "Invited";
 }
 
@@ -74,10 +162,18 @@ export function DealerTeamPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
 
-  const dealerId = user?.id ?? "";
+  if (!user) return <Navigate to="/sign-in" replace />;
+  if (user.role !== "DEALER_ADMIN") return <Navigate to="/dealer-dashboard" replace />;
+
+  const dealerId = user.dealerId ?? user.id;
+
+  const invites = readInvites();
+  const invite = dealerId ? invites[dealerId] : undefined;
+  const inviteCode = (invite?.code ?? "").trim();
+  const inviteLink = inviteCode ? `${window.location.origin}/dealer-employee-signup?code=${encodeURIComponent(inviteCode)}` : "";
 
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<DealerTeamRole>("SALES");
+  const [role, setRole] = useState<DealerTeamRole>("DEALER_EMPLOYEE");
   const [error, setError] = useState<string | null>(null);
 
   const listQuery = useQuery({
@@ -111,11 +207,22 @@ export function DealerTeamPage() {
       };
 
       write([item, ...items]);
+
+      logAuditEvent({
+        kind: "DEALER_STAFF_INVITED",
+        actorUserId: user?.id,
+        actorEmail: user?.email,
+        actorRole: user?.role,
+        dealerId,
+        entityType: "dealer_team_member",
+        entityId: item.id,
+        message: `Invited ${em} as ${item.role}`,
+      });
       return item;
     },
     onSuccess: async () => {
       setEmail("");
-      setRole("SALES");
+      setRole("DEALER_EMPLOYEE");
       await qc.invalidateQueries({ queryKey: ["dealer-team"] });
     },
   });
@@ -131,6 +238,46 @@ export function DealerTeamPage() {
       const updated = [...items];
       updated[idx] = next;
       write(updated);
+
+      const users = readLocalUsersRaw();
+      const uidx = users.findIndex((u) => normalizeEmail((u?.email ?? "").toString()) === normalizeEmail(current.email));
+      if (uidx >= 0) {
+        const nextUsers = [...users];
+        nextUsers[uidx] = {
+          ...nextUsers[uidx],
+          role: input.role,
+          isActive: true,
+          dealerId,
+        };
+        writeLocalUsersRaw(nextUsers);
+
+        const userId = (nextUsers[uidx]?.id ?? "").toString();
+        if (userId) {
+          const memberships = readLocalDealerMemberships();
+          const midx = memberships.findIndex((m) => (m?.dealerId ?? "") === dealerId && (m?.userId ?? "") === userId);
+          if (midx >= 0) {
+            const nextM = [...memberships];
+            nextM[midx] = { ...nextM[midx], role: input.role, status: "ACTIVE" };
+            writeLocalDealerMemberships(nextM);
+          } else {
+            writeLocalDealerMemberships([
+              { id: crypto.randomUUID(), dealerId, userId, role: input.role, status: "ACTIVE", createdAt: new Date().toISOString() },
+              ...memberships,
+            ]);
+          }
+        }
+      }
+
+      logAuditEvent({
+        kind: "DEALER_STAFF_ROLE_CHANGED",
+        actorUserId: user?.id,
+        actorEmail: user?.email,
+        actorRole: user?.role,
+        dealerId,
+        entityType: "dealer_team_member",
+        entityId: input.id,
+        message: `Changed ${current.email} role to ${input.role}`,
+      });
       return next;
     },
     onSuccess: async () => {
@@ -138,13 +285,117 @@ export function DealerTeamPage() {
     },
   });
 
-  const removeMutation = useMutation({
+  const disableMutation = useMutation({
     mutationFn: async (id: string) => {
       const items = read();
       const current = items.find((m) => m.id === id);
       if (!current) return;
       if (current.dealerId !== dealerId) throw new Error("Not authorized");
-      write(items.filter((m) => m.id !== id));
+
+      const idx = items.findIndex((m) => m.id === id);
+      if (idx >= 0) {
+        const updated = [...items];
+        updated[idx] = { ...updated[idx]!, status: "DISABLED" };
+        write(updated);
+      }
+
+      const users = readLocalUsersRaw();
+      const uidx = users.findIndex((u) => normalizeEmail((u?.email ?? "").toString()) === normalizeEmail(current.email));
+      if (uidx >= 0) {
+        const nextUsers = [...users];
+        nextUsers[uidx] = {
+          ...nextUsers[uidx],
+          isActive: false,
+        };
+        writeLocalUsersRaw(nextUsers);
+
+        const userId = (nextUsers[uidx]?.id ?? "").toString();
+        if (userId) {
+          const memberships = readLocalDealerMemberships();
+          const midx = memberships.findIndex((m) => (m?.dealerId ?? "") === dealerId && (m?.userId ?? "") === userId);
+          if (midx >= 0) {
+            const nextM = [...memberships];
+            nextM[midx] = { ...nextM[midx], status: "DISABLED" };
+            writeLocalDealerMemberships(nextM);
+          } else {
+            writeLocalDealerMemberships([
+              { id: crypto.randomUUID(), dealerId, userId, role: current.role, status: "DISABLED", createdAt: new Date().toISOString() },
+              ...memberships,
+            ]);
+          }
+        }
+      }
+
+      logAuditEvent({
+        kind: "DEALER_STAFF_DISABLED",
+        actorUserId: user?.id,
+        actorEmail: user?.email,
+        actorRole: user?.role,
+        dealerId,
+        entityType: "dealer_team_member",
+        entityId: id,
+        message: `Disabled ${current.email}`,
+      });
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["dealer-team"] });
+    },
+  });
+
+  const enableMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const items = read();
+      const idx = items.findIndex((m) => m.id === id);
+      if (idx < 0) throw new Error("Team member not found");
+      const current = items[idx]!;
+      if (current.dealerId !== dealerId) throw new Error("Not authorized");
+
+      const next: DealerTeamMember = { ...current, status: "ACTIVE" };
+      const updated = [...items];
+      updated[idx] = next;
+      write(updated);
+
+      const users = readLocalUsersRaw();
+      const uidx = users.findIndex((u) => normalizeEmail((u?.email ?? "").toString()) === normalizeEmail(current.email));
+      if (uidx >= 0) {
+        const nextUsers = [...users];
+        nextUsers[uidx] = {
+          ...nextUsers[uidx],
+          isActive: true,
+          role: current.role,
+          dealerId,
+        };
+        writeLocalUsersRaw(nextUsers);
+
+        const userId = (nextUsers[uidx]?.id ?? "").toString();
+        if (userId) {
+          const memberships = readLocalDealerMemberships();
+          const midx = memberships.findIndex((m) => (m?.dealerId ?? "") === dealerId && (m?.userId ?? "") === userId);
+          if (midx >= 0) {
+            const nextM = [...memberships];
+            nextM[midx] = { ...nextM[midx], role: current.role, status: "ACTIVE" };
+            writeLocalDealerMemberships(nextM);
+          } else {
+            writeLocalDealerMemberships([
+              { id: crypto.randomUUID(), dealerId, userId, role: current.role, status: "ACTIVE", createdAt: new Date().toISOString() },
+              ...memberships,
+            ]);
+          }
+        }
+      }
+
+      logAuditEvent({
+        kind: "DEALER_STAFF_ENABLED",
+        actorUserId: user?.id,
+        actorEmail: user?.email,
+        actorRole: user?.role,
+        dealerId,
+        entityType: "dealer_team_member",
+        entityId: id,
+        message: `Enabled ${current.email}`,
+      });
+
+      return next;
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["dealer-team"] });
@@ -152,7 +403,7 @@ export function DealerTeamPage() {
   });
 
   const members = (listQuery.data ?? []) as DealerTeamMember[];
-  const busy = inviteMutation.isPending || updateRoleMutation.isPending || removeMutation.isPending;
+  const busy = inviteMutation.isPending || updateRoleMutation.isPending || disableMutation.isPending || enableMutation.isPending;
 
   return (
     <PageShell
@@ -166,6 +417,98 @@ export function DealerTeamPage() {
       }
     >
       {error ? <div className="text-sm text-destructive">{error}</div> : null}
+
+      <div className="mt-6 rounded-2xl border bg-card shadow-card overflow-hidden">
+        <div className="px-6 py-4 border-b flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <div className="font-semibold">Invite Dealer Employee</div>
+            <div className="text-sm text-muted-foreground mt-1">Generate an invite code/link for staff to sign up and join your dealership.</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!dealerId}
+              onClick={() => {
+                void (async () => {
+                  if (!dealerId) return;
+                  if (!(await confirmProceed(inviteCode ? "Regenerate invite code?" : "Generate invite code?"))) return;
+
+                  const users = readLocalUsers();
+                  const dealerName = (users.find((u) => u.id === dealerId)?.companyName ?? "").toString().trim() || undefined;
+
+                  const nextCode = generateInviteCode();
+                  const now = new Date().toISOString();
+                  writeInvites({ ...invites, [dealerId]: { code: nextCode, dealerName, createdAt: now } });
+
+                  logAuditEvent({
+                    kind: "DEALER_INVITE_CODE_GENERATED",
+                    actorUserId: user?.id,
+                    actorEmail: user?.email,
+                    actorRole: user?.role,
+                    dealerId,
+                    entityType: "dealer_invite",
+                    entityId: dealerId,
+                    message: inviteCode ? "Regenerated invite code" : "Generated invite code",
+                  });
+
+                  await qc.invalidateQueries({ queryKey: ["dealer-team"] });
+                })();
+              }}
+            >
+              {inviteCode ? "Regenerate" : "Generate"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!inviteLink}
+              onClick={() => {
+                void (async () => {
+                  if (!inviteLink) return;
+                  try {
+                    await navigator.clipboard.writeText(inviteLink);
+                  } catch {
+                  }
+                })();
+              }}
+            >
+              Copy link
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!inviteCode}
+              onClick={() => {
+                void (async () => {
+                  if (!inviteCode) return;
+                  try {
+                    await navigator.clipboard.writeText(inviteCode);
+                  } catch {
+                  }
+                })();
+              }}
+            >
+              Copy code
+            </Button>
+          </div>
+        </div>
+
+        <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-6">
+            <div className="text-xs text-muted-foreground">Invite Code</div>
+            <div className="mt-2 font-mono text-lg tracking-wider rounded-lg border bg-background px-4 py-3">
+              {inviteCode || "Not generated yet"}
+            </div>
+            {invite?.createdAt ? <div className="mt-2 text-xs text-muted-foreground">Updated {new Date(invite.createdAt).toLocaleString()}</div> : null}
+          </div>
+          <div className="lg:col-span-6">
+            <div className="text-xs text-muted-foreground">Invite Link</div>
+            <div className="mt-2 rounded-lg border bg-background px-4 py-3 text-sm break-all">
+              {inviteLink || "Generate an invite code to create a link"}
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden">
         <div className="px-6 py-4 border-b flex items-start justify-between gap-4 flex-wrap">
@@ -204,9 +547,7 @@ export function DealerTeamPage() {
                 disabled={busy}
               >
                 <option value="DEALER_ADMIN">Dealer Admin</option>
-                <option value="SALES">Sales</option>
-                <option value="ACCOUNTING">Accounting</option>
-                <option value="READ_ONLY">Read-only</option>
+                <option value="DEALER_EMPLOYEE">Dealer Employee</option>
               </select>
             </div>
           </div>
@@ -215,13 +556,9 @@ export function DealerTeamPage() {
             <div className="font-semibold">Role Definitions</div>
             <div className="text-sm text-muted-foreground mt-2">Use roles to safely control access inside the Dealer Portal.</div>
             <div className="mt-3 text-sm text-muted-foreground">
-              Dealer Admin: full dealer access (team, contracts, remittances).
+              Dealer Admin: office/money/control (team, contracts, remittances).
               <br />
-              Sales: create contracts.
-              <br />
-              Accounting: create remittances.
-              <br />
-              Read-only: view contracts and remittances.
+              Dealer Employee: showroom/selling (create and manage their own contracts).
             </div>
           </div>
         </div>
@@ -263,9 +600,7 @@ export function DealerTeamPage() {
                     disabled={busy}
                   >
                     <option value="DEALER_ADMIN">{roleLabel("DEALER_ADMIN")}</option>
-                    <option value="SALES">{roleLabel("SALES")}</option>
-                    <option value="ACCOUNTING">{roleLabel("ACCOUNTING")}</option>
-                    <option value="READ_ONLY">{roleLabel("READ_ONLY")}</option>
+                    <option value="DEALER_EMPLOYEE">{roleLabel("DEALER_EMPLOYEE")}</option>
                   </select>
                 </div>
                 <div className="md:col-span-2">
@@ -275,18 +610,23 @@ export function DealerTeamPage() {
                 </div>
                 <div className="md:col-span-2 flex md:justify-end">
                   <Button
-                    size="sm"
                     variant="outline"
+                    size="sm"
                     onClick={() => {
                       void (async () => {
                         setError(null);
-                        if (!(await confirmProceed(`Remove ${m.email} from your team?`))) return;
-                        removeMutation.mutate(m.id);
+                        if (m.status === "DISABLED") {
+                          if (!(await confirmProceed(`Enable ${m.email}?`))) return;
+                          enableMutation.mutate(m.id);
+                          return;
+                        }
+                        if (!(await confirmProceed(`Disable ${m.email}?`))) return;
+                        disableMutation.mutate(m.id);
                       })();
                     }}
                     disabled={busy}
                   >
-                    Remove
+                    {m.status === "DISABLED" ? "Enable" : "Disable"}
                   </Button>
                 </div>
               </div>

@@ -1,12 +1,18 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Navigate } from "react-router-dom";
 
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { getEmployeesApi } from "../lib/employees/employees";
 import { alertMissing, confirmProceed, sanitizeLettersOnly } from "../lib/utils";
+import { useAuth } from "../providers/AuthProvider";
 
 export function EmployeesPage({ title }: { title: string }) {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/sign-in" replace />;
+  if (user.role !== "DEALER_ADMIN") return <Navigate to="/dealer-dashboard" replace />;
+
   const api = useMemo(() => getEmployeesApi(), []);
   const qc = useQueryClient();
 

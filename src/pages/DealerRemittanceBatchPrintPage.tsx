@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { Navigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { getBatchesApi } from "../lib/batches/batches";
@@ -9,16 +9,48 @@ import type { Contract } from "../lib/contracts/types";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
 import type { Product } from "../lib/products/types";
 import { BRAND } from "../lib/brand";
+import { getAppMode } from "../lib/runtime";
 import { useAuth } from "../providers/AuthProvider";
+import { costFromProductOrPricing } from "../lib/dealerPricing";
 
 function money(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+const LOCAL_DEALER_MEMBERSHIPS_KEY = "warrantyhub.local.dealer_memberships";
+
+function readLocalDealerMemberships(): Array<{ dealerId?: string; userId?: string }> {
+  const raw = localStorage.getItem(LOCAL_DEALER_MEMBERSHIPS_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as any[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function dealershipUserIds(dealerId: string) {
+  const memberships = readLocalDealerMemberships();
+  const ids = new Set<string>();
+  ids.add(dealerId);
+  for (const m of memberships) {
+    const did = (m?.dealerId ?? "").toString();
+    const uid = (m?.userId ?? "").toString();
+    if (did && uid && did === dealerId) ids.add(uid);
+  }
+  return ids;
 }
 
 export function DealerRemittanceBatchPrintPage() {
   const { user } = useAuth();
   const { id } = useParams();
   const batchId = id ?? "";
+
+  const mode = useMemo(() => getAppMode(), []);
+
+  if (!user) return <Navigate to="/sign-in" replace />;
+  if (user.role !== "DEALER_ADMIN") return <Navigate to="/dealer-dashboard" replace />;
 
   const batchesApi = useMemo(() => getBatchesApi(), []);
   const contractsApi = useMemo(() => getContractsApi(), []);
@@ -53,8 +85,22 @@ export function DealerRemittanceBatchPrintPage() {
     return false;
   };
 
-  const myContractIds = new Set(contracts.filter(isMine).map((c) => c.id));
-  const unauthorized = batch != null && batch.contractIds.some((cid) => !myContractIds.has(cid));
+  const canViewContract = (c: Contract) => {
+    if (!user) return false;
+    if (user.role !== "DEALER_ADMIN") return isMine(c);
+    if (mode !== "local") return isMine(c);
+
+    const did = (user.dealerId ?? "").trim();
+    if (!did) return isMine(c);
+    const ids = dealershipUserIds(did);
+    const cdid = (c.dealerId ?? "").trim();
+    if (cdid && cdid === did) return true;
+    const byId = (c.createdByUserId ?? "").trim();
+    return byId && ids.has(byId);
+  };
+
+  const visibleContractIds = new Set(contracts.filter(canViewContract).map((c) => c.id));
+  const unauthorized = batch != null && batch.contractIds.some((cid) => !visibleContractIds.has(cid));
 
   const contractById = new Map(contracts.map((c) => [c.id, c] as const));
   const productById = new Map(products.map((p) => [p.id, p] as const));
@@ -64,7 +110,10 @@ export function DealerRemittanceBatchPrintPage() {
         const c = contractById.get(cid);
         const pid = (c?.productId ?? "").trim();
         const p = pid ? productById.get(pid) : undefined;
-        const amountCents = typeof p?.basePriceCents === "number" ? p.basePriceCents : 0;
+        const amountCents =
+          typeof c?.pricingDealerCostCents === "number"
+            ? c.pricingDealerCostCents
+            : costFromProductOrPricing({ dealerCostCents: p?.dealerCostCents, basePriceCents: p?.basePriceCents }) ?? 0;
         return {
           id: cid,
           warrantyId: c?.warrantyId ?? "—",

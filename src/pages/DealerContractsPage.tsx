@@ -11,9 +11,35 @@ import { getProvidersApi } from "../lib/providers/providers";
 import type { ProviderPublic } from "../lib/providers/types";
 import { decodeVin } from "../lib/vin/decodeVin";
 import { alertMissing, confirmProceed } from "../lib/utils";
+import { getAppMode } from "../lib/runtime";
 import { useAuth } from "../providers/AuthProvider";
 import type { Contract, ContractStatus } from "../lib/contracts/types";
 import type { Product } from "../lib/products/types";
+
+const LOCAL_DEALER_MEMBERSHIPS_KEY = "warrantyhub.local.dealer_memberships";
+
+function readLocalDealerMemberships(): Array<{ dealerId?: string; userId?: string }> {
+  const raw = localStorage.getItem(LOCAL_DEALER_MEMBERSHIPS_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as any[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function dealershipUserIds(dealerId: string) {
+  const memberships = readLocalDealerMemberships();
+  const ids = new Set<string>();
+  ids.add(dealerId);
+  for (const m of memberships) {
+    const did = (m?.dealerId ?? "").toString();
+    const uid = (m?.userId ?? "").toString();
+    if (did && uid && did === dealerId) ids.add(uid);
+  }
+  return ids;
+}
 
 type TabKey = "ALL" | ContractStatus;
 
@@ -55,12 +81,15 @@ export function DealerContractsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
+  const mode = useMemo(() => getAppMode(), []);
+
   const [searchParams] = useSearchParams();
   const defaultTab = (searchParams.get("tab")?.toUpperCase() ?? "ALL") as TabKey;
   const preselectedProductId = (searchParams.get("productId") ?? "").trim();
+  const prefilledVin = (searchParams.get("vin") ?? "").trim();
 
   const [tab, setTab] = useState<TabKey>(defaultTab);
-  const [vin, setVin] = useState("");
+  const [vin, setVin] = useState(prefilledVin);
 
   const listQuery = useQuery({
     queryKey: ["contracts"],
@@ -103,6 +132,7 @@ export function DealerContractsPage() {
       return api.create({
         contractNumber: cn,
         customerName: "",
+        dealerId: user?.dealerId,
         productId: selectedProduct?.id,
         providerId: selectedProduct?.providerId,
         createdByUserId: user?.id,
@@ -135,7 +165,22 @@ export function DealerContractsPage() {
     return false;
   });
 
-  const filtered = tab === "ALL" ? myContracts : myContracts.filter((c) => c.status === tab);
+  const visibleContracts = (() => {
+    if (!user) return [] as Contract[];
+    if (user.role !== "DEALER_ADMIN") return myContracts;
+    if (mode !== "local") return myContracts;
+    const did = (user.dealerId ?? "").trim();
+    if (!did) return myContracts;
+    const ids = dealershipUserIds(did);
+    return contracts.filter((c) => {
+      const cdid = (c.dealerId ?? "").trim();
+      if (cdid && cdid === did) return true;
+      const byId = (c.createdByUserId ?? "").trim();
+      return byId && ids.has(byId);
+    });
+  })();
+
+  const filtered = tab === "ALL" ? visibleContracts : visibleContracts.filter((c) => c.status === tab);
 
   const providerIds = Array.from(
     new Set(
@@ -198,7 +243,7 @@ export function DealerContractsPage() {
               <div className="text-sm text-muted-foreground">
                 No product selected yet.
                 <Button size="sm" variant="outline" asChild className="ml-2">
-                  <Link to="/dealer-marketplace">Browse marketplace</Link>
+                  <Link to="/dealer-marketplace">Find Products</Link>
                 </Button>
               </div>
             </div>

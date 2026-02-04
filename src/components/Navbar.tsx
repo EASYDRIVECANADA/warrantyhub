@@ -36,14 +36,16 @@ export function Navbar() {
     user?.role === "UNASSIGNED"
       ? "/request-access"
       : user?.role === "ADMIN"
-      ? "/company-dashboard"
-      : user?.role === "PROVIDER"
-        ? "/provider-dashboard"
-        : user?.role === "DEALER"
-          ? "/dealer-dashboard"
-          : user?.role === "DEALER_ADMIN"
-            ? "/dealer-admin"
-            : null;
+        ? "/company-dashboard"
+        : user?.role === "PROVIDER"
+          ? "/provider-dashboard"
+          : user?.role === "DEALER_EMPLOYEE"
+            ? "/dealer-dashboard"
+            : user?.role === "DEALER_ADMIN"
+              ? "/dealer-admin"
+              : user?.role === "SUPER_ADMIN"
+                ? "/platform"
+                : null;
 
   const brandPath = user?.role === "SUPER_ADMIN" ? "/platform" : dashboardPath ?? "/find-insurance";
 
@@ -75,36 +77,35 @@ export function Navbar() {
 
             {user && isUnassigned ? null : (
               <>
-                {dashboardPath && user?.role !== "DEALER" && user?.role !== "DEALER_ADMIN" ? (
-                  <NavLink to={dashboardPath} label="Dashboard" />
-                ) : null}
+                {user?.role === "ADMIN" ? <NavLink to="/company-dashboard" label="Admin Dashboard" /> : null}
+                {user?.role === "SUPER_ADMIN" ? <NavLink to="/platform" label="Platform Dashboard" /> : null}
+                {user?.role === "PROVIDER" ? <NavLink to="/provider-dashboard" label="Dashboard" /> : null}
 
-                {user?.role === "DEALER" ? <NavLink to="/dealer-dashboard" label="Dashboard" /> : null}
+                {user?.role === "DEALER_EMPLOYEE" ? <NavLink to="/dealer-dashboard" label="Dashboard" /> : null}
 
-                {user?.role === "DEALER" ? <NavLink to="/dealer-marketplace" label="Marketplace" /> : null}
-                {user?.role === "DEALER" ? <NavLink to="/dealer-contracts" label="Contracts" /> : null}
-                {user?.role === "DEALER" ? <NavLink to="/dealer-remittances" label="Remittances" /> : null}
+                {user?.role === "DEALER_EMPLOYEE" ? <NavLink to="/dealer-marketplace" label="Find Products" /> : null}
+                {user?.role === "DEALER_EMPLOYEE" ? <NavLink to="/dealer-contracts" label="Contracts" /> : null}
 
                 {user?.role === "DEALER_ADMIN" ? <NavLink to="/dealer-admin" label="Dashboard" /> : null}
+                {user?.role === "DEALER_ADMIN" ? <NavLink to="/dealer-marketplace" label="Find Products" /> : null}
                 {user?.role === "DEALER_ADMIN" ? <NavLink to="/dealer-contracts-admin" label="Contracts" /> : null}
                 {user?.role === "DEALER_ADMIN" ? <NavLink to="/dealer-remittances" label="Remittances" /> : null}
-                {user?.role === "DEALER_ADMIN" ? <NavLink to="/dealer-employees" label="Employees" /> : null}
+                {user?.role === "DEALER_ADMIN" ? <NavLink to="/dealer-reporting" label="Reporting" /> : null}
                 {user?.role === "DEALER_ADMIN" ? <NavLink to="/dealer-team" label="Team" /> : null}
                 {user?.role === "PROVIDER" ? <NavLink to="/provider-contracts" label="Contracts" /> : null}
+                {user?.role === "PROVIDER" ? <NavLink to="/provider-remittances" label="Remittances" /> : null}
                 {user?.role === "PROVIDER" ? <NavLink to="/provider-products" label="Products" /> : null}
                 {user?.role === "PROVIDER" ? <NavLink to="/provider-documents" label="Documents" /> : null}
 
-                {user?.role === "SUPER_ADMIN" ? <NavLink to="/platform" label="Platform" /> : null}
-                {user?.role === "SUPER_ADMIN" ? <NavLink to="/admin-users" label="Platform Users" /> : null}
-                {user?.role === "SUPER_ADMIN" ? <NavLink to="/admin-access-requests" label="Access Requests" /> : null}
-                {user?.role === "SUPER_ADMIN" ? <NavLink to="/admin-support" label="Support Inbox" /> : null}
-
-                {user?.role === "ADMIN" ? <NavLink to="/admin-contracts" label="Contracts" /> : null}
                 {user?.role === "ADMIN" ? <NavLink to="/admin-remittances" label="Remittances" /> : null}
-                {user?.role === "ADMIN" ? <NavLink to="/admin-batches" label="Batches" /> : null}
-                {user?.role === "ADMIN" ? <NavLink to="/admin-employees" label="Employees" /> : null}
-                {user?.role === "ADMIN" ? <NavLink to="/admin-users" label="Users" /> : null}
-                {user?.role === "ADMIN" ? <NavLink to="/admin-access-requests" label="Access" /> : null}
+                {user?.role === "ADMIN" ? <NavLink to="/admin-support" label="Support Inbox" /> : null}
+                {user?.role === "ADMIN" ? <NavLink to="/admin-providers" label="Providers" /> : null}
+                {user?.role === "ADMIN" ? <NavLink to="/admin-dealers" label="Dealers" /> : null}
+
+                {user?.role === "SUPER_ADMIN" ? <NavLink to="/admin-access-requests" label="Access Requests" /> : null}
+                {user?.role === "SUPER_ADMIN" ? <NavLink to="/admin-companies" label="Companies" /> : null}
+                {user?.role === "SUPER_ADMIN" ? <NavLink to="/admin-users" label="Platform Users" /> : null}
+                {user?.role === "SUPER_ADMIN" ? <NavLink to="/audit-logs" label="Audit Logs" /> : null}
               </>
             )}
           </div>
@@ -138,7 +139,7 @@ export function Navbar() {
                     <Link to="/sign-in">Sign In</Link>
                   </Button>
                   <Button size="sm" asChild>
-                    <Link to="/get-started">Get Started</Link>
+                    <Link to="/register-dealership">Register Your Dealership</Link>
                   </Button>
                 </>
               )}

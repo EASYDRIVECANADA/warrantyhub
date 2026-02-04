@@ -6,6 +6,30 @@ export type BatchesApi = {
   createRemittanceBatch(input: CreateRemittanceBatchInput): Promise<Batch>;
   update(
     id: string,
-    patch: Partial<Pick<Batch, "status" | "contractIds" | "totalCents" | "paymentStatus" | "paidAt">>,
+    patch: Partial<
+      Pick<
+        Batch,
+        | "status"
+        | "contractIds"
+        | "totalCents"
+        | "paymentStatus"
+        | "paidAt"
+        | "remittanceStatus"
+        | "dealerUserId"
+        | "dealerEmail"
+        | "providerId"
+        | "submittedAt"
+        | "reviewedAt"
+        | "reviewedByUserId"
+        | "reviewedByEmail"
+        | "rejectionReason"
+        | "adminNotes"
+        | "paymentMethod"
+        | "paymentReference"
+        | "paymentDate"
+        | "paidByUserId"
+        | "paidByEmail"
+      >
+    >,
   ): Promise<Batch>;
 };

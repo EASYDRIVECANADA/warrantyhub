@@ -3,8 +3,8 @@ import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { BRAND } from "../lib/brand";
-import { getRemittancesApi } from "../lib/remittances/remittances";
-import type { Remittance } from "../lib/remittances/types";
+import { getBatchesApi } from "../lib/batches/batches";
+import type { Batch, RemittanceWorkflowStatus } from "../lib/batches/types";
 
 function money(cents?: number) {
   if (typeof cents !== "number") return "—";
@@ -15,18 +15,26 @@ export function ProviderRemittancePrintPage() {
   const { id } = useParams();
   const remittanceId = id ?? "";
 
-  const api = useMemo(() => getRemittancesApi(), []);
+  const api = useMemo(() => getBatchesApi(), []);
 
   const remittanceQuery = useQuery({
     queryKey: ["provider-remittance", remittanceId],
     enabled: !!remittanceId,
     queryFn: async () => {
-      const all = (await api.list()) as Remittance[];
+      const all = (await api.list()) as Batch[];
       return all.find((r) => r.id === remittanceId) ?? null;
     },
   });
 
-  const remittance = remittanceQuery.data as Remittance | null | undefined;
+  const remittance = remittanceQuery.data as Batch | null | undefined;
+
+  const derivedWorkflow = (b: Batch): RemittanceWorkflowStatus => {
+    const s = b.remittanceStatus;
+    if (s) return s;
+    if (b.paymentStatus === "PAID") return "PAID";
+    if (b.status === "CLOSED") return "SUBMITTED";
+    return "DRAFT";
+  };
 
   useEffect(() => {
     if (!remittance) return;
@@ -44,6 +52,8 @@ export function ProviderRemittancePrintPage() {
     return <div className="container mx-auto px-4 py-10 text-sm text-muted-foreground">Remittance not found.</div>;
   }
 
+  const status = derivedWorkflow(remittance);
+
   return (
     <div className="min-h-screen bg-white text-slate-900">
       <div className="max-w-3xl mx-auto p-8">
@@ -59,7 +69,7 @@ export function ProviderRemittancePrintPage() {
               </div>
               <div className="text-right">
                 <div className="text-[11px] uppercase tracking-wide text-slate-500">Remittance #</div>
-                <div className="text-sm font-semibold">{remittance.remittanceNumber}</div>
+                <div className="text-sm font-semibold">{remittance.batchNumber}</div>
                 <div className="text-[11px] text-slate-500 mt-1">Created {new Date(remittance.createdAt).toLocaleDateString()}</div>
               </div>
             </div>
@@ -69,22 +79,43 @@ export function ProviderRemittancePrintPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="rounded-lg border p-4">
                 <div className="text-[11px] uppercase tracking-wide text-slate-500">Amount</div>
-                <div className="text-lg font-semibold mt-1">{money(remittance.amountCents)}</div>
+                <div className="text-lg font-semibold mt-1">{money(remittance.totalCents)}</div>
               </div>
               <div className="rounded-lg border p-4">
                 <div className="text-[11px] uppercase tracking-wide text-slate-500">Status</div>
-                <div className="text-lg font-semibold mt-1">{remittance.status === "PAID" ? "Paid" : "Due"}</div>
+                <div className="text-lg font-semibold mt-1">{status}</div>
               </div>
               <div className="rounded-lg border p-4">
                 <div className="text-[11px] uppercase tracking-wide text-slate-500">Last Updated</div>
-                <div className="text-lg font-semibold mt-1">{new Date(remittance.updatedAt).toLocaleDateString()}</div>
+                <div className="text-lg font-semibold mt-1">{new Date(remittance.paidAt ?? remittance.reviewedAt ?? remittance.submittedAt ?? remittance.createdAt).toLocaleDateString()}</div>
+              </div>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="rounded-lg border p-4">
+                <div className="text-[11px] uppercase tracking-wide text-slate-500">Contracts</div>
+                <div className="text-lg font-semibold mt-1">{remittance.contractIds.length}</div>
+              </div>
+              <div className="rounded-lg border p-4">
+                <div className="text-[11px] uppercase tracking-wide text-slate-500">Dealer</div>
+                <div className="text-sm font-semibold mt-2">{(remittance.dealerEmail ?? "—").trim() || "—"}</div>
+              </div>
+              <div className="rounded-lg border p-4">
+                <div className="text-[11px] uppercase tracking-wide text-slate-500">Payment</div>
+                <div className="text-sm mt-2 text-slate-700">
+                  Method: {(remittance.paymentMethod ?? "—").toString()}
+                  <br />
+                  Date: {(remittance.paymentDate ?? "—").toString()}
+                  <br />
+                  Ref: {(remittance.paymentReference ?? "—").toString()}
+                </div>
               </div>
             </div>
 
             <div className="mt-6 rounded-lg border p-4">
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Read-only notice</div>
               <div className="mt-2 text-sm text-slate-600">
-                Providers can download this report for support purposes. Remittances cannot be edited, approved, or reconciled in the Provider Portal.
+                Providers can download this report for reconciliation purposes. Remittances cannot be edited or approved in the Provider Portal.
               </div>
             </div>
           </div>

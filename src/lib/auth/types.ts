@@ -1,9 +1,11 @@
-export type Role = "UNASSIGNED" | "ADMIN" | "SUPER_ADMIN" | "DEALER" | "DEALER_ADMIN" | "PROVIDER";
+export type Role = "UNASSIGNED" | "ADMIN" | "SUPER_ADMIN" | "DEALER_ADMIN" | "DEALER_EMPLOYEE" | "PROVIDER";
 
 export type AuthUser = {
   id: string;
   email: string;
   role: Role;
+  dealerId?: string;
+  companyName?: string;
 };
 
 export type AuthState = {

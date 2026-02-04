@@ -11,17 +11,41 @@ function read(): Batch[] {
     return parsed
       .map((b): Batch => {
         const createdAt = b.createdAt ?? new Date().toISOString();
+        const derivedStatus = (b.status ?? "OPEN") as Batch["status"];
+        const derivedPaymentStatus = (b.paymentStatus ?? "UNPAID") as Batch["paymentStatus"];
+        const derivedRemittanceStatus = (() => {
+          const s = (b.remittanceStatus ?? "").toString();
+          if (s === "DRAFT" || s === "SUBMITTED" || s === "APPROVED" || s === "REJECTED" || s === "PAID") return s as Batch["remittanceStatus"];
+          if (derivedPaymentStatus === "PAID") return "PAID";
+          if (derivedStatus === "CLOSED") return "SUBMITTED";
+          return "DRAFT";
+        })();
         return {
           id: b.id ?? crypto.randomUUID(),
           batchNumber: b.batchNumber ?? "",
-          status: (b.status ?? "OPEN") as Batch["status"],
-          paymentStatus: (b.paymentStatus ?? "UNPAID") as Batch["paymentStatus"],
+          status: derivedStatus,
+          paymentStatus: derivedPaymentStatus,
+          remittanceStatus: derivedRemittanceStatus,
           contractIds: Array.isArray(b.contractIds) ? (b.contractIds as string[]) : [],
           subtotalCents: typeof b.subtotalCents === "number" ? b.subtotalCents : 0,
           taxRate: typeof b.taxRate === "number" ? b.taxRate : 0,
           taxCents: typeof b.taxCents === "number" ? b.taxCents : 0,
           totalCents: typeof b.totalCents === "number" ? b.totalCents : 0,
           paidAt: typeof b.paidAt === "string" ? b.paidAt : undefined,
+          dealerUserId: typeof b.dealerUserId === "string" ? b.dealerUserId : undefined,
+          dealerEmail: typeof b.dealerEmail === "string" ? b.dealerEmail : undefined,
+          providerId: typeof b.providerId === "string" ? b.providerId : undefined,
+          submittedAt: typeof b.submittedAt === "string" ? b.submittedAt : undefined,
+          reviewedAt: typeof b.reviewedAt === "string" ? b.reviewedAt : undefined,
+          reviewedByUserId: typeof b.reviewedByUserId === "string" ? b.reviewedByUserId : undefined,
+          reviewedByEmail: typeof b.reviewedByEmail === "string" ? b.reviewedByEmail : undefined,
+          rejectionReason: typeof b.rejectionReason === "string" ? b.rejectionReason : undefined,
+          adminNotes: typeof b.adminNotes === "string" ? b.adminNotes : undefined,
+          paymentMethod: typeof (b as any).paymentMethod === "string" ? ((b as any).paymentMethod as any) : undefined,
+          paymentReference: typeof b.paymentReference === "string" ? b.paymentReference : undefined,
+          paymentDate: typeof b.paymentDate === "string" ? b.paymentDate : undefined,
+          paidByUserId: typeof b.paidByUserId === "string" ? b.paidByUserId : undefined,
+          paidByEmail: typeof b.paidByEmail === "string" ? b.paidByEmail : undefined,
           createdAt,
         };
       })
@@ -47,6 +71,7 @@ export const localBatchesApi: BatchesApi = {
       batchNumber: input.batchNumber,
       status: "OPEN",
       paymentStatus: "UNPAID",
+      remittanceStatus: "DRAFT",
       contractIds: [],
       subtotalCents: 0,
       taxRate: 0,
@@ -67,6 +92,8 @@ export const localBatchesApi: BatchesApi = {
       batchNumber: input.batchNumber,
       status: "CLOSED",
       paymentStatus: "UNPAID",
+      remittanceStatus: "SUBMITTED",
+      submittedAt: now,
       contractIds: input.contractIds,
       subtotalCents: input.subtotalCents,
       taxRate: input.taxRate,
@@ -86,9 +113,16 @@ export const localBatchesApi: BatchesApi = {
     if (idx === -1) throw new Error("Batch not found");
 
     const existing = current[idx]!;
-    const hasNonStatusEdits = Object.keys(patch).some((k) => k !== "status");
-    if (hasNonStatusEdits && existing.status === "CLOSED") {
+    const nonEditableWhenSubmitted = new Set(["contractIds", "totalCents", "taxRate", "taxCents", "subtotalCents"]);
+    const hasDealerEdits = Object.keys(patch).some((k) => nonEditableWhenSubmitted.has(k));
+    const currentWorkflow = (existing.remittanceStatus ?? (existing.status === "CLOSED" ? "SUBMITTED" : "DRAFT")) as string;
+    if (hasDealerEdits && (currentWorkflow === "SUBMITTED" || currentWorkflow === "APPROVED" || currentWorkflow === "PAID")) {
       throw new Error("Remittance is locked (submitted remittances cannot be edited)");
+    }
+
+    const hasPaymentEdits = Object.keys(patch).some((k) => k === "paymentMethod" || k === "paymentReference" || k === "paymentDate" || k === "paidAt");
+    if (hasPaymentEdits && currentWorkflow === "PAID") {
+      throw new Error("Remittance is locked (paid remittances cannot be edited)");
     }
 
     const nextItem: Batch = {

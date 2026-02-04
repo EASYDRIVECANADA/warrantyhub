@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { Button } from "../components/ui/button";
@@ -13,6 +13,33 @@ import type { ProviderPublic } from "../lib/providers/types";
 import { alertMissing, confirmProceed } from "../lib/utils";
 import { BRAND } from "../lib/brand";
 import { PageShell } from "../components/PageShell";
+import { getAppMode } from "../lib/runtime";
+import { useAuth } from "../providers/AuthProvider";
+
+const LOCAL_DEALER_MEMBERSHIPS_KEY = "warrantyhub.local.dealer_memberships";
+
+function readLocalDealerMemberships(): Array<{ dealerId?: string; userId?: string }> {
+  const raw = localStorage.getItem(LOCAL_DEALER_MEMBERSHIPS_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as any[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function dealershipUserIds(dealerId: string) {
+  const memberships = readLocalDealerMemberships();
+  const ids = new Set<string>();
+  ids.add(dealerId);
+  for (const m of memberships) {
+    const did = (m?.dealerId ?? "").toString().trim();
+    const uid = (m?.userId ?? "").toString().trim();
+    if (did && uid && did === dealerId) ids.add(uid);
+  }
+  return ids;
+}
 
 function toIsoDateInput(iso: string | undefined) {
   if (!iso) return "";
@@ -118,6 +145,14 @@ export function DealerSearchPage() {
   const api = useMemo(() => getContractsApi(), []);
   const marketplaceApi = useMemo(() => getMarketplaceApi(), []);
   const providersApi = useMemo(() => getProvidersApi(), []);
+  const { user } = useAuth();
+  const mode = useMemo(() => getAppMode(), []);
+
+  if (!user) return <Navigate to="/sign-in" replace />;
+  if (user.role !== "DEALER_ADMIN" && user.role !== "DEALER_EMPLOYEE") return <Navigate to="/" replace />;
+
+  const isEmployee = user.role === "DEALER_EMPLOYEE";
+  const isDealerAdmin = user.role === "DEALER_ADMIN";
 
   const [query, setQuery] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -145,6 +180,32 @@ export function DealerSearchPage() {
 
   const contracts = (contractsQuery.data ?? []) as Contract[];
   const products = (productsQuery.data ?? []) as Product[];
+
+  const uid = (user?.id ?? "").trim();
+  const uem = (user?.email ?? "").trim().toLowerCase();
+  const isMine = (c: Contract) => {
+    const byId = (c.createdByUserId ?? "").trim();
+    const byEmail = (c.createdByEmail ?? "").trim().toLowerCase();
+    if (uid && byId) return byId === uid;
+    if (uem && byEmail) return byEmail === uem;
+    return false;
+  };
+
+  const visibleContracts = (() => {
+    if (isEmployee) return contracts.filter(isMine);
+    if (!isDealerAdmin) return contracts.filter(isMine);
+    if (mode !== "local") return contracts.filter(isMine);
+
+    const did = (user.dealerId ?? "").trim();
+    if (!did) return contracts.filter(isMine);
+    const ids = dealershipUserIds(did);
+    return contracts.filter((c) => {
+      const cdid = (c.dealerId ?? "").trim();
+      if (cdid && cdid === did) return true;
+      const byId = (c.createdByUserId ?? "").trim();
+      return byId && ids.has(byId);
+    });
+  })();
 
   const q = query.trim().toLowerCase();
   const start = parseDateInput(startDate);
@@ -176,7 +237,7 @@ export function DealerSearchPage() {
     setProductId(s.productId);
   };
 
-  const filtered = contracts
+  const filtered = visibleContracts
     .filter((c) => {
       const dateValue = c.updatedAt ?? c.createdAt;
       return withinDateRange(dateValue, start, end);
@@ -491,9 +552,11 @@ export function DealerSearchPage() {
                       <Button size="sm" variant="outline" asChild>
                         <Link to={`/dealer-contracts/${c.id}/print/dealer`}>Dealer</Link>
                       </Button>
-                      <Button size="sm" variant="outline" asChild>
-                        <Link to={`/dealer-contracts/${c.id}/print/provider`}>Provider</Link>
-                      </Button>
+                      {isEmployee ? null : (
+                        <Button size="sm" variant="outline" asChild>
+                          <Link to={`/dealer-contracts/${c.id}/print/provider`}>Provider</Link>
+                        </Button>
+                      )}
                       <Button size="sm" variant="outline" asChild>
                         <Link to={`/dealer-contracts/${c.id}/print/customer`}>Customer</Link>
                       </Button>

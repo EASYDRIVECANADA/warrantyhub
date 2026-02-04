@@ -10,6 +10,7 @@ export type Contract = {
   warrantyId: string;
   contractNumber: string;
   customerName: string;
+  dealerId?: string;
   providerId?: string;
   productId?: string;
   productPricingId?: string;
@@ -17,6 +18,7 @@ export type Contract = {
   pricingTermKm?: number;
   pricingDeductibleCents?: number;
   pricingBasePriceCents?: number;
+  pricingDealerCostCents?: number;
   createdByUserId?: string;
   createdByEmail?: string;
   soldByUserId?: string;
@@ -51,6 +53,7 @@ export type Contract = {
 export type CreateContractInput = {
   contractNumber: string;
   customerName: string;
+  dealerId?: string;
   providerId?: string;
   productId?: string;
   productPricingId?: string;
@@ -58,6 +61,7 @@ export type CreateContractInput = {
   pricingTermKm?: number;
   pricingDeductibleCents?: number;
   pricingBasePriceCents?: number;
+  pricingDealerCostCents?: number;
   createdByUserId?: string;
   createdByEmail?: string;
   customerEmail?: string;

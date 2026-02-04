@@ -15,6 +15,7 @@ type ContractsRow = {
   pricing_term_km?: number | null;
   pricing_deductible_cents?: number | null;
   pricing_base_price_cents?: number | null;
+  pricing_dealer_cost_cents?: number | null;
   created_by_user_id?: string | null;
   created_by_email?: string | null;
   sold_by_user_id?: string | null;
@@ -61,6 +62,7 @@ function toContract(r: ContractsRow): Contract {
     pricingTermKm: typeof r.pricing_term_km === "number" ? r.pricing_term_km : undefined,
     pricingDeductibleCents: typeof r.pricing_deductible_cents === "number" ? r.pricing_deductible_cents : undefined,
     pricingBasePriceCents: typeof r.pricing_base_price_cents === "number" ? r.pricing_base_price_cents : undefined,
+    pricingDealerCostCents: typeof r.pricing_dealer_cost_cents === "number" ? r.pricing_dealer_cost_cents : undefined,
     createdByUserId: r.created_by_user_id ?? undefined,
     createdByEmail: r.created_by_email ?? undefined,
     soldByUserId: r.sold_by_user_id ?? undefined,
@@ -168,6 +170,7 @@ export const supabaseContractsApi: ContractsApi = {
       status: "DRAFT",
       vehicle_mileage_km: typeof input.vehicleMileageKm === "number" ? input.vehicleMileageKm : undefined,
       updated_at: now,
+      pricing_dealer_cost_cents: typeof input.pricingDealerCostCents === "number" ? input.pricingDealerCostCents : undefined,
     };
 
     const attempt = await supabase.from("contracts").insert(extendedInsert).select("*").single();
@@ -264,6 +267,11 @@ export const supabaseContractsApi: ContractsApi = {
       const v = (patch as any).pricingBasePriceCents as number | null | undefined;
       if (typeof v === "number") updateRowBase.pricing_base_price_cents = v;
       if (v === null) updateRowBase.pricing_base_price_cents = null;
+    }
+    if ("pricingDealerCostCents" in patch) {
+      const v = (patch as any).pricingDealerCostCents as number | null | undefined;
+      if (typeof v === "number") (updateRowBase as any).pricing_dealer_cost_cents = v;
+      if (v === null) (updateRowBase as any).pricing_dealer_cost_cents = null;
     }
 
     if (typeof patch.createdByUserId === "string") updateRowBase.created_by_user_id = patch.createdByUserId;

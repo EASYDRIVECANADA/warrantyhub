@@ -178,7 +178,7 @@ export function SupportFaqs({ compact = false }: { compact?: boolean }) {
       <summary className="cursor-pointer select-none px-3 py-2">
         <span className={titleClass}>FAQs</span>
         <span className={compact ? "ml-2 text-[11px] text-muted-foreground" : "ml-2 text-xs text-muted-foreground"}>
-          Bridge Warranty — Help & Support
+          Bridge Warranty-Help & Support
         </span>
       </summary>
       <div className="px-3 pb-3">
