@@ -6,7 +6,8 @@ import { useMutation } from "@tanstack/react-query";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { PageShell } from "../components/PageShell";
-import { costFromProductOrPricing, getDealerMarkupPct, retailFromCost } from "../lib/dealerPricing";
+import { costFromProductOrPricing, retailFromCost } from "../lib/dealerPricing";
+import { useDealerMarkupPct } from "../lib/dealerMarkup";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
 import type { Product, ProductType } from "../lib/products/types";
 import { getProvidersApi } from "../lib/providers/providers";
@@ -90,7 +91,7 @@ export function DealerMarketplacePage() {
   const [maxDeductible, setMaxDeductible] = useState("");
 
   const dealerId = (user?.dealerId ?? user?.id ?? "").trim();
-  const markupPct = useMemo(() => getDealerMarkupPct(dealerId), [dealerId]);
+  const { markupPct } = useDealerMarkupPct(dealerId);
   const canSeeCost = user?.role === "DEALER_ADMIN";
 
   const decodeMutation = useMutation({

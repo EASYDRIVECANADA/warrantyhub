@@ -7,7 +7,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { PageShell } from "../components/PageShell";
 import { getAppMode } from "../lib/runtime";
-import { getDealerMarkupPct, setDealerMarkupPct } from "../lib/dealerPricing";
+import { useDealerMarkupPct } from "../lib/dealerMarkup";
 import { listAuditEvents, logAuditEvent } from "../lib/auditLog";
 import { useAuth } from "../providers/AuthProvider";
 import { getBatchesApi } from "../lib/batches/batches";
@@ -154,12 +154,17 @@ export function DealerAdminPage() {
   if (user.role !== "DEALER_ADMIN") return <Navigate to="/dealer-dashboard" replace />;
 
   const dealerId = (user.dealerId ?? user.id).trim();
-  const [markupPct, setMarkupPct] = useState(() => String(getDealerMarkupPct(dealerId)));
+  const { markupPct: persistedMarkupPct, saveMarkupPct, isSaving: isSavingMarkup } = useDealerMarkupPct(dealerId);
+  const [markupPct, setMarkupPct] = useState("");
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
   const recentAudit = useMemo(() => listAuditEvents({ dealerId, limit: 25 }), [dealerId]);
 
   const dealerKey = dealerId;
+
+  useEffect(() => {
+    setMarkupPct(String(persistedMarkupPct));
+  }, [dealerId, persistedMarkupPct]);
 
   useEffect(() => {
     if (!dealerKey) return;
@@ -498,9 +503,8 @@ export function DealerAdminPage() {
                     onChange={(e) => setMarkupPct(e.target.value)}
                     placeholder="e.g. 25"
                     inputMode="decimal"
-                    disabled={mode !== "local"}
+                    disabled={!dealerId || isSavingMarkup}
                   />
-                  {mode !== "local" ? <div className="mt-2 text-xs text-muted-foreground">Markup settings are only editable in local mode.</div> : null}
                   {savedAt ? <div className="mt-2 text-xs text-muted-foreground">Saved {savedAt}</div> : null}
                 </div>
 
@@ -508,14 +512,14 @@ export function DealerAdminPage() {
 
                 <Button
                   onClick={() => {
-                    if (mode !== "local") return;
-                    const n = Number(markupPct);
-                    setDealerMarkupPct(dealerId, n);
-                    setMarkupPct(String(getDealerMarkupPct(dealerId)));
-                    setSavedAt(new Date().toLocaleString());
+                    void (async () => {
+                      const n = Number(markupPct);
+                      await saveMarkupPct(n);
+                      setSavedAt(new Date().toLocaleString());
+                    })();
                   }}
-                  disabled={mode !== "local"}
-                  className={mode !== "local" ? undefined : "bg-yellow-400 text-black hover:bg-yellow-300"}
+                  disabled={!dealerId || isSavingMarkup}
+                  className="bg-yellow-400 text-black hover:bg-yellow-300"
                 >
                   Save
                 </Button>

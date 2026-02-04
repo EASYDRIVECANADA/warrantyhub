@@ -17,6 +17,37 @@ type ProfileAuthState = {
   isActive: boolean;
 };
 
+type DealerMembershipInfo = {
+  dealerId?: string;
+  dealerName?: string;
+};
+
+async function getActiveDealerMembershipInfo(userId: string): Promise<DealerMembershipInfo> {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error("Supabase is not configured");
+
+  const { data, error } = await supabase
+    .from("dealer_members")
+    .select("dealer_id, dealers(name), role, status, created_at")
+    .eq("user_id", userId)
+    .eq("status", "ACTIVE")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) return {};
+
+  const dealerId = (data as any)?.dealer_id ?? undefined;
+  const dealers = (data as any)?.dealers;
+  const dealerName = (dealers?.name ?? dealers?.[0]?.name ?? "").toString().trim() || undefined;
+
+  return {
+    dealerId: typeof dealerId === "string" ? dealerId : undefined,
+    dealerName,
+  };
+}
+
 async function getProfileAuthState(userId: string, email: string): Promise<ProfileAuthState> {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error("Supabase is not configured");
@@ -73,7 +104,15 @@ export const supabaseAuthApi: AuthApi = {
       return null;
     }
 
-    return { id: user.id, email: user.email, role: state.effectiveRole };
+    const base = { id: user.id, email: user.email, role: state.effectiveRole };
+    if (state.effectiveRole !== "DEALER_ADMIN" && state.effectiveRole !== "DEALER_EMPLOYEE") return base;
+
+    const membership = await getActiveDealerMembershipInfo(user.id);
+    return {
+      ...base,
+      dealerId: membership.dealerId,
+      companyName: membership.dealerName,
+    };
   },
 
   async signInWithGoogle() {
@@ -117,7 +156,16 @@ export const supabaseAuthApi: AuthApi = {
       }
       throw new Error("Access revoked");
     }
-    return { id: user.id, email: user.email, role: state.effectiveRole };
+
+    const base = { id: user.id, email: user.email, role: state.effectiveRole };
+    if (state.effectiveRole !== "DEALER_ADMIN" && state.effectiveRole !== "DEALER_EMPLOYEE") return base;
+
+    const membership = await getActiveDealerMembershipInfo(user.id);
+    return {
+      ...base,
+      dealerId: membership.dealerId,
+      companyName: membership.dealerName,
+    };
   },
 
   async signUpWithPassword(email, password) {

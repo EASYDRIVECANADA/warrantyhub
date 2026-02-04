@@ -462,8 +462,21 @@ create policy "access_request_audit_insert_admin"
 create table if not exists public.dealers (
   id uuid primary key default gen_random_uuid(),
   name text not null,
+  markup_pct numeric not null default 0,
   created_at timestamptz not null default now()
 );
+
+do $$
+begin
+  alter table public.dealers
+    drop constraint if exists dealers_markup_pct_check;
+
+  alter table public.dealers
+    add constraint dealers_markup_pct_check
+    check (markup_pct >= 0 and markup_pct <= 200);
+exception
+  when duplicate_object then null;
+end $$;
 
 create table if not exists public.dealer_members (
   id uuid primary key default gen_random_uuid(),
@@ -479,20 +492,75 @@ alter table public.dealers enable row level security;
 alter table public.dealer_members enable row level security;
 
 drop policy if exists "dealers_all_authenticated" on public.dealers;
-create policy "dealers_all_authenticated"
+
+drop policy if exists "dealers_admin_all" on public.dealers;
+create policy "dealers_admin_all"
   on public.dealers
   for all
   to authenticated
-  using (true)
-  with check (true);
+  using (public.current_role() in ('ADMIN','SUPER_ADMIN'))
+  with check (public.current_role() in ('ADMIN','SUPER_ADMIN'));
+
+drop policy if exists "dealers_member_select" on public.dealers;
+create policy "dealers_member_select"
+  on public.dealers
+  for select
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.dealer_members dm
+      where dm.dealer_id = dealers.id
+        and dm.user_id = auth.uid()
+        and dm.status = 'ACTIVE'
+    )
+  );
+
+drop policy if exists "dealers_dealer_admin_update_markup" on public.dealers;
+create policy "dealers_dealer_admin_update_markup"
+  on public.dealers
+  for update
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.dealer_members dm
+      where dm.dealer_id = dealers.id
+        and dm.user_id = auth.uid()
+        and dm.status = 'ACTIVE'
+        and dm.role = 'DEALER_ADMIN'
+    )
+  )
+  with check (
+    markup_pct >= 0 and markup_pct <= 200
+    and name is not distinct from (select old.name from public.dealers old where old.id = dealers.id)
+    and created_at is not distinct from (select old.created_at from public.dealers old where old.id = dealers.id)
+  );
 
 drop policy if exists "dealer_members_all_authenticated" on public.dealer_members;
-create policy "dealer_members_all_authenticated"
+
+drop policy if exists "dealer_members_admin_all" on public.dealer_members;
+create policy "dealer_members_admin_all"
   on public.dealer_members
   for all
   to authenticated
-  using (true)
-  with check (true);
+  using (public.current_role() in ('ADMIN','SUPER_ADMIN'))
+  with check (public.current_role() in ('ADMIN','SUPER_ADMIN'));
+
+drop policy if exists "dealer_members_member_select" on public.dealer_members;
+create policy "dealer_members_member_select"
+  on public.dealer_members
+  for select
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.dealer_members dm
+      where dm.dealer_id = dealer_members.dealer_id
+        and dm.user_id = auth.uid()
+        and dm.status = 'ACTIVE'
+    )
+  );
 
 create table if not exists public.access_requests (
   id uuid primary key default gen_random_uuid(),

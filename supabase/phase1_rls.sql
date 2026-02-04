@@ -192,6 +192,27 @@ create policy "dealers_member_select"
     )
   );
 
+drop policy if exists "dealers_dealer_admin_update_markup" on public.dealers;
+create policy "dealers_dealer_admin_update_markup"
+  on public.dealers
+  for update
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.dealer_members dm
+      where dm.dealer_id = dealers.id
+        and dm.user_id = auth.uid()
+        and dm.status = 'ACTIVE'
+        and dm.role = 'DEALER_ADMIN'
+    )
+  )
+  with check (
+    markup_pct >= 0 and markup_pct <= 200
+    and name is not distinct from (select old.name from public.dealers old where old.id = dealers.id)
+    and created_at is not distinct from (select old.created_at from public.dealers old where old.id = dealers.id)
+  );
+
 -- ------------------------
 -- dealer_members policies
 -- ------------------------

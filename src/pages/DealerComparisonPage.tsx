@@ -5,7 +5,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { PageShell } from "../components/PageShell";
-import { costFromProductOrPricing, getDealerMarkupPct, marginFromCostAndRetail, retailFromCost } from "../lib/dealerPricing";
+import { costFromProductOrPricing, marginFromCostAndRetail, retailFromCost } from "../lib/dealerPricing";
+import { useDealerMarkupPct } from "../lib/dealerMarkup";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
 import { getProvidersApi } from "../lib/providers/providers";
 import type { ProviderPublic } from "../lib/providers/types";
@@ -80,7 +81,7 @@ export function DealerComparisonPage() {
   const { user } = useAuth();
 
   const dealerId = (user?.dealerId ?? user?.id ?? "").trim();
-  const markupPct = useMemo(() => getDealerMarkupPct(dealerId), [dealerId]);
+  const { markupPct } = useDealerMarkupPct(dealerId);
   const canSeeCost = user?.role === "DEALER_ADMIN";
   const [vin, setVin] = useState("");
   const [decoded, setDecoded] = useState<VinDecoded | null>(null);

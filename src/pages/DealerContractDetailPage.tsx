@@ -12,11 +12,11 @@ import { getMarketplaceApi } from "../lib/marketplace/marketplace";
 import { getProductPricingApi } from "../lib/productPricing/productPricing";
 import {
   costFromProductOrPricing,
-  getDealerMarkupPct,
   marginFromCostAndRetail,
   marginPctFromCostAndRetail,
   retailFromCost,
 } from "../lib/dealerPricing";
+import { useDealerMarkupPct } from "../lib/dealerMarkup";
 import { getAppMode } from "../lib/runtime";
 import { alertMissing, confirmProceed, sanitizeDigitsOnly, sanitizeLettersOnly, sanitizeWordsOnly } from "../lib/utils";
 import { getProvidersApi } from "../lib/providers/providers";
@@ -104,7 +104,7 @@ export function DealerContractDetailPage() {
   const isEmployee = user?.role === "DEALER_EMPLOYEE";
   const canSeeCost = user?.role === "DEALER_ADMIN";
   const dealerId = (user?.dealerId ?? user?.id ?? "").trim();
-  const markupPct = useMemo(() => getDealerMarkupPct(dealerId), [dealerId]);
+  const { markupPct } = useDealerMarkupPct(dealerId);
 
   const api = useMemo(() => getContractsApi(), []);
   const marketplaceApi = useMemo(() => getMarketplaceApi(), []);

@@ -14,10 +14,10 @@ import { getProvidersApi } from "../lib/providers/providers";
 import type { ProviderPublic } from "../lib/providers/types";
 import {
   costFromProductOrPricing,
-  getDealerMarkupPct,
   marginFromCostAndRetail,
   retailFromCost,
 } from "../lib/dealerPricing";
+import { useDealerMarkupPct } from "../lib/dealerMarkup";
 import { useAuth } from "../providers/AuthProvider";
 
 function productTypeLabel(t: ProductType) {
@@ -59,7 +59,7 @@ export function DealerMarketplaceProductDetailPage() {
   const productId = id ?? "";
 
   const dealerId = (user?.dealerId ?? user?.id ?? "").trim();
-  const markupPct = useMemo(() => getDealerMarkupPct(dealerId), [dealerId]);
+  const { markupPct } = useDealerMarkupPct(dealerId);
   const canSeeCost = user?.role === "DEALER_ADMIN";
 
   const marketplaceApi = useMemo(() => getMarketplaceApi(), []);
