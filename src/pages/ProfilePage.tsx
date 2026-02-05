@@ -24,6 +24,12 @@ export function ProfilePage() {
               <div className="text-muted-foreground">Role</div>
               <div className="font-medium">{user?.role ?? "—"}</div>
             </div>
+            {user?.role === "DEALER_ADMIN" || user?.role === "DEALER_EMPLOYEE" ? (
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-muted-foreground">Dealership</div>
+                <div className="font-medium break-words text-right">{user?.companyName ?? user?.dealerId ?? "—"}</div>
+              </div>
+            ) : null}
             <div className="flex items-center justify-between gap-3">
               <div className="text-muted-foreground">Mode</div>
               <div className="font-medium">{mode === "supabase" ? "Supabase" : "Local"}</div>
