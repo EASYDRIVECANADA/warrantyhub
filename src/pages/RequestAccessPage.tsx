@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -30,6 +31,7 @@ const SIGNUP_DEALERSHIP_OMVIC_CERTIFICATE_KEY = "warrantyhub.signup_dealership_o
 const SIGNUP_DEALERSHIP_HST_NUMBER_KEY = "warrantyhub.signup_dealership_hst_number";
 
 export function RequestAccessPage() {
+  const navigate = useNavigate();
   const mode = useMemo(() => getAppMode(), []);
   const { user, refreshUser } = useAuth();
 
@@ -37,6 +39,7 @@ export function RequestAccessPage() {
   const [autoRequested, setAutoRequested] = useState(false);
   const [autoJoined, setAutoJoined] = useState(false);
   const [autoJoining, setAutoJoining] = useState(false);
+  const [autoJoinError, setAutoJoinError] = useState<string | null>(null);
 
   const [requestType, setRequestType] = useState<RequestType>("DEALER");
   const [company, setCompany] = useState("");
@@ -103,6 +106,7 @@ export function RequestAccessPage() {
     if (!user) return;
     if (mode !== "supabase") return;
     if (signupIntent !== "DEALER_EMPLOYEE") return;
+    if (autoJoinError) return;
     if (autoJoined || autoJoining) return;
 
     const code = (localStorage.getItem(SIGNUP_INVITE_CODE_KEY) ?? "").trim().toUpperCase();
@@ -119,6 +123,7 @@ export function RequestAccessPage() {
 
     setAutoJoining(true);
     setError(null);
+    setAutoJoinError(null);
 
     void (async () => {
       try {
@@ -137,12 +142,18 @@ export function RequestAccessPage() {
         setAutoJoined(true);
         await refreshUser();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to join dealership");
+        setAutoJoinError(err instanceof Error ? err.message : "Failed to join dealership");
       } finally {
         setAutoJoining(false);
       }
     })();
-  }, [autoJoined, autoJoining, mode, refreshUser, signupIntent, user]);
+  }, [autoJoinError, autoJoined, autoJoining, mode, refreshUser, signupIntent, user]);
+
+  useEffect(() => {
+    if (!user) return;
+    if (user.role !== "DEALER_EMPLOYEE") return;
+    navigate("/dealer-dashboard", { replace: true });
+  }, [navigate, user]);
 
   const submitRequest = async ({ auto }: { auto: boolean }) => {
     const fixedDealership = signupIntent === "DEALERSHIP";
@@ -347,6 +358,25 @@ export function RequestAccessPage() {
 
         {autoJoining ? (
           <div className="mt-6 rounded-lg border bg-card p-4 text-sm">Joining your dealership…</div>
+        ) : null}
+
+        {autoJoinError ? (
+          <div className="mt-6 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+            <div className="font-medium">Could not join dealership</div>
+            <div className="mt-1">{autoJoinError}</div>
+            <div className="mt-4">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setAutoJoinError(null);
+                  setAutoJoined(false);
+                }}
+              >
+                Retry
+              </Button>
+            </div>
+          </div>
         ) : null}
 
         {loadingMyRequest ? (
