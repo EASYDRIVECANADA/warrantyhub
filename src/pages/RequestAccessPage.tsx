@@ -35,6 +35,8 @@ export function RequestAccessPage() {
 
   const [signupIntent, setSignupIntent] = useState<string | null>(null);
   const [autoRequested, setAutoRequested] = useState(false);
+  const [autoJoined, setAutoJoined] = useState(false);
+  const [autoJoining, setAutoJoining] = useState(false);
 
   const [requestType, setRequestType] = useState<RequestType>("DEALER");
   const [company, setCompany] = useState("");
@@ -96,6 +98,51 @@ export function RequestAccessPage() {
     } catch {
     }
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    if (mode !== "supabase") return;
+    if (signupIntent !== "DEALER_EMPLOYEE") return;
+    if (autoJoined || autoJoining) return;
+
+    const code = (localStorage.getItem(SIGNUP_INVITE_CODE_KEY) ?? "").trim().toUpperCase();
+    if (!code) return;
+    if (user.role !== "UNASSIGNED") {
+      setAutoJoined(true);
+      try {
+        localStorage.removeItem(SIGNUP_INTENT_KEY);
+        localStorage.removeItem(SIGNUP_INVITE_CODE_KEY);
+      } catch {
+      }
+      return;
+    }
+
+    setAutoJoining(true);
+    setError(null);
+
+    void (async () => {
+      try {
+        const supabase = getSupabaseClient();
+        if (!supabase) throw new Error("Supabase is not configured");
+
+        const { error: joinError } = await supabase.rpc("join_dealer_by_invite", { invite_code: code });
+        if (joinError) throw new Error(joinError.message);
+
+        try {
+          localStorage.removeItem(SIGNUP_INTENT_KEY);
+          localStorage.removeItem(SIGNUP_INVITE_CODE_KEY);
+        } catch {
+        }
+
+        setAutoJoined(true);
+        await refreshUser();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to join dealership");
+      } finally {
+        setAutoJoining(false);
+      }
+    })();
+  }, [autoJoined, autoJoining, mode, refreshUser, signupIntent, user]);
 
   const submitRequest = async ({ auto }: { auto: boolean }) => {
     const fixedDealership = signupIntent === "DEALERSHIP";
@@ -298,6 +345,10 @@ export function RequestAccessPage() {
           Your account is created, but access must be approved by an admin.
         </p>
 
+        {autoJoining ? (
+          <div className="mt-6 rounded-lg border bg-card p-4 text-sm">Joining your dealership…</div>
+        ) : null}
+
         {loadingMyRequest ? (
           <div className="mt-6 rounded-lg border bg-card p-4 text-sm">Loading request status…</div>
         ) : null}
@@ -369,7 +420,7 @@ export function RequestAccessPage() {
           </div>
         ) : null}
 
-        {signupIntent === "DEALERSHIP" ? null : (!loadingMyRequest && myRequest?.status === "PENDING" ? null : (
+        {signupIntent === "DEALERSHIP" || autoJoining ? null : (!loadingMyRequest && myRequest?.status === "PENDING" ? null : (
           <form className="mt-6 space-y-4" onSubmit={onSubmit}>
           <div className="space-y-2">
             <label className="text-sm font-medium">I am a…</label>
