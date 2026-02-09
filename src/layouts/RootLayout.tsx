@@ -8,13 +8,31 @@ import { useAuth } from "../providers/AuthProvider";
 
 class RouteErrorBoundary extends Component<
   { children: React.ReactNode },
-  { hasError: boolean; message?: string }
+  { hasError: boolean; message?: string; details?: string }
 > {
-  state: { hasError: boolean; message?: string } = { hasError: false };
+  state: { hasError: boolean; message?: string; details?: string } = { hasError: false };
 
   static getDerivedStateFromError(err: unknown) {
     const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "Unexpected error";
     return { hasError: true, message: msg };
+  }
+
+  componentDidCatch(err: unknown, info: unknown) {
+    const errorObj = err instanceof Error ? err : null;
+    const errorMessage = errorObj?.message ?? (typeof err === "string" ? err : "Unexpected error");
+    const errorStack = errorObj?.stack ?? "";
+    const componentStack = (info as any)?.componentStack ? String((info as any).componentStack) : "";
+    const details = [
+      `Message: ${errorMessage}`,
+      errorStack ? `\nStack:\n${errorStack}` : "",
+      componentStack ? `\nComponent stack:${componentStack}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    // eslint-disable-next-line no-console
+    console.error("RouteErrorBoundary caught an error", err, info);
+    this.setState({ details });
   }
 
   render() {
@@ -23,9 +41,27 @@ class RouteErrorBoundary extends Component<
         <div style={{ padding: 24 }}>
           <div style={{ fontWeight: 600, marginBottom: 8 }}>Something went wrong.</div>
           <div style={{ color: "#6b7280" }}>{this.state.message ?? "Unexpected error"}</div>
+          {this.state.details ? (
+            <pre
+              style={{
+                marginTop: 12,
+                padding: 12,
+                border: "1px solid #e5e7eb",
+                borderRadius: 6,
+                background: "#f9fafb",
+                color: "#111827",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                fontSize: 12,
+                lineHeight: 1.4,
+              }}
+            >
+              {this.state.details}
+            </pre>
+          ) : null}
           <button
             style={{ marginTop: 16, padding: "8px 12px", border: "1px solid #e5e7eb", borderRadius: 6 }}
-            onClick={() => this.setState({ hasError: false, message: undefined })}
+            onClick={() => this.setState({ hasError: false, message: undefined, details: undefined })}
             type="button"
           >
             Try again
