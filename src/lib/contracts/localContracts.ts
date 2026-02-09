@@ -24,11 +24,22 @@ function read(): Contract[] {
           providerId: c.providerId,
           productId: c.productId,
           productPricingId: c.productPricingId,
-          pricingTermMonths: typeof c.pricingTermMonths === "number" ? c.pricingTermMonths : undefined,
-          pricingTermKm: typeof c.pricingTermKm === "number" ? c.pricingTermKm : undefined,
+          pricingTermMonths: typeof c.pricingTermMonths === "number" ? c.pricingTermMonths : c.pricingTermMonths === null ? null : undefined,
+          pricingTermKm: typeof c.pricingTermKm === "number" ? c.pricingTermKm : c.pricingTermKm === null ? null : undefined,
+          pricingVehicleMileageMinKm: typeof (c as any).pricingVehicleMileageMinKm === "number" ? (c as any).pricingVehicleMileageMinKm : undefined,
+          pricingVehicleMileageMaxKm:
+            typeof (c as any).pricingVehicleMileageMaxKm === "number"
+              ? (c as any).pricingVehicleMileageMaxKm
+              : (c as any).pricingVehicleMileageMaxKm === null
+                ? null
+                : undefined,
+          pricingVehicleClass: typeof (c as any).pricingVehicleClass === "string" ? (c as any).pricingVehicleClass : undefined,
           pricingDeductibleCents: typeof c.pricingDeductibleCents === "number" ? c.pricingDeductibleCents : undefined,
           pricingBasePriceCents: typeof c.pricingBasePriceCents === "number" ? c.pricingBasePriceCents : undefined,
           pricingDealerCostCents: typeof c.pricingDealerCostCents === "number" ? c.pricingDealerCostCents : undefined,
+          addonSnapshot: (c as any).addonSnapshot,
+          addonTotalRetailCents: typeof (c as any).addonTotalRetailCents === "number" ? (c as any).addonTotalRetailCents : undefined,
+          addonTotalCostCents: typeof (c as any).addonTotalCostCents === "number" ? (c as any).addonTotalCostCents : undefined,
           createdByUserId: c.createdByUserId,
           createdByEmail: c.createdByEmail,
           soldByUserId: c.soldByUserId,
@@ -101,11 +112,22 @@ export const localContractsApi: ContractsApi = {
       providerId: input.providerId,
       productId: input.productId,
       productPricingId: input.productPricingId,
-      pricingTermMonths: typeof input.pricingTermMonths === "number" ? input.pricingTermMonths : undefined,
-      pricingTermKm: typeof input.pricingTermKm === "number" ? input.pricingTermKm : undefined,
+      pricingTermMonths: typeof input.pricingTermMonths === "number" ? input.pricingTermMonths : input.pricingTermMonths === null ? null : undefined,
+      pricingTermKm: typeof input.pricingTermKm === "number" ? input.pricingTermKm : input.pricingTermKm === null ? null : undefined,
+      pricingVehicleMileageMinKm: typeof (input as any).pricingVehicleMileageMinKm === "number" ? (input as any).pricingVehicleMileageMinKm : undefined,
+      pricingVehicleMileageMaxKm:
+        typeof (input as any).pricingVehicleMileageMaxKm === "number"
+          ? (input as any).pricingVehicleMileageMaxKm
+          : (input as any).pricingVehicleMileageMaxKm === null
+            ? null
+            : undefined,
+      pricingVehicleClass: typeof (input as any).pricingVehicleClass === "string" ? (input as any).pricingVehicleClass : undefined,
       pricingDeductibleCents: typeof input.pricingDeductibleCents === "number" ? input.pricingDeductibleCents : undefined,
       pricingBasePriceCents: typeof input.pricingBasePriceCents === "number" ? input.pricingBasePriceCents : undefined,
       pricingDealerCostCents: typeof input.pricingDealerCostCents === "number" ? input.pricingDealerCostCents : undefined,
+      addonSnapshot: (input as any).addonSnapshot,
+      addonTotalRetailCents: typeof (input as any).addonTotalRetailCents === "number" ? (input as any).addonTotalRetailCents : undefined,
+      addonTotalCostCents: typeof (input as any).addonTotalCostCents === "number" ? (input as any).addonTotalCostCents : undefined,
       createdByUserId: input.createdByUserId,
       createdByEmail: input.createdByEmail,
       customerEmail: input.customerEmail,
@@ -163,11 +185,23 @@ export const localContractsApi: ContractsApi = {
     }
     if ("pricingTermMonths" in patch) {
       const v = (patch as any).pricingTermMonths as number | null | undefined;
-      normalizedPatch.pricingTermMonths = typeof v === "number" ? v : undefined;
+      if (typeof v === "number" || v === null) normalizedPatch.pricingTermMonths = v;
     }
     if ("pricingTermKm" in patch) {
       const v = (patch as any).pricingTermKm as number | null | undefined;
-      normalizedPatch.pricingTermKm = typeof v === "number" ? v : undefined;
+      if (typeof v === "number" || v === null) normalizedPatch.pricingTermKm = v;
+    }
+    if ("pricingVehicleMileageMinKm" in patch) {
+      const v = (patch as any).pricingVehicleMileageMinKm as number | null | undefined;
+      if (typeof v === "number" || v === null) (normalizedPatch as any).pricingVehicleMileageMinKm = v === null ? undefined : v;
+    }
+    if ("pricingVehicleMileageMaxKm" in patch) {
+      const v = (patch as any).pricingVehicleMileageMaxKm as number | null | undefined;
+      if (typeof v === "number" || v === null) (normalizedPatch as any).pricingVehicleMileageMaxKm = v;
+    }
+    if ("pricingVehicleClass" in patch) {
+      const v = (patch as any).pricingVehicleClass as string | null | undefined;
+      if (typeof v === "string") (normalizedPatch as any).pricingVehicleClass = v;
     }
     if ("pricingDeductibleCents" in patch) {
       const v = (patch as any).pricingDeductibleCents as number | null | undefined;
@@ -180,6 +214,18 @@ export const localContractsApi: ContractsApi = {
     if ("pricingDealerCostCents" in patch) {
       const v = (patch as any).pricingDealerCostCents as number | null | undefined;
       normalizedPatch.pricingDealerCostCents = typeof v === "number" ? v : undefined;
+    }
+    if ("addonSnapshot" in patch) {
+      const v = (patch as any).addonSnapshot as unknown | null | undefined;
+      (normalizedPatch as any).addonSnapshot = v === null ? undefined : v;
+    }
+    if ("addonTotalRetailCents" in patch) {
+      const v = (patch as any).addonTotalRetailCents as number | null | undefined;
+      (normalizedPatch as any).addonTotalRetailCents = typeof v === "number" ? v : undefined;
+    }
+    if ("addonTotalCostCents" in patch) {
+      const v = (patch as any).addonTotalCostCents as number | null | undefined;
+      (normalizedPatch as any).addonTotalCostCents = typeof v === "number" ? v : undefined;
     }
 
     const next: Contract = {

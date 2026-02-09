@@ -11,7 +11,6 @@ import type { Product } from "../lib/products/types";
 import { BRAND } from "../lib/brand";
 import { getAppMode } from "../lib/runtime";
 import { useAuth } from "../providers/AuthProvider";
-import { costFromProductOrPricing } from "../lib/dealerPricing";
 
 function money(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;
@@ -113,14 +112,17 @@ export function DealerRemittanceBatchPrintPage() {
         const amountCents =
           typeof c?.pricingDealerCostCents === "number"
             ? c.pricingDealerCostCents
-            : costFromProductOrPricing({ dealerCostCents: p?.dealerCostCents, basePriceCents: p?.basePriceCents }) ?? 0;
+            : typeof c?.pricingBasePriceCents === "number"
+              ? c.pricingBasePriceCents
+              : 0;
+        const addonCostCents = typeof c?.addonTotalCostCents === "number" ? c.addonTotalCostCents : 0;
         return {
           id: cid,
           warrantyId: c?.warrantyId ?? "—",
           contractNumber: c?.contractNumber ?? "—",
           customerName: c?.customerName ?? "—",
           productName: p?.name ?? "—",
-          amountCents,
+          amountCents: amountCents + addonCostCents,
         };
       })
     : [];

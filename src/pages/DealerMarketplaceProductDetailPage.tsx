@@ -96,15 +96,22 @@ export function DealerMarketplaceProductDetailPage() {
   const docs = (docsQuery.data ?? []) as ProductDocument[];
 
   const pricingQuery = useQuery({
-    queryKey: ["dealer-product-pricing", productId],
-    enabled: Boolean(productId),
+    queryKey: ["marketplace-product-pricing", productId],
+    enabled: !!productId,
     queryFn: () => productPricingApi.list({ productId }),
   });
 
   const pricingRows = (pricingQuery.data ?? []) as ProductPricing[];
+
   const sortedPricingRows = pricingRows
     .slice()
-    .sort((a, b) => (a.termMonths - b.termMonths) || (a.termKm - b.termKm) || (a.deductibleCents - b.deductibleCents));
+    .sort((a, b) => {
+      const am = a.termMonths ?? Number.MAX_SAFE_INTEGER;
+      const bm = b.termMonths ?? Number.MAX_SAFE_INTEGER;
+      const ak = a.termKm ?? Number.MAX_SAFE_INTEGER;
+      const bk = b.termKm ?? Number.MAX_SAFE_INTEGER;
+      return (am - bm) || (ak - bk) || (a.deductibleCents - b.deductibleCents);
+    });
 
   return (
     <PageShell
@@ -140,6 +147,36 @@ export function DealerMarketplaceProductDetailPage() {
                   <div className="font-medium mt-1">{productTypeLabel(product.productType)}</div>
                 </div>
 
+                <div className="rounded-xl border p-4">
+                  <div className="text-xs text-muted-foreground">Plan defaults</div>
+                  <div className="mt-2 grid grid-cols-2 gap-3">
+                    <div>
+                      <div className="text-[11px] text-muted-foreground">Default term</div>
+                      <div className="font-medium text-foreground">
+                        {typeof product.termMonths === "number" ? `${product.termMonths} months` : "—"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-muted-foreground">Default claim limit</div>
+                      <div className="font-medium text-foreground">
+                        {typeof product.termKm === "number" ? `${product.termKm.toLocaleString()} km` : "—"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-muted-foreground">Default deductible</div>
+                      <div className="font-medium text-foreground">{money(product.deductibleCents)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-muted-foreground">Published</div>
+                      <div className="font-medium text-foreground">{product.published ? "Yes" : "No"}</div>
+                    </div>
+                    <div className="col-span-2">
+                      <div className="text-[11px] text-muted-foreground">Last updated</div>
+                      <div className="font-medium text-foreground">{new Date(product.updatedAt).toLocaleString()}</div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="rounded-xl border p-4 md:col-span-2">
                   <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div>
@@ -171,11 +208,21 @@ export function DealerMarketplaceProductDetailPage() {
                     </div>
                   </div>
 
+                  <div className="mt-3 rounded-lg border bg-muted/20 p-3">
+                    <div className="text-[11px] text-muted-foreground">Default pricing (fallback)</div>
+                    <div className="mt-1 text-sm text-muted-foreground">
+                      {canSeeCost ? `Cost ${money(product.dealerCostCents)} • Retail ${money(product.basePriceCents)}` : `Retail ${money(product.basePriceCents)}`}
+                    </div>
+                  </div>
+
                   <div className="mt-3 overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b">
                           <th className="text-left py-2 pr-3 text-xs text-muted-foreground">Term</th>
+                          <th className="text-left py-2 pr-3 text-xs text-muted-foreground">Class</th>
+                          <th className="text-left py-2 pr-3 text-xs text-muted-foreground">Mileage band</th>
+                          <th className="text-left py-2 pr-3 text-xs text-muted-foreground">Claim limit</th>
                           <th className="text-left py-2 pr-3 text-xs text-muted-foreground">Deductible</th>
                           <th className="text-left py-2 pr-3 text-xs text-muted-foreground">{canSeeCost ? "Cost price" : "Price"}</th>
                         </tr>
@@ -183,16 +230,24 @@ export function DealerMarketplaceProductDetailPage() {
                       <tbody className="divide-y">
                         {pricingQuery.isLoading ? (
                           <tr>
-                            <td className="py-3 text-sm text-muted-foreground" colSpan={3}>Loading pricing…</td>
+                            <td className="py-3 text-sm text-muted-foreground" colSpan={6}>Loading pricing…</td>
                           </tr>
                         ) : pricingQuery.isError ? (
                           <tr>
-                            <td className="py-3 text-sm text-destructive" colSpan={3}>Failed to load pricing.</td>
+                            <td className="py-3 text-sm text-destructive" colSpan={6}>Failed to load pricing.</td>
                           </tr>
                         ) : sortedPricingRows.length > 0 ? (
                           sortedPricingRows.map((r) => (
                             <tr key={r.id}>
-                              <td className="py-3 pr-3 text-muted-foreground">{r.termMonths} months / {r.termKm.toLocaleString()} km</td>
+                              <td className="py-3 pr-3 text-muted-foreground">
+                                {(r.termMonths === null ? "Unlimited" : `${r.termMonths} months`)} / {(r.termKm === null ? "Unlimited" : `${r.termKm.toLocaleString()} km`)}
+                              </td>
+                              <td className="py-3 pr-3 text-muted-foreground">{(r.vehicleClass ?? "").trim() || "—"}</td>
+                              <td className="py-3 pr-3 text-muted-foreground">
+                                {typeof r.vehicleMileageMinKm === "number" ? r.vehicleMileageMinKm.toLocaleString() : "—"}–
+                                {r.vehicleMileageMaxKm === null ? "Unlimited" : typeof r.vehicleMileageMaxKm === "number" ? r.vehicleMileageMaxKm.toLocaleString() : "—"}
+                              </td>
+                              <td className="py-3 pr-3 text-muted-foreground">{money(r.claimLimitCents)}</td>
                               <td className="py-3 pr-3 text-muted-foreground">{money(r.deductibleCents)}</td>
                               <td className="py-3 pr-3 font-medium text-foreground">
                                 {(() => {
@@ -217,6 +272,9 @@ export function DealerMarketplaceProductDetailPage() {
                             <td className="py-3 pr-3 text-muted-foreground">
                               {typeof product.termMonths === "number" ? `${product.termMonths} months` : "—"} / {typeof product.termKm === "number" ? `${product.termKm} km` : "—"}
                             </td>
+                            <td className="py-3 pr-3 text-muted-foreground">—</td>
+                            <td className="py-3 pr-3 text-muted-foreground">—</td>
+                            <td className="py-3 pr-3 text-muted-foreground">—</td>
                             <td className="py-3 pr-3 text-muted-foreground">{money(product.deductibleCents)}</td>
                             <td className="py-3 pr-3 font-medium text-foreground">
                               {(() => {

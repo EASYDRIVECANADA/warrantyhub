@@ -9,6 +9,9 @@ import { PageShell } from "../components/PageShell";
 import { costFromProductOrPricing, retailFromCost } from "../lib/dealerPricing";
 import { useDealerMarkupPct } from "../lib/dealerMarkup";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
+import { isPricingEligibleForVehicle } from "../lib/productPricing/eligibility";
+import { getProductPricingApi } from "../lib/productPricing/productPricing";
+import type { ProductPricing } from "../lib/productPricing/types";
 import { getAppMode } from "../lib/runtime";
 import type { Product, ProductType } from "../lib/products/types";
 import { getProvidersApi } from "../lib/providers/providers";
@@ -74,17 +77,20 @@ function accentForIndex(i: number) {
 export function DealerMarketplacePage() {
   const marketplaceApi = useMemo(() => getMarketplaceApi(), []);
   const providersApi = useMemo(() => getProvidersApi(), []);
+  const productPricingApi = useMemo(() => getProductPricingApi(), []);
   const { user } = useAuth();
   const mode = useMemo(() => getAppMode(), []);
 
   const [vin, setVin] = useState("");
   const [mileageKm, setMileageKm] = useState("");
+  const [vehicleClass, setVehicleClass] = useState("");
   const [decoded, setDecoded] = useState<Awaited<ReturnType<typeof decodeVin>> | null>(null);
   const [decodeError, setDecodeError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
   const [providerId, setProviderId] = useState("");
   const [productType, setProductType] = useState<string>("");
+  const [priceSort, setPriceSort] = useState<string>("");
   const [maxPrice, setMaxPrice] = useState("");
   const [maxYears, setMaxYears] = useState("");
   const [maxKm, setMaxKm] = useState("");
@@ -95,6 +101,12 @@ export function DealerMarketplacePage() {
   const dealerId = (mode === "local" ? (user?.dealerId ?? user?.id ?? "") : (user?.dealerId ?? "")).trim();
   const { markupPct } = useDealerMarkupPct(dealerId);
   const canSeeCost = user?.role === "DEALER_ADMIN";
+
+  const shownPriceFor = (p: Product) => {
+    const cost = costFromProductOrPricing({ dealerCostCents: p.dealerCostCents, basePriceCents: p.basePriceCents });
+    const retail = retailFromCost(cost, markupPct) ?? cost;
+    return canSeeCost ? cost : retail;
+  };
 
   const decodeMutation = useMutation({
     mutationFn: (v: string) => decodeVin(v),
@@ -225,20 +237,63 @@ export function DealerMarketplacePage() {
       return shown <= priceMaxCents;
     });
 
+  const candidateProductIds = useMemo(() => filtered.map((p) => p.id).filter(Boolean).sort(), [filtered]);
+
+  const eligibleVariantProductIdsQuery = useQuery({
+    queryKey: ["marketplace-eligible-variant-product-ids", candidateProductIds.join(","), parsedMileage ?? "", vehicleClass],
+    enabled: Boolean(decoded) && typeof parsedMileage === "number" && candidateProductIds.length > 0,
+    queryFn: async () => {
+      const entries = await Promise.all(
+        candidateProductIds.map(async (pid) => {
+          const rows = (await productPricingApi.list({ productId: pid })) as ProductPricing[];
+          const eligible = rows.some((r) =>
+            isPricingEligibleForVehicle({ pricing: r, vehicleMileageKm: parsedMileage as number, vehicleClass }),
+          );
+          return [pid, eligible] as const;
+        }),
+      );
+      return Object.fromEntries(entries) as Record<string, boolean>;
+    },
+  });
+
+  const eligibleVariantByProductId = (eligibleVariantProductIdsQuery.data ?? {}) as Record<string, boolean>;
+
+  const filteredByVariant = useMemo(() => {
+    if (!decoded) return [] as Product[];
+    if (typeof parsedMileage !== "number") return [] as Product[];
+    if (candidateProductIds.length === 0) return [] as Product[];
+    return filtered.filter((p) => eligibleVariantByProductId[p.id] === true);
+  }, [candidateProductIds.length, decoded, eligibleVariantByProductId, filtered, parsedMileage]);
+
   const grouped = useMemo(() => {
     const map = new Map<string, Product[]>();
-    for (const p of filtered) {
+    for (const p of filteredByVariant) {
       const key = providerKey(p);
       map.set(key, [...(map.get(key) ?? []), p]);
     }
+
+    const sortDir = priceSort === "PRICE_ASC" ? 1 : priceSort === "PRICE_DESC" ? -1 : 0;
+    const sortProducts = (rows: Product[]) => {
+      if (!sortDir) return rows;
+      return rows.slice().sort((a, b) => {
+        const ap = shownPriceFor(a);
+        const bp = shownPriceFor(b);
+        const an = typeof ap === "number" ? ap : Number.MAX_SAFE_INTEGER;
+        const bn = typeof bp === "number" ? bp : Number.MAX_SAFE_INTEGER;
+        const diff = (an - bn) * sortDir;
+        if (diff) return diff;
+        return (a.name ?? "").localeCompare(b.name ?? "");
+      });
+    };
+
     return Array.from(map.entries())
       .map(([pid, rows]) => ({
         providerId: pid,
         providerName: providerDisplayName(providerById.get(pid), pid),
-        products: rows,
+        products: sortProducts(rows),
       }))
       .sort((a, b) => a.providerName.localeCompare(b.providerName));
-  }, [filtered, providerById]);
+  }, [filteredByVariant, priceSort, providerById]);
 
   return (
     <PageShell
@@ -293,6 +348,21 @@ export function DealerMarketplacePage() {
               <div className="text-xs text-muted-foreground mb-1">Current mileage (km)</div>
               <Input value={mileageKm} onChange={(e) => setMileageKm(e.target.value)} placeholder="e.g. 85000" inputMode="numeric" />
               <div className="text-xs text-muted-foreground mt-2">Mileage is required for eligibility checks.</div>
+            </div>
+
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Vehicle class</div>
+              <select
+                value={vehicleClass}
+                onChange={(e) => setVehicleClass(e.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
+              >
+                <option value="">Select (optional)</option>
+                <option value="CLASS_1">Class 1</option>
+                <option value="CLASS_2">Class 2</option>
+                <option value="CLASS_3">Class 3</option>
+              </select>
+              <div className="text-xs text-muted-foreground mt-2">Only required if a plan variant specifies a vehicle class.</div>
             </div>
 
             {decodeError ? <div className="text-sm text-destructive">{decodeError}</div> : null}
@@ -363,6 +433,17 @@ export function DealerMarketplacePage() {
               <Input value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} placeholder="Max price ($)" inputMode="decimal" />
             </div>
             <div className="md:col-span-4">
+              <select
+                value={priceSort}
+                onChange={(e) => setPriceSort(e.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
+              >
+                <option value="">Sort by price</option>
+                <option value="PRICE_ASC">Price: Low to High</option>
+                <option value="PRICE_DESC">Price: High to Low</option>
+              </select>
+            </div>
+            <div className="md:col-span-4">
               <Input value={maxYears} onChange={(e) => setMaxYears(e.target.value)} placeholder="Max years eligible" inputMode="numeric" />
             </div>
             <div className="md:col-span-4">
@@ -386,6 +467,7 @@ export function DealerMarketplacePage() {
                   setSearch("");
                   setProviderId("");
                   setProductType("");
+                  setPriceSort("");
                   setMaxPrice("");
                   setMaxYears("");
                   setMaxKm("");
@@ -399,7 +481,7 @@ export function DealerMarketplacePage() {
               <div className="text-xs text-muted-foreground flex items-center">
                 {decoded ? (
                   <span className="inline-flex items-center rounded-full border bg-background px-2.5 py-1">
-                    {filtered.length} eligible product{filtered.length === 1 ? "" : "s"}
+                    {filteredByVariant.length} eligible product{filteredByVariant.length === 1 ? "" : "s"}
                   </span>
                 ) : (
                   "Decode VIN to see products"
@@ -421,6 +503,10 @@ export function DealerMarketplacePage() {
           <div className="px-6 py-10 text-sm text-muted-foreground">Enter a VIN and decode it to see products.</div>
         ) : !parsedMileage ? (
           <div className="px-6 py-10 text-sm text-muted-foreground">Enter current mileage to see eligible products.</div>
+        ) : eligibleVariantProductIdsQuery.isLoading ? (
+          <div className="px-6 py-10 text-sm text-muted-foreground">Checking eligible plans…</div>
+        ) : eligibleVariantProductIdsQuery.isError ? (
+          <div className="px-6 py-10 text-sm text-destructive">Failed to load eligible plans.</div>
         ) : (
           <div className="p-6 overflow-x-auto">
             <div className="grid grid-flow-col auto-cols-[360px] gap-6 pb-2">

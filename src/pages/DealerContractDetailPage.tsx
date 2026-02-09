@@ -10,6 +10,8 @@ import { decodeVin } from "../lib/vin/decodeVin";
 import { getContractsApi } from "../lib/contracts/contracts";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
 import { getProductPricingApi } from "../lib/productPricing/productPricing";
+import { getProductAddonsApi } from "../lib/productAddons/productAddons";
+import { isPricingEligibleForVehicle } from "../lib/productPricing/eligibility";
 import {
   costFromProductOrPricing,
   marginFromCostAndRetail,
@@ -25,6 +27,7 @@ import type { ContractsApi } from "../lib/contracts/api";
 import type { Contract } from "../lib/contracts/types";
 import type { Product } from "../lib/products/types";
 import type { ProductPricing } from "../lib/productPricing/types";
+import type { ProductAddon } from "../lib/productAddons/types";
 import { useAuth } from "../providers/AuthProvider";
 
 const LOCAL_DEALER_MEMBERSHIPS_KEY = "warrantyhub.local.dealer_memberships";
@@ -68,6 +71,16 @@ function money(cents?: number) {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function dollarsToCents(v: string) {
+  const n = Number((v ?? "").toString().replace(/\$/g, "").trim());
+  if (!Number.isFinite(n)) return undefined;
+  return Math.round(n * 100);
+}
+
+function sanitizePriceRangeInput(raw: string) {
+  return (raw ?? "").replace(/[^0-9.\-\s$]/g, "");
+}
+
 function norm(s: string) {
   return s
     .toLowerCase()
@@ -109,6 +122,7 @@ export function DealerContractDetailPage() {
   const api = useMemo(() => getContractsApi(), []);
   const marketplaceApi = useMemo(() => getMarketplaceApi(), []);
   const productPricingApi = useMemo(() => getProductPricingApi(), []);
+  const productAddonsApi = useMemo(() => getProductAddonsApi(), []);
   const providersApi = useMemo(() => getProvidersApi(), []);
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -190,11 +204,15 @@ export function DealerContractDetailPage() {
   const [vehicleTrim, setVehicleTrim] = useState("");
   const [vehicleMileageKm, setVehicleMileageKm] = useState("");
   const [vehicleBodyClass, setVehicleBodyClass] = useState("");
+  const [vehicleClass, setVehicleClass] = useState("");
   const [vehicleEngine, setVehicleEngine] = useState("");
   const [vehicleTransmission, setVehicleTransmission] = useState("");
   const [productId, setProductId] = useState("");
   const [pricingId, setPricingId] = useState("");
   const [step, setStep] = useState<WizardStep>("VEHICLE");
+  const [selectedAddonIds, setSelectedAddonIds] = useState<Record<string, boolean>>({});
+  const [selectedAddonPriceMode, setSelectedAddonPriceMode] = useState<Record<string, "MIN" | "MAX" | "CUSTOM">>({});
+  const [selectedAddonCustomPrice, setSelectedAddonCustomPrice] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!contract) return;
@@ -212,10 +230,41 @@ export function DealerContractDetailPage() {
     setVehicleTrim(contract.vehicleTrim ?? "");
     setVehicleMileageKm(typeof contract.vehicleMileageKm === "number" ? String(contract.vehicleMileageKm) : "");
     setVehicleBodyClass(contract.vehicleBodyClass ?? "");
+    setVehicleClass("");
     setVehicleEngine(contract.vehicleEngine ?? "");
     setVehicleTransmission(contract.vehicleTransmission ?? "");
     setProductId(contract.productId ?? "");
     setPricingId(contract.productPricingId ?? "");
+
+    const snap = (contract as any).addonSnapshot as unknown;
+    if (Array.isArray(snap)) {
+      const next: Record<string, boolean> = {};
+      const nextMode: Record<string, "MIN" | "MAX" | "CUSTOM"> = {};
+      const nextCustom: Record<string, string> = {};
+      for (const item of snap as any[]) {
+        const id = (item?.id ?? "").toString().trim();
+        if (id) next[id] = true;
+
+        const chosen = typeof item?.chosenPriceCents === "number" ? item.chosenPriceCents : undefined;
+        if (typeof chosen === "number") {
+          const min = typeof item?.minPriceCents === "number" ? item.minPriceCents : typeof item?.basePriceCents === "number" ? item.basePriceCents : undefined;
+          const max = typeof item?.maxPriceCents === "number" ? item.maxPriceCents : min;
+          if (typeof min === "number" && typeof max === "number" && chosen === min) nextMode[id] = "MIN";
+          else if (typeof min === "number" && typeof max === "number" && chosen === max) nextMode[id] = "MAX";
+          else {
+            nextMode[id] = "CUSTOM";
+            nextCustom[id] = (chosen / 100).toFixed(2);
+          }
+        }
+      }
+      setSelectedAddonIds(next);
+      setSelectedAddonPriceMode(nextMode);
+      setSelectedAddonCustomPrice(nextCustom);
+    } else {
+      setSelectedAddonIds({});
+      setSelectedAddonPriceMode({});
+      setSelectedAddonCustomPrice({});
+    }
 
     const vinNormalized = (contract.vin ?? "").trim().replace(/[^a-z0-9]/gi, "").toUpperCase();
     const hasVin = vinNormalized.length === 17;
@@ -236,13 +285,21 @@ export function DealerContractDetailPage() {
     setStep("PRICING");
   }, [contract]);
 
+  const selectedAddonIdList = useMemo(() => Object.keys(selectedAddonIds).filter((id) => selectedAddonIds[id]), [selectedAddonIds]);
+
   type ContractPatch = Parameters<ContractsApi["update"]>[1] & {
     productPricingId?: string | null;
     pricingTermMonths?: number | null;
     pricingTermKm?: number | null;
+    pricingVehicleMileageMinKm?: number | null;
+    pricingVehicleMileageMaxKm?: number | null;
+    pricingVehicleClass?: string | null;
     pricingDeductibleCents?: number | null;
     pricingBasePriceCents?: number | null;
     pricingDealerCostCents?: number | null;
+    addonSnapshot?: unknown | null;
+    addonTotalRetailCents?: number | null;
+    addonTotalCostCents?: number | null;
   };
 
   const updateMutation = useMutation({
@@ -480,12 +537,22 @@ export function DealerContractDetailPage() {
       pricingDeductibleCents: null,
       pricingBasePriceCents: null,
       pricingDealerCostCents: null,
+      addonSnapshot: [],
+      addonTotalRetailCents: 0,
+      addonTotalCostCents: 0,
     });
   };
 
   const selectPricing = async (row: ProductPricing) => {
     if (!contract) return;
-    if (!(await confirmProceed(`Select ${row.termMonths} mo / ${row.termKm} km for this contract?`))) return;
+    if (
+      !(
+        await confirmProceed(
+          `Select ${row.termMonths === null ? "Unlimited" : `${row.termMonths} mo`} / ${row.termKm === null ? "Unlimited" : `${row.termKm.toLocaleString()} km`} for this contract?`,
+        )
+      )
+    )
+      return;
 
     const costCents = costFromProductOrPricing({ dealerCostCents: row.dealerCostCents, basePriceCents: row.basePriceCents });
     if (typeof costCents !== "number") throw new Error("Pricing row is missing a cost");
@@ -496,6 +563,10 @@ export function DealerContractDetailPage() {
       productPricingId: row.id,
       pricingTermMonths: row.termMonths,
       pricingTermKm: row.termKm,
+      pricingVehicleMileageMinKm: typeof row.vehicleMileageMinKm === "number" ? row.vehicleMileageMinKm : null,
+      pricingVehicleMileageMaxKm:
+        row.vehicleMileageMaxKm === null ? null : typeof row.vehicleMileageMaxKm === "number" ? row.vehicleMileageMaxKm : null,
+      pricingVehicleClass: typeof row.vehicleClass === "string" ? row.vehicleClass : null,
       pricingDeductibleCents: row.deductibleCents,
       pricingBasePriceCents: retailCents,
       pricingDealerCostCents: costCents,
@@ -519,11 +590,124 @@ export function DealerContractDetailPage() {
   });
 
   const pricingOptions = (pricingOptionsQuery.data ?? []) as ProductPricing[];
+
+  const productAddonsQuery = useQuery({
+    queryKey: ["product-addons-public", selectedProductId],
+    enabled: Boolean(selectedProductId),
+    queryFn: () => productAddonsApi.list({ productId: selectedProductId }),
+  });
+
+  const activeAddons = useMemo(() => {
+    const rows = (productAddonsQuery.data ?? []) as ProductAddon[];
+    return rows.filter((a) => a.active);
+  }, [productAddonsQuery.data]);
+
+  const selectedAddonSnapshots = useMemo(() => {
+    const byId = new Map(activeAddons.map((a) => [a.id, a] as const));
+    return selectedAddonIdList
+      .map((id) => byId.get(id))
+      .filter(Boolean)
+      .map((a) => {
+        const min = typeof (a as any).minPriceCents === "number" ? (a as any).minPriceCents : a!.basePriceCents;
+        const max = typeof (a as any).maxPriceCents === "number" ? (a as any).maxPriceCents : min;
+        const mode = selectedAddonPriceMode[a!.id] ?? "MIN";
+
+        const chosenPriceCents = (() => {
+          if (mode === "MAX") return max;
+          if (mode === "CUSTOM") {
+            const c = dollarsToCents(selectedAddonCustomPrice[a!.id] ?? "");
+            if (typeof c === "number" && c > 0) return c;
+            return min;
+          }
+          return min;
+        })();
+
+        return {
+          id: a!.id,
+          name: a!.name,
+          description: a!.description,
+          basePriceCents: a!.basePriceCents,
+          minPriceCents: min,
+          maxPriceCents: max,
+          chosenPriceCents,
+        };
+      });
+  }, [activeAddons, selectedAddonCustomPrice, selectedAddonIdList, selectedAddonPriceMode]);
+
+  const addonTotals = useMemo(() => {
+    const retail = selectedAddonSnapshots.reduce((sum, a) => sum + (typeof (a as any).chosenPriceCents === "number" ? (a as any).chosenPriceCents : 0), 0);
+    const cost = retail;
+    return { retail, cost };
+  }, [selectedAddonSnapshots]);
+
+  const persistAddonSelection = async (nextSelectedIds: Record<string, boolean>) => {
+    if (!contract) return;
+
+    const ids = Object.keys(nextSelectedIds).filter((id) => nextSelectedIds[id]);
+    const byId = new Map(activeAddons.map((a) => [a.id, a] as const));
+    const snap = ids
+      .map((id) => byId.get(id))
+      .filter(Boolean)
+      .map((a) => {
+        const min = typeof (a as any).minPriceCents === "number" ? (a as any).minPriceCents : a!.basePriceCents;
+        const max = typeof (a as any).maxPriceCents === "number" ? (a as any).maxPriceCents : min;
+        const mode = selectedAddonPriceMode[a!.id] ?? "MIN";
+        const chosen = (() => {
+          if (mode === "MAX") return max;
+          if (mode === "CUSTOM") {
+            const c = dollarsToCents(selectedAddonCustomPrice[a!.id] ?? "");
+            if (typeof c === "number" && c > 0) return c;
+            return min;
+          }
+          return min;
+        })();
+        return {
+          id: a!.id,
+          name: a!.name,
+          description: a!.description,
+          basePriceCents: a!.basePriceCents,
+          minPriceCents: min,
+          maxPriceCents: max,
+          chosenPriceCents: chosen,
+        };
+      });
+
+    const retail = snap.reduce((sum, a) => sum + (typeof (a as any).chosenPriceCents === "number" ? (a as any).chosenPriceCents : 0), 0);
+    const cost = retail;
+
+    await updateMutation.mutateAsync({
+      addonSnapshot: snap,
+      addonTotalRetailCents: retail,
+      addonTotalCostCents: cost,
+    });
+  };
+
+  const setAddonPricing = async (addonId: string, mode: "MIN" | "MAX" | "CUSTOM", customRaw?: string) => {
+    setSelectedAddonPriceMode((s) => ({ ...s, [addonId]: mode }));
+    if (typeof customRaw === "string") {
+      setSelectedAddonCustomPrice((s) => ({ ...s, [addonId]: sanitizePriceRangeInput(customRaw) }));
+    }
+    await persistAddonSelection(selectedAddonIds);
+  };
+
+  const eligiblePricingOptions = useMemo(() => {
+    if (typeof parsedMileage !== "number") return [] as ProductPricing[];
+    return pricingOptions.filter((r) =>
+      isPricingEligibleForVehicle({ pricing: r, vehicleMileageKm: parsedMileage, vehicleClass }),
+    );
+  }, [parsedMileage, pricingOptions, vehicleClass]);
+
   const selectedPricing = useMemo(() => {
     const id = selectedPricingId;
     if (!id) return null;
-    return pricingOptions.find((r) => r.id === id) ?? null;
-  }, [pricingOptions, selectedPricingId]);
+    return eligiblePricingOptions.find((r) => r.id === id) ?? null;
+  }, [eligiblePricingOptions, selectedPricingId]);
+
+  useEffect(() => {
+    if (!selectedPricingId) return;
+    const stillOk = eligiblePricingOptions.some((r) => r.id === selectedPricingId);
+    if (!stillOk) setPricingId("");
+  }, [eligiblePricingOptions, selectedPricingId]);
 
   const vinNormalized = vin.trim().replace(/[^a-z0-9]/gi, "").toUpperCase();
   const vinError = canEdit && vinNormalized.length > 0 && vinNormalized.length !== 17 ? "VIN must be 17 characters." : null;
@@ -783,6 +967,21 @@ export function DealerContractDetailPage() {
                       disabled={!canEdit}
                     />
                   </div>
+
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">Vehicle class</div>
+                    <select
+                      value={vehicleClass}
+                      onChange={(e) => setVehicleClass(e.target.value)}
+                      className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
+                      disabled={!canEdit}
+                    >
+                      <option value="">Select (optional)</option>
+                      <option value="CLASS_1">Class 1</option>
+                      <option value="CLASS_2">Class 2</option>
+                      <option value="CLASS_3">Class 3</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="mt-4 rounded-xl border p-4 bg-muted/20">
@@ -945,7 +1144,9 @@ export function DealerContractDetailPage() {
                   <div className="mt-1 text-xs text-muted-foreground">
                     {selectedProduct ? providerDisplay(selectedProduct.providerId) : ""}
                     {selectedProduct ? " • " : ""}
-                    {selectedPricing ? `${selectedPricing.termMonths} mo / ${selectedPricing.termKm} km` : "Select a pricing option"}
+                    {selectedPricing
+                      ? `${selectedPricing.termMonths === null ? "Unlimited" : `${selectedPricing.termMonths} mo`} / ${selectedPricing.termKm === null ? "Unlimited" : `${selectedPricing.termKm.toLocaleString()} km`}`
+                      : "Select a pricing option"}
                     {selectedPricing ? " • " : ""}
                     {selectedPricing ? `Deductible ${money(selectedPricing.deductibleCents)}` : ""}
                   </div>
@@ -956,14 +1157,20 @@ export function DealerContractDetailPage() {
                   {pricingOptionsQuery.isLoading ? <div className="mt-2 text-sm text-muted-foreground">Loading pricing…</div> : null}
                   {pricingOptionsQuery.isError ? <div className="mt-2 text-sm text-destructive">Failed to load pricing.</div> : null}
 
-                  {!pricingOptionsQuery.isLoading && !pricingOptionsQuery.isError && pricingOptions.length === 0 ? (
-                    <div className="mt-2 text-sm text-muted-foreground">No pricing rows found for this plan.</div>
+                  {!pricingOptionsQuery.isLoading && !pricingOptionsQuery.isError && eligiblePricingOptions.length === 0 ? (
+                    <div className="mt-2 text-sm text-muted-foreground">No eligible pricing rows found for this plan.</div>
                   ) : null}
 
                   <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {pricingOptions
+                    {eligiblePricingOptions
                       .slice()
-                      .sort((a, b) => (a.termMonths - b.termMonths) || (a.termKm - b.termKm) || (a.deductibleCents - b.deductibleCents))
+                      .sort((a, b) => {
+                        const am = a.termMonths ?? Number.MAX_SAFE_INTEGER;
+                        const bm = b.termMonths ?? Number.MAX_SAFE_INTEGER;
+                        const ak = a.termKm ?? Number.MAX_SAFE_INTEGER;
+                        const bk = b.termKm ?? Number.MAX_SAFE_INTEGER;
+                        return (am - bm) || (ak - bk) || (a.deductibleCents - b.deductibleCents);
+                      })
                       .map((r) => (
                         <button
                           key={r.id}
@@ -979,7 +1186,9 @@ export function DealerContractDetailPage() {
                             (r.id === selectedPricingId ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted")
                           }
                         >
-                          <div className="text-sm font-medium">{r.termMonths} mo / {r.termKm.toLocaleString()} km</div>
+                          <div className="text-sm font-medium">
+                            {(r.termMonths === null ? "Unlimited" : `${r.termMonths} mo`)} / {(r.termKm === null ? "Unlimited" : `${r.termKm.toLocaleString()} km`)}
+                          </div>
                           <div className={"text-xs mt-1 " + (r.id === selectedPricingId ? "text-primary-foreground/80" : "text-muted-foreground")}>
                             Deductible {money(r.deductibleCents)}
                           </div>
@@ -1004,12 +1213,14 @@ export function DealerContractDetailPage() {
                           dealerCostCents: selectedPricing?.dealerCostCents,
                           basePriceCents: selectedPricing?.basePriceCents,
                         });
-                        const retail = retailFromCost(cost, markupPct) ?? cost;
+                        const retail = (retailFromCost(cost, markupPct) ?? cost) || 0;
                         const margin = marginFromCostAndRetail(cost, retail);
                         const marginPct = marginPctFromCostAndRetail(cost, retail);
+                        const addonRetail = addonTotals.retail;
+                        const totalRetail = retail + addonRetail;
                         return (
                           <>
-                            <div className="text-lg font-semibold mt-1">{money(retail)}</div>
+                            <div className="text-lg font-semibold mt-1">{money(totalRetail)}</div>
                             {canSeeCost ? (
                               <div className="text-xs text-muted-foreground mt-1">
                                 Cost {money(cost)}
@@ -1030,11 +1241,87 @@ export function DealerContractDetailPage() {
                           dealerCostCents: selectedPricing?.dealerCostCents,
                           basePriceCents: selectedPricing?.basePriceCents,
                         });
-                        const retail = retailFromCost(cost, markupPct) ?? cost;
-                        return <div className="text-lg font-semibold mt-1">{money(retail)}</div>;
+                        const retail = (retailFromCost(cost, markupPct) ?? cost) || 0;
+                        const totalRetail = retail + addonTotals.retail;
+                        return <div className="text-lg font-semibold mt-1">{money(totalRetail)}</div>;
                       })()}
                     </div>
                   </div>
+                </div>
+
+                <div className="mt-4 rounded-xl border p-4">
+                  <div className="text-xs text-muted-foreground">Add-ons</div>
+                  {productAddonsQuery.isLoading ? <div className="mt-2 text-sm text-muted-foreground">Loading add-ons…</div> : null}
+                  {productAddonsQuery.isError ? <div className="mt-2 text-sm text-destructive">Failed to load add-ons.</div> : null}
+                  {!productAddonsQuery.isLoading && !productAddonsQuery.isError && activeAddons.length === 0 ? (
+                    <div className="mt-2 text-sm text-muted-foreground">No add-ons available for this plan.</div>
+                  ) : null}
+
+                  <div className="mt-3 space-y-2">
+                    {activeAddons.map((a) => (
+                      <label key={a.id} className="flex items-start gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(selectedAddonIds[a.id])}
+                          disabled={!canEdit || updateMutation.isPending}
+                          onChange={(e) => {
+                            const next = { ...selectedAddonIds, [a.id]: e.target.checked };
+                            setSelectedAddonIds(next);
+                            if (e.target.checked) {
+                              setSelectedAddonPriceMode((s) => ({ ...s, [a.id]: s[a.id] ?? "MIN" }));
+                            }
+                            void persistAddonSelection(next);
+                          }}
+                        />
+                        <span className="flex-1">
+                          <span className="font-medium text-foreground">{a.name}</span>
+                          <span className="text-muted-foreground">{` • ${(() => {
+                            const min = typeof (a as any).minPriceCents === "number" ? (a as any).minPriceCents : a.basePriceCents;
+                            const max = typeof (a as any).maxPriceCents === "number" ? (a as any).maxPriceCents : min;
+                            return min !== max ? `${money(min)} - ${money(max)}` : money(min);
+                          })()}`}</span>
+                          {a.description ? <span className="block text-xs text-muted-foreground mt-0.5">{a.description}</span> : null}
+
+                          {Boolean(selectedAddonIds[a.id]) ? (
+                            <div className="mt-2 flex items-center gap-2 flex-wrap">
+                              <select
+                                value={selectedAddonPriceMode[a.id] ?? "MIN"}
+                                className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
+                                disabled={!canEdit || updateMutation.isPending}
+                                onChange={(e) => {
+                                  const mode = (e.target.value as any) as "MIN" | "MAX" | "CUSTOM";
+                                  void setAddonPricing(a.id, mode);
+                                }}
+                              >
+                                <option value="MIN">Min</option>
+                                <option value="MAX">Max</option>
+                                <option value="CUSTOM">Custom</option>
+                              </select>
+
+                              {(selectedAddonPriceMode[a.id] ?? "MIN") === "CUSTOM" ? (
+                                <input
+                                  value={selectedAddonCustomPrice[a.id] ?? ""}
+                                  onChange={(e) => {
+                                    const v = sanitizePriceRangeInput(e.target.value).replace(/-/g, "");
+                                    setSelectedAddonCustomPrice((s) => ({ ...s, [a.id]: v }));
+                                  }}
+                                  onBlur={() => void setAddonPricing(a.id, "CUSTOM")}
+                                  placeholder="Custom price"
+                                  className="h-9 w-[140px] rounded-md border border-input bg-transparent px-2 text-sm"
+                                  inputMode="decimal"
+                                  disabled={!canEdit || updateMutation.isPending}
+                                />
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+
+                  {selectedAddonSnapshots.length > 0 ? (
+                    <div className="mt-3 text-xs text-muted-foreground">Selected add-ons total {money(addonTotals.retail)}</div>
+                  ) : null}
                 </div>
 
                 <div className="mt-4 flex gap-2 flex-wrap">
@@ -1081,8 +1368,9 @@ export function DealerContractDetailPage() {
                             dealerCostCents: selectedPricing?.dealerCostCents,
                             basePriceCents: selectedPricing?.basePriceCents,
                           });
-                          const retail = retailFromCost(cost, markupPct) ?? cost;
-                          return <div className="text-lg font-semibold mt-1">{money(retail)}</div>;
+                          const retail = (retailFromCost(cost, markupPct) ?? cost) || 0;
+                          const totalRetail = retail + addonTotals.retail;
+                          return <div className="text-lg font-semibold mt-1">{money(totalRetail)}</div>;
                         })()}
                       </div>
                       <div className="text-right">

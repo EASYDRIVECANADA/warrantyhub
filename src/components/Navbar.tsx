@@ -28,8 +28,6 @@ function NavLink({ to, label }: { to: string; label: string }) {
 export function Navbar() {
   const { user, signOut } = useAuth();
   const isUnassigned = user?.role === "UNASSIGNED";
-  const dealershipLabel =
-    user?.role === "DEALER_ADMIN" || user?.role === "DEALER_EMPLOYEE" ? (user.companyName ?? user.dealerId ?? "") : "";
 
   const location = useLocation();
   const isActive = (path: string) => location.pathname === path;
@@ -90,7 +88,7 @@ export function Navbar() {
 
                 {user?.role === "DEALER_ADMIN" ? <NavLink to="/dealer-admin" label="Dashboard" /> : null}
                 {user?.role === "DEALER_ADMIN" ? <NavLink to="/dealer-marketplace" label="Find Products" /> : null}
-                {user?.role === "DEALER_ADMIN" ? <NavLink to="/dealer-contracts-admin" label="Contracts" /> : null}
+                {user?.role === "DEALER_ADMIN" ? <NavLink to="/dealer-contracts" label="Contracts" /> : null}
                 {user?.role === "DEALER_ADMIN" ? <NavLink to="/dealer-remittances" label="Remittances" /> : null}
                 {user?.role === "DEALER_ADMIN" ? <NavLink to="/dealer-reporting" label="Reporting" /> : null}
                 {user?.role === "DEALER_ADMIN" ? <NavLink to="/dealer-team" label="Team" /> : null}
@@ -119,12 +117,6 @@ export function Navbar() {
                   <Button variant="ghost" size="sm" asChild>
                     <Link to="/profile">Profile</Link>
                   </Button>
-                  {isUnassigned ? null : (
-                    <span className="text-xs text-muted-foreground max-w-[260px] truncate">
-                      {dealershipLabel ? `${dealershipLabel} • ` : ""}
-                      {user.email}
-                    </span>
-                  )}
                   <Button
                     variant="ghost"
                     size="sm"

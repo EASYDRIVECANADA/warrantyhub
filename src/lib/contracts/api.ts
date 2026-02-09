@@ -44,9 +44,15 @@ export type ContractsApi = {
       productPricingId?: string | null;
       pricingTermMonths?: number | null;
       pricingTermKm?: number | null;
+      pricingVehicleMileageMinKm?: number | null;
+      pricingVehicleMileageMaxKm?: number | null;
+      pricingVehicleClass?: string | null;
       pricingDeductibleCents?: number | null;
       pricingBasePriceCents?: number | null;
       pricingDealerCostCents?: number | null;
+      addonSnapshot?: unknown | null;
+      addonTotalRetailCents?: number | null;
+      addonTotalCostCents?: number | null;
     },
   ): Promise<Contract>;
 };

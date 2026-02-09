@@ -7,9 +7,11 @@ import { Input } from "../components/ui/input";
 import { PageShell } from "../components/PageShell";
 import { getProductsApi } from "../lib/products/products";
 import { getProductPricingApi } from "../lib/productPricing/productPricing";
+import { getProductAddonsApi } from "../lib/productAddons/productAddons";
 import { sanitizeDigitsOnly, sanitizeMoney, sanitizeWordsOnly } from "../lib/utils";
 import type { CreateProductInput, Product, ProductType } from "../lib/products/types";
 import type { ProductPricing } from "../lib/productPricing/types";
+import type { ProductAddon } from "../lib/productAddons/types";
 
 function productTypeLabel(t: ProductType) {
   if (t === "EXTENDED_WARRANTY") return "Extended Warranty";
@@ -23,6 +25,33 @@ function dollarsToCents(v: string) {
   const n = Number(v);
   if (!Number.isFinite(n)) return undefined;
   return Math.round(n * 100);
+}
+
+function parsePriceRangeToCents(raw: string): { min: number; max: number } | null {
+  const t = (raw ?? "").trim();
+  if (!t) return null;
+  const cleaned = t.replace(/\$/g, "");
+  const parts = cleaned
+    .split(/\s*-\s*/g)
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  if (parts.length === 1) {
+    const n = dollarsToCents(parts[0]!);
+    if (typeof n !== "number" || n <= 0) return null;
+    return { min: n, max: n };
+  }
+  if (parts.length === 2) {
+    const a = dollarsToCents(parts[0]!);
+    const b = dollarsToCents(parts[1]!);
+    if (typeof a !== "number" || typeof b !== "number" || a <= 0 || b <= 0) return null;
+    return { min: Math.min(a, b), max: Math.max(a, b) };
+  }
+  return null;
+}
+
+function sanitizePriceRangeInput(raw: string) {
+  return (raw ?? "").replace(/[^0-9.\-\s$]/g, "");
 }
 
 function centsToDollars(cents?: number) {
@@ -81,8 +110,12 @@ type EditorState = {
     key: string;
     termMonths: string;
     termKm: string;
+    vehicleMileageMinKm: string;
+    vehicleMileageMaxKm: string;
+    vehicleClass: string;
+    claimLimit: string;
     deductible: string;
-    basePrice: string;
+    providerCost: string;
   }>;
   eligibilityMaxVehicleAgeYears: string;
   eligibilityMaxMileageKm: string;
@@ -94,13 +127,32 @@ type EditorState = {
   published: boolean;
 };
 
-type ProductEditorTab = "OVERVIEW" | "ELIGIBILITY" | "PRICING" | "DOCUMENTS";
+type ProductEditorTab = "OVERVIEW" | "ELIGIBILITY" | "PRICING" | "ADDONS" | "DOCUMENTS";
+
+type PendingAddon = {
+  key: string;
+  name: string;
+  description: string;
+  basePrice: string;
+};
 
 function emptyEditor(): EditorState {
   return {
     name: "",
     productType: "EXTENDED_WARRANTY",
-    pricingRows: [{ key: crypto.randomUUID(), termMonths: "", termKm: "", deductible: "", basePrice: "" }],
+    pricingRows: [
+      {
+        key: crypto.randomUUID(),
+        termMonths: "",
+        termKm: "",
+        vehicleMileageMinKm: "",
+        vehicleMileageMaxKm: "",
+        vehicleClass: "",
+        claimLimit: "",
+        deductible: "",
+        providerCost: "",
+      },
+    ],
     eligibilityMaxVehicleAgeYears: "",
     eligibilityMaxMileageKm: "",
     eligibilityMakeAllowlist: "",
@@ -117,8 +169,12 @@ function editorFromProduct(p: Product): EditorState {
     key: crypto.randomUUID(),
     termMonths: typeof p.termMonths === "number" ? String(p.termMonths) : "",
     termKm: typeof p.termKm === "number" ? String(p.termKm) : "",
+    vehicleMileageMinKm: "",
+    vehicleMileageMaxKm: "",
+    vehicleClass: "",
+    claimLimit: "",
     deductible: centsToDollars(p.deductibleCents),
-    basePrice: centsToDollars(p.basePriceCents),
+    providerCost: centsToDollars(p.dealerCostCents),
   };
   return {
     id: p.id,
@@ -142,9 +198,19 @@ function textareaClassName() {
   return "flex min-h-[90px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
 }
 
+function parseUnlimitedInt(v: string) {
+  const t = (v ?? "").trim();
+  if (!t) return undefined;
+  if (/^unlimited$/i.test(t)) return null;
+  const n = Number(t);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.trunc(n);
+}
+
 export function ProviderProductsPage() {
   const api = useMemo(() => getProductsApi(), []);
   const pricingApi = useMemo(() => getProductPricingApi(), []);
+  const addonsApi = useMemo(() => getProductAddonsApi(), []);
   const qc = useQueryClient();
 
   const [showEditor, setShowEditor] = useState(false);
@@ -152,27 +218,105 @@ export function ProviderProductsPage() {
   const [activeTab, setActiveTab] = useState<ProductEditorTab>("OVERVIEW");
   const [error, setError] = useState<string | null>(null);
 
+  const [pendingAddons, setPendingAddons] = useState<PendingAddon[]>([]);
+
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "DRAFT" | "PUBLISHED">("ALL");
+
+  const editorProductId = (editor.id ?? "").trim();
+
+  const addonsQuery = useQuery({
+    queryKey: ["product-addons", editorProductId],
+    enabled: showEditor && !!editorProductId,
+    queryFn: () => addonsApi.list({ productId: editorProductId }),
+  });
+
+  const addons = (addonsQuery.data ?? []) as ProductAddon[];
+
+  const [addonEditor, setAddonEditor] = useState<{
+    id?: string;
+    name: string;
+    description: string;
+    basePrice: string;
+    active: boolean;
+  }>(() => ({
+    name: "",
+    description: "",
+    basePrice: "",
+    active: true,
+  }));
+
+  useEffect(() => {
+    if (!showEditor) return;
+    setAddonEditor({ name: "", description: "", basePrice: "", active: true });
+    setPendingAddons([]);
+  }, [editorProductId, showEditor]);
+
+  const saveAddonMutation = useMutation({
+    mutationFn: async () => {
+      const productId = editorProductId;
+      if (!productId) throw new Error("Select a product first");
+
+      const name = addonEditor.name.trim();
+      if (!name) throw new Error("Add-on name is required");
+
+      const range = parsePriceRangeToCents(addonEditor.basePrice);
+      if (!range) throw new Error("Add-on price is required");
+
+      if (addonEditor.id) {
+        return addonsApi.update(addonEditor.id, {
+          name,
+          description: addonEditor.description.trim() || undefined,
+          basePriceCents: range.min,
+          minPriceCents: range.min,
+          maxPriceCents: range.max,
+          active: addonEditor.active,
+        });
+      }
+
+      return addonsApi.create({
+        productId,
+        name,
+        description: addonEditor.description.trim() || undefined,
+        basePriceCents: range.min,
+        minPriceCents: range.min,
+        maxPriceCents: range.max,
+        active: true,
+      });
+    },
+    onSuccess: async () => {
+      setAddonEditor({ name: "", description: "", basePrice: "", active: true });
+      await qc.invalidateQueries({ queryKey: ["product-addons", editorProductId] });
+    },
+  });
+
+  const removeAddonMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await addonsApi.remove(id);
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["product-addons", editorProductId] });
+      setAddonEditor({ name: "", description: "", basePrice: "", active: true });
+    },
+  });
 
   const productsQuery = useQuery({
     queryKey: ["provider-products"],
     queryFn: () => api.list(),
   });
 
-  const editorProductId = (editor.id ?? "").trim();
-  const pricingQuery = useQuery({
-    queryKey: ["product-pricing", editorProductId],
+  const pricingRowsQuery = useQuery({
+    queryKey: ["provider-product-pricing", editorProductId],
     enabled: showEditor && !!editorProductId,
     queryFn: () => pricingApi.list({ productId: editorProductId }),
   });
 
-  const pricingRowsFromApi = (pricingQuery.data ?? []) as ProductPricing[];
+  const pricingRowsFromApi = (pricingRowsQuery.data ?? []) as ProductPricing[];
   useEffect(() => {
     if (!showEditor) return;
     if (!editorProductId) return;
-    if (pricingQuery.isLoading) return;
-    if (pricingQuery.isError) return;
+    if (pricingRowsQuery.isLoading) return;
+    if (pricingRowsQuery.isError) return;
 
     if (pricingRowsFromApi.length === 0) return;
 
@@ -180,13 +324,23 @@ export function ProviderProductsPage() {
       if ((s.id ?? "").trim() !== editorProductId) return s;
       const mapped = pricingRowsFromApi
         .slice()
-        .sort((a, b) => (a.termMonths - b.termMonths) || (a.termKm - b.termKm) || (a.deductibleCents - b.deductibleCents))
+        .sort((a, b) => {
+          const am = a.termMonths ?? Number.MAX_SAFE_INTEGER;
+          const bm = b.termMonths ?? Number.MAX_SAFE_INTEGER;
+          const ak = a.termKm ?? Number.MAX_SAFE_INTEGER;
+          const bk = b.termKm ?? Number.MAX_SAFE_INTEGER;
+          return (am - bm) || (ak - bk) || (a.deductibleCents - b.deductibleCents);
+        })
         .map((r) => ({
           key: r.id,
-          termMonths: String(r.termMonths),
-          termKm: String(r.termKm),
+          termMonths: r.termMonths === null ? "Unlimited" : String(r.termMonths),
+          termKm: r.termKm === null ? "Unlimited" : String(r.termKm),
+          vehicleMileageMinKm: typeof r.vehicleMileageMinKm === "number" ? String(r.vehicleMileageMinKm) : "",
+          vehicleMileageMaxKm: r.vehicleMileageMaxKm === null ? "Unlimited" : typeof r.vehicleMileageMaxKm === "number" ? String(r.vehicleMileageMaxKm) : "",
+          vehicleClass: typeof r.vehicleClass === "string" ? r.vehicleClass : "",
+          claimLimit: typeof r.claimLimitCents === "number" ? centsToDollars(r.claimLimitCents) : "",
           deductible: centsToDollars(r.deductibleCents),
-          basePrice: centsToDollars(r.basePriceCents),
+          providerCost: centsToDollars(r.dealerCostCents),
         }));
 
       if (mapped.length === 0) return s;
@@ -198,15 +352,19 @@ export function ProviderProductsPage() {
             row.key === next.key &&
             row.termMonths === next.termMonths &&
             row.termKm === next.termKm &&
+            row.vehicleMileageMinKm === next.vehicleMileageMinKm &&
+            row.vehicleMileageMaxKm === next.vehicleMileageMaxKm &&
+            row.vehicleClass === next.vehicleClass &&
+            row.claimLimit === next.claimLimit &&
             row.deductible === next.deductible &&
-            row.basePrice === next.basePrice
+            row.providerCost === next.providerCost
           );
         });
 
       if (same) return s;
       return { ...s, pricingRows: mapped };
     });
-  }, [editorProductId, pricingQuery.isError, pricingQuery.isLoading, pricingRowsFromApi, showEditor]);
+  }, [editorProductId, pricingRowsFromApi, pricingRowsQuery.isError, pricingRowsQuery.isLoading, showEditor]);
 
   const createMutation = useMutation({
     mutationFn: (input: CreateProductInput) => api.create(input),
@@ -265,6 +423,7 @@ export function ProviderProductsPage() {
     setError(null);
     setEditor(emptyEditor());
     setActiveTab("OVERVIEW");
+    setPendingAddons([]);
     setShowEditor(true);
   };
 
@@ -272,6 +431,7 @@ export function ProviderProductsPage() {
     setError(null);
     setEditor(editorFromProduct(p));
     setActiveTab("OVERVIEW");
+    setPendingAddons([]);
     setShowEditor(true);
   };
 
@@ -287,34 +447,58 @@ export function ProviderProductsPage() {
 
     type ValidatedRow = {
       key: string;
-      termMonths: number;
-      termKm: number;
+      termMonths: number | null;
+      termKm: number | null;
+      vehicleMileageMinKm?: number;
+      vehicleMileageMaxKm?: number | null;
+      vehicleClass?: string;
+      claimLimitCents?: number;
       deductibleCents: number;
-      basePriceCents: number;
+      providerCostCents: number;
     };
 
     const normalizedRows = editor.pricingRows
       .map((r) => ({
         key: r.key,
-        termMonths: parseOptionalInt(r.termMonths),
-        termKm: parseOptionalInt(r.termKm),
+        termMonths: parseUnlimitedInt(r.termMonths),
+        termKm: parseUnlimitedInt(r.termKm),
+        vehicleMileageMinKm: parseOptionalInt(r.vehicleMileageMinKm),
+        vehicleMileageMaxKm: parseUnlimitedInt(r.vehicleMileageMaxKm),
+        vehicleClass: r.vehicleClass.trim() || undefined,
+        claimLimitCents: dollarsToCents(r.claimLimit),
         deductibleCents: dollarsToCents(r.deductible) ?? 0,
-        basePriceCents: dollarsToCents(r.basePrice),
+        providerCostCents: dollarsToCents(r.providerCost),
       }))
-      .filter((r) => r.termMonths || r.termKm || r.basePriceCents || r.deductibleCents);
+      .filter((r) => r.termMonths !== undefined || r.termKm !== undefined || r.providerCostCents || r.deductibleCents);
 
     const validatedRows: ValidatedRow[] = normalizedRows.map((r) => {
-      if (typeof r.termMonths !== "number" || r.termMonths <= 0) throw new Error("Each pricing row requires term months.");
-      if (typeof r.termKm !== "number" || r.termKm <= 0) throw new Error("Each pricing row requires term km.");
-      if (typeof r.basePriceCents !== "number" || r.basePriceCents <= 0) throw new Error("Each pricing row requires a valid retail price.");
+      if (r.termMonths !== null && (typeof r.termMonths !== "number" || r.termMonths <= 0)) {
+        throw new Error("Each pricing row requires term months (number or Unlimited).");
+      }
+      if (r.termKm !== null && (typeof r.termKm !== "number" || r.termKm <= 0)) {
+        throw new Error("Each pricing row requires term km (number or Unlimited).");
+      }
+      if (typeof r.providerCostCents !== "number" || r.providerCostCents <= 0) {
+        throw new Error("Each pricing row requires provider cost.");
+      }
       if (!Number.isFinite(r.deductibleCents) || r.deductibleCents < 0) throw new Error("Deductible must be a number >= 0.");
+
+      if (typeof r.vehicleMileageMinKm === "number" && r.vehicleMileageMinKm < 0) throw new Error("Mileage min must be >= 0.");
+      if (typeof r.vehicleMileageMaxKm === "number" && r.vehicleMileageMaxKm <= 0) throw new Error("Mileage max must be > 0.");
+      if (typeof r.vehicleMileageMinKm === "number" && typeof r.vehicleMileageMaxKm === "number" && r.vehicleMileageMaxKm < r.vehicleMileageMinKm) {
+        throw new Error("Mileage max must be >= mileage min.");
+      }
 
       return {
         key: r.key,
         termMonths: r.termMonths,
         termKm: r.termKm,
+        vehicleMileageMinKm: typeof r.vehicleMileageMinKm === "number" ? r.vehicleMileageMinKm : undefined,
+        vehicleMileageMaxKm: r.vehicleMileageMaxKm === null ? null : typeof r.vehicleMileageMaxKm === "number" ? r.vehicleMileageMaxKm : undefined,
+        vehicleClass: typeof r.vehicleClass === "string" ? r.vehicleClass : undefined,
+        claimLimitCents: typeof r.claimLimitCents === "number" && r.claimLimitCents > 0 ? r.claimLimitCents : undefined,
         deductibleCents: r.deductibleCents,
-        basePriceCents: r.basePriceCents,
+        providerCostCents: r.providerCostCents,
       };
     });
 
@@ -326,7 +510,7 @@ export function ProviderProductsPage() {
 
     const seen = new Set<string>();
     for (const r of validatedRows) {
-      const key = `${r.termMonths}|${r.termKm}|${r.deductibleCents}`;
+      const key = `${r.termMonths}|${r.termKm}|${r.vehicleMileageMinKm ?? ""}|${r.vehicleMileageMaxKm ?? ""}|${r.vehicleClass ?? ""}|${r.deductibleCents}`;
       if (seen.has(key)) {
         setError("Duplicate pricing rows found (same term months / km / deductible).");
         setActiveTab("PRICING");
@@ -342,16 +526,16 @@ export function ProviderProductsPage() {
       productType: editor.productType,
       coverageDetails: editor.coverageDetails.trim() || undefined,
       exclusions: editor.exclusions.trim() || undefined,
-      termMonths: primary ? primary.termMonths : undefined,
-      termKm: primary ? primary.termKm : undefined,
+      termMonths: primary && typeof primary.termMonths === "number" ? primary.termMonths : undefined,
+      termKm: primary && typeof primary.termKm === "number" ? primary.termKm : undefined,
       deductibleCents: primary ? primary.deductibleCents : undefined,
       eligibilityMaxVehicleAgeYears: parseOptionalInt(editor.eligibilityMaxVehicleAgeYears),
       eligibilityMaxMileageKm: parseOptionalInt(editor.eligibilityMaxMileageKm),
       eligibilityMakeAllowlist: parseAllowlist(editor.eligibilityMakeAllowlist),
       eligibilityModelAllowlist: parseAllowlist(editor.eligibilityModelAllowlist),
       eligibilityTrimAllowlist: parseAllowlist(editor.eligibilityTrimAllowlist),
-      basePriceCents: primary ? primary.basePriceCents : undefined,
-      dealerCostCents: primary ? primary.basePriceCents : undefined,
+      basePriceCents: primary ? primary.providerCostCents : undefined,
+      dealerCostCents: primary ? primary.providerCostCents : undefined,
     };
 
     const allowlistsForUpdate = {
@@ -364,6 +548,15 @@ export function ProviderProductsPage() {
       let savedProduct: Product | null = null;
       if (!editor.id) {
         savedProduct = (await createMutation.mutateAsync(input)) as Product;
+
+        if (editor.published) {
+          savedProduct = (await updateMutation.mutateAsync({
+            id: savedProduct.id,
+            patch: {
+              published: true,
+            },
+          })) as Product;
+        }
       } else {
         savedProduct = (await updateMutation.mutateAsync({
           id: editor.id,
@@ -398,16 +591,44 @@ export function ProviderProductsPage() {
             productId,
             termMonths: r.termMonths,
             termKm: r.termKm,
+            vehicleMileageMinKm: r.vehicleMileageMinKm,
+            vehicleMileageMaxKm: r.vehicleMileageMaxKm,
+            vehicleClass: r.vehicleClass,
+            claimLimitCents: r.claimLimitCents,
             deductibleCents: r.deductibleCents,
-            basePriceCents: r.basePriceCents,
-            dealerCostCents: r.basePriceCents,
+            basePriceCents: r.providerCostCents,
+            dealerCostCents: r.providerCostCents,
           });
         }
         await qc.invalidateQueries({ queryKey: ["product-pricing", productId] });
       }
 
+      if (productId && pendingAddons.length > 0) {
+        for (const a of pendingAddons) {
+          const name = a.name.trim();
+          if (!name) continue;
+
+          const range = parsePriceRangeToCents(a.basePrice);
+          if (!range) continue;
+
+          await addonsApi.create({
+            productId,
+            name,
+            description: a.description.trim() || undefined,
+            basePriceCents: range.min,
+            minPriceCents: range.min,
+            maxPriceCents: range.max,
+            active: true,
+          });
+        }
+        await qc.invalidateQueries({ queryKey: ["product-addons", productId] });
+      }
+
+      await qc.invalidateQueries({ queryKey: ["marketplace-products"] });
+
       setShowEditor(false);
       setEditor(emptyEditor());
+      setPendingAddons([]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save product");
     }
@@ -527,6 +748,17 @@ export function ProviderProductsPage() {
               >
                 Documents
               </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("ADDONS")}
+                className={
+                  "px-3 py-1.5 text-sm rounded-md " +
+                  (activeTab === "ADDONS" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")
+                }
+                disabled={busy}
+              >
+                Add-ons
+              </button>
             </div>
           </div>
 
@@ -626,11 +858,208 @@ export function ProviderProductsPage() {
               </div>
             ) : null}
 
+            {activeTab === "ADDONS" ? (
+              <div className="space-y-4">
+                {editorProductId ? (
+                  <div className="rounded-xl border p-4">
+                    <div className="font-semibold">Add-ons</div>
+
+                    <div className="mt-4">
+                      {addonsQuery.isLoading ? <div className="text-sm text-muted-foreground">Loading add-ons…</div> : null}
+                      {addonsQuery.isError ? <div className="text-sm text-destructive">Failed to load add-ons.</div> : null}
+
+                      <div className="divide-y rounded-xl border">
+                        {addons.map((a) => (
+                          <div key={a.id} className="p-4 flex items-start justify-between gap-4">
+                            <div className="min-w-0">
+                              <div className="font-medium text-foreground truncate">{a.name}</div>
+                              {a.description ? <div className="text-xs text-muted-foreground mt-1">{a.description}</div> : null}
+                              <div className="text-xs text-muted-foreground mt-2">
+                                Price {(() => {
+                                  const min = typeof (a as any).minPriceCents === "number" ? (a as any).minPriceCents : a.basePriceCents;
+                                  const max = typeof (a as any).maxPriceCents === "number" ? (a as any).maxPriceCents : min;
+                                  return min !== max ? `${money(min)} - ${money(max)}` : money(min);
+                                })()}
+                                {a.active ? " • Active" : " • Inactive"}
+                              </div>
+                            </div>
+
+                            <div className="flex gap-2 shrink-0">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setAddonEditor({
+                                    id: a.id,
+                                    name: a.name,
+                                    description: a.description ?? "",
+                                    basePrice:
+                                      typeof (a as any).minPriceCents === "number" && typeof (a as any).maxPriceCents === "number" && (a as any).minPriceCents !== (a as any).maxPriceCents
+                                        ? `${centsToDollars((a as any).minPriceCents)} - ${centsToDollars((a as any).maxPriceCents)}`
+                                        : centsToDollars(a.basePriceCents),
+                                    active: a.active,
+                                  });
+                                }}
+                                disabled={busy}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="border-rose-200 text-rose-700 hover:bg-rose-50"
+                                disabled={busy || removeAddonMutation.isPending}
+                                onClick={() => {
+                                  const ok = window.confirm(`Delete add-on "${a.name}"? This cannot be undone.`);
+                                  if (!ok) return;
+                                  removeAddonMutation.mutate(a.id);
+                                }}
+                              >
+                                Delete
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {!editorProductId ? (
+                  <div className="rounded-xl border p-4">
+                    <div className="font-semibold">Add-on rows</div>
+
+                    <div className="mt-4 space-y-3">
+                      {pendingAddons.map((row, idx) => (
+                        <div key={row.key} className="rounded-lg border p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-sm font-medium">Row {idx + 1}</div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={busy || pendingAddons.length <= 1}
+                              onClick={() => setPendingAddons((s) => s.filter((x) => x.key !== row.key))}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-1 gap-3">
+                            <Input
+                              value={row.name}
+                              onChange={(e) =>
+                                setPendingAddons((s) => s.map((x) => (x.key === row.key ? { ...x, name: e.target.value } : x)))
+                              }
+                              placeholder="Add-on name"
+                              disabled={busy}
+                            />
+                            <Input
+                              value={row.description}
+                              onChange={(e) =>
+                                setPendingAddons((s) => s.map((x) => (x.key === row.key ? { ...x, description: e.target.value } : x)))
+                              }
+                              placeholder="Description (optional)"
+                              disabled={busy}
+                            />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <Input
+                                value={row.basePrice}
+                                onChange={(e) =>
+                                  setPendingAddons((s) => s.map((x) => (x.key === row.key ? { ...x, basePrice: sanitizePriceRangeInput(e.target.value) } : x)))
+                                }
+                                placeholder='Price (e.g. 499.00 or "499 - 599")'
+                                inputMode="decimal"
+                                disabled={busy}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() =>
+                          setPendingAddons((s) => [
+                            ...s,
+                            {
+                              key: crypto.randomUUID(),
+                              name: "",
+                              description: "",
+                              basePrice: "",
+                            },
+                          ])
+                        }
+                      >
+                        Add row
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border p-4">
+                    <div className="font-semibold">{addonEditor.id ? "Edit add-on" : "New add-on"}</div>
+                    <div className="mt-4 grid grid-cols-1 gap-3">
+                      <Input
+                        value={addonEditor.name}
+                        onChange={(e) => setAddonEditor((s) => ({ ...s, name: e.target.value }))}
+                        placeholder="Add-on name"
+                        disabled={busy}
+                      />
+                      <Input
+                        value={addonEditor.description}
+                        onChange={(e) => setAddonEditor((s) => ({ ...s, description: e.target.value }))}
+                        placeholder="Description (optional)"
+                        disabled={busy}
+                      />
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <Input
+                          value={addonEditor.basePrice}
+                          onChange={(e) => setAddonEditor((s) => ({ ...s, basePrice: sanitizePriceRangeInput(e.target.value) }))}
+                          placeholder='Price (e.g. 499.00 or "499 - 599")'
+                          inputMode="decimal"
+                          disabled={busy}
+                        />
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          disabled={busy || saveAddonMutation.isPending}
+                          onClick={async () => {
+                            setError(null);
+                            try {
+                              await saveAddonMutation.mutateAsync();
+                            } catch (e) {
+                              setError(e instanceof Error ? e.message : "Failed to save add-on");
+                            }
+                          }}
+                        >
+                          {addonEditor.id ? "Save" : "Add"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => setAddonEditor({ name: "", description: "", basePrice: "", active: true })}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
             {activeTab === "PRICING" ? (
               <div className="space-y-4">
                 <div className="rounded-xl border p-4">
                   <div className="font-semibold">Pricing</div>
-                  <div className="text-sm text-muted-foreground mt-1">Provider cost (dealer markup is applied later).</div>
 
                   <div className="mt-3 space-y-3">
                     {editor.pricingRows.map((row, idx) => (
@@ -655,12 +1084,11 @@ export function ProviderProductsPage() {
                               setEditor((s) => ({
                                 ...s,
                                 pricingRows: s.pricingRows.map((r) =>
-                                  r.key === row.key ? { ...r, termMonths: sanitizeDigitsOnly(e.target.value) } : r,
+                                  r.key === row.key ? { ...r, termMonths: e.target.value.replace(/[^0-9a-z]/gi, "") } : r,
                                 ),
                               }))
                             }
-                            placeholder="Term months"
-                            inputMode="numeric"
+                            placeholder='Term months (e.g. 36 or "Unlimited")'
                             disabled={busy}
                           />
                           <Input
@@ -668,19 +1096,69 @@ export function ProviderProductsPage() {
                             onChange={(e) =>
                               setEditor((s) => ({
                                 ...s,
-                                pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, termKm: sanitizeDigitsOnly(e.target.value) } : r)),
+                                pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, termKm: e.target.value.replace(/[^0-9a-z]/gi, "") } : r)),
                               }))
                             }
-                            placeholder="Term km"
+                            placeholder='Term km (e.g. 60000 or "Unlimited")'
+                            disabled={busy}
+                          />
+                          <Input
+                            value={row.vehicleMileageMinKm}
+                            onChange={(e) =>
+                              setEditor((s) => ({
+                                ...s,
+                                pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, vehicleMileageMinKm: sanitizeDigitsOnly(e.target.value) } : r)),
+                              }))
+                            }
+                            placeholder="Mileage min km (optional)"
                             inputMode="numeric"
                             disabled={busy}
                           />
                           <Input
-                            value={row.basePrice}
+                            value={row.vehicleMileageMaxKm}
                             onChange={(e) =>
                               setEditor((s) => ({
                                 ...s,
-                                pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, basePrice: sanitizeMoney(e.target.value) } : r)),
+                                pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, vehicleMileageMaxKm: e.target.value.replace(/[^0-9a-z]/gi, "") } : r)),
+                              }))
+                            }
+                            placeholder='Mileage max km (optional or "Unlimited")'
+                            disabled={busy}
+                          />
+                          <select
+                            value={row.vehicleClass}
+                            onChange={(e) =>
+                              setEditor((s) => ({
+                                ...s,
+                                pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, vehicleClass: e.target.value } : r)),
+                              }))
+                            }
+                            className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
+                            disabled={busy}
+                          >
+                            <option value="">Vehicle class (optional)</option>
+                            <option value="CLASS_1">Class 1</option>
+                            <option value="CLASS_2">Class 2</option>
+                            <option value="CLASS_3">Class 3</option>
+                          </select>
+                          <Input
+                            value={row.claimLimit}
+                            onChange={(e) =>
+                              setEditor((s) => ({
+                                ...s,
+                                pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, claimLimit: sanitizeMoney(e.target.value) } : r)),
+                              }))
+                            }
+                            placeholder="Claim limit (e.g. 2500.00)"
+                            inputMode="decimal"
+                            disabled={busy}
+                          />
+                          <Input
+                            value={row.providerCost}
+                            onChange={(e) =>
+                              setEditor((s) => ({
+                                ...s,
+                                pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, providerCost: sanitizeMoney(e.target.value) } : r)),
                               }))
                             }
                             placeholder="Provider cost (e.g. 799.00)"
@@ -709,7 +1187,21 @@ export function ProviderProductsPage() {
                       onClick={() =>
                         setEditor((s) => ({
                           ...s,
-                          pricingRows: [...s.pricingRows, { key: crypto.randomUUID(), termMonths: "", termKm: "", deductible: "", basePrice: "" }],
+                          pricingRows: [
+                            ...s.pricingRows,
+                            {
+                              key: crypto.randomUUID(),
+                              termMonths: "",
+                              termKm: "",
+                              vehicleMileageMinKm: "",
+                              vehicleMileageMaxKm: "",
+                              vehicleClass: "",
+                              claimLimit: "",
+                              deductible: "",
+                              providerCost: "",
+                              basePrice: "",
+                            },
+                          ],
                         }))
                       }
                       disabled={busy}

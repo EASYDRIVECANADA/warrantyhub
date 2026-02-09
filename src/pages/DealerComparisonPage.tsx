@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
@@ -7,6 +7,9 @@ import { Input } from "../components/ui/input";
 import { PageShell } from "../components/PageShell";
 import { costFromProductOrPricing, marginFromCostAndRetail, retailFromCost } from "../lib/dealerPricing";
 import { useDealerMarkupPct } from "../lib/dealerMarkup";
+import { getProductPricingApi } from "../lib/productPricing/productPricing";
+import { isPricingEligibleForVehicle } from "../lib/productPricing/eligibility";
+import type { ProductPricing } from "../lib/productPricing/types";
 import { getAppMode } from "../lib/runtime";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
 import type { Product, ProductType } from "../lib/products/types";
@@ -16,13 +19,14 @@ import { decodeVin, type VinDecoded } from "../lib/vin/decodeVin";
 import { alertMissing, confirmProceed, sanitizeDigitsOnly } from "../lib/utils";
 import { useAuth } from "../providers/AuthProvider";
 
-type CompareMetric = "PRICE" | "COVERAGE" | "DEDUCTIBLE" | "TERM" | "EXCLUSIONS";
+type CompareMetric = "PRICE" | "COVERAGE" | "DEDUCTIBLE" | "TERM" | "CLAIM_LIMIT" | "EXCLUSIONS";
 
 function metricLabel(m: CompareMetric) {
   if (m === "PRICE") return "Price";
   if (m === "COVERAGE") return "Coverage";
   if (m === "DEDUCTIBLE") return "Deductible";
   if (m === "TERM") return "Term";
+  if (m === "CLAIM_LIMIT") return "Claim limit";
   return "Exclusions";
 }
 
@@ -71,14 +75,18 @@ function clampSelection(ids: string[], max: number) {
   return ids.slice(0, max);
 }
 
-function retailCentsFor(p: Product, markupPct: number) {
-  const cost = costFromProductOrPricing({ dealerCostCents: p.dealerCostCents, basePriceCents: p.basePriceCents });
-  return retailFromCost(cost, markupPct) ?? cost;
+function pricingOptionLabel(r: ProductPricing) {
+  const limit = typeof r.claimLimitCents === "number" ? `$${(r.claimLimitCents / 100).toFixed(2)}` : "—";
+  const deductible = typeof r.deductibleCents === "number" ? `$${(r.deductibleCents / 100).toFixed(2)}` : "—";
+  const months = r.termMonths === null ? "Unlimited" : `${r.termMonths} mo`;
+  const km = r.termKm === null ? "Unlimited" : `${r.termKm.toLocaleString()} km`;
+  return `${months} / ${km} • Ded ${deductible} • Limit ${limit}`;
 }
 
 export function DealerComparisonPage() {
   const api = useMemo(() => getMarketplaceApi(), []);
   const providersApi = useMemo(() => getProvidersApi(), []);
+  const productPricingApi = useMemo(() => getProductPricingApi(), []);
   const { user } = useAuth();
   const mode = useMemo(() => getAppMode(), []);
 
@@ -88,15 +96,18 @@ export function DealerComparisonPage() {
   const [vin, setVin] = useState("");
   const [decoded, setDecoded] = useState<VinDecoded | null>(null);
   const [mileageKm, setMileageKm] = useState("");
+  const [vehicleClass, setVehicleClass] = useState("");
   const [decodeError, setDecodeError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [providerId, setProviderId] = useState("");
   const [productType, setProductType] = useState("");
+  const [priceSort, setPriceSort] = useState<string>("");
   const [metrics, setMetrics] = useState<Record<CompareMetric, boolean>>({
     PRICE: true,
     COVERAGE: true,
     DEDUCTIBLE: true,
     TERM: true,
+    CLAIM_LIMIT: true,
     EXCLUSIONS: true,
   });
 
@@ -186,12 +197,123 @@ export function DealerComparisonPage() {
     .filter((p) => (!productType.trim() ? true : p.productType === (productType.trim() as ProductType)))
     .filter((p) => eligible(p));
 
+  const shownRetailFor = (p: Product) => {
+    const cost = costFromProductOrPricing({ dealerCostCents: p.dealerCostCents, basePriceCents: p.basePriceCents });
+    return retailFromCost(cost, markupPct) ?? cost;
+  };
+
+  const sortedFilteredProducts = useMemo(() => {
+    const sortDir = priceSort === "PRICE_ASC" ? 1 : priceSort === "PRICE_DESC" ? -1 : 0;
+    if (!sortDir) return filteredProducts;
+    return filteredProducts.slice().sort((a, b) => {
+      const ap = shownRetailFor(a);
+      const bp = shownRetailFor(b);
+      const an = typeof ap === "number" ? ap : Number.MAX_SAFE_INTEGER;
+      const bn = typeof bp === "number" ? bp : Number.MAX_SAFE_INTEGER;
+      const diff = (an - bn) * sortDir;
+      if (diff) return diff;
+      return (a.name ?? "").localeCompare(b.name ?? "");
+    });
+  }, [filteredProducts, markupPct, priceSort]);
+
+  const eligibleVariantByProductIdQuery = useQuery({
+    queryKey: ["compare-eligible-variant-by-product", filteredProducts.map((p) => p.id).join(","), parsedMileage ?? "", vehicleClass],
+    enabled: Boolean(decoded) && typeof parsedMileage === "number" && filteredProducts.length > 0,
+    queryFn: async () => {
+      const entries = await Promise.all(
+        filteredProducts.map(async (p) => {
+          const rows = (await productPricingApi.list({ productId: p.id })) as ProductPricing[];
+          const ok = rows.some((r) => isPricingEligibleForVehicle({ pricing: r, vehicleMileageKm: parsedMileage as number, vehicleClass }));
+          return [p.id, ok] as const;
+        }),
+      );
+      return Object.fromEntries(entries) as Record<string, boolean>;
+    },
+  });
+
+  const eligibleVariantByProductId = (eligibleVariantByProductIdQuery.data ?? {}) as Record<string, boolean>;
+
+  const filteredProductsWithVariants = useMemo(() => {
+    if (!decoded) return filteredProducts;
+    if (typeof parsedMileage !== "number") return filteredProducts;
+    return filteredProducts.filter((p) => eligibleVariantByProductId[p.id] === true);
+  }, [decoded, eligibleVariantByProductId, filteredProducts, parsedMileage]);
+
   const selectedProducts = selectedIds
     .map((id) => products.find((p) => p.id === id))
     .filter(Boolean) as Product[];
 
-  const selectedRetailValues = selectedProducts.map((p) => retailCentsFor(p, markupPct)).filter((n) => typeof n === "number") as number[];
-  const minSelectedRetail = selectedRetailValues.length > 0 ? Math.min(...selectedRetailValues) : undefined;
+  const pricingByProductIdQuery = useQuery({
+    queryKey: ["compare-pricing", selectedProducts.map((p) => p.id).join(","), parsedMileage ?? "", vehicleClass],
+    enabled: selectedProducts.length > 0,
+    queryFn: async () => {
+      const entries = await Promise.all(
+        selectedProducts.map(async (p) => {
+          const rows = (await productPricingApi.list({ productId: p.id })) as ProductPricing[];
+          const eligible = typeof parsedMileage === "number"
+            ? rows.filter((r) => isPricingEligibleForVehicle({ pricing: r, vehicleMileageKm: parsedMileage, vehicleClass }))
+            : rows;
+
+          const sorted = eligible
+            .slice()
+            .sort((a, b) => {
+              const am = a.termMonths ?? Number.MAX_SAFE_INTEGER;
+              const bm = b.termMonths ?? Number.MAX_SAFE_INTEGER;
+              const ak = a.termKm ?? Number.MAX_SAFE_INTEGER;
+              const bk = b.termKm ?? Number.MAX_SAFE_INTEGER;
+              return (am - bm) || (ak - bk) || (a.deductibleCents - b.deductibleCents);
+            });
+          return [p.id, sorted] as const;
+        }),
+      );
+      return Object.fromEntries(entries) as Record<string, ProductPricing[]>;
+    },
+  });
+
+  const pricingByProductId = (pricingByProductIdQuery.data ?? {}) as Record<string, ProductPricing[]>;
+
+  const [selectedPricingIdByProductId, setSelectedPricingIdByProductId] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setSelectedPricingIdByProductId((prev) => {
+      const next: Record<string, string> = {};
+      for (const p of selectedProducts) {
+        const rows = pricingByProductId[p.id] ?? [];
+        const prevSelected = prev[p.id];
+        const exists = prevSelected ? rows.some((r) => r.id === prevSelected) : false;
+        next[p.id] = exists ? prevSelected : (rows[0]?.id ?? "");
+      }
+      return next;
+    });
+  }, [pricingByProductId, selectedProducts]);
+
+  const selectedPricingRowFor = (p: Product): ProductPricing | undefined => {
+    const rows = pricingByProductId[p.id] ?? [];
+    const selectedId = selectedPricingIdByProductId[p.id];
+    return rows.find((r) => r.id === selectedId) ?? rows[0];
+  };
+
+  const selectedRetailByProductId = useMemo(() => {
+    const map: Record<string, number | undefined> = {};
+    for (const p of selectedProducts) {
+      const rows = pricingByProductId[p.id] ?? [];
+      const selectedId = selectedPricingIdByProductId[p.id];
+      const selectedPricing = rows.find((r) => r.id === selectedId) ?? rows[0];
+      const cost = costFromProductOrPricing({
+        dealerCostCents: selectedPricing?.dealerCostCents ?? p.dealerCostCents,
+        basePriceCents: selectedPricing?.basePriceCents ?? p.basePriceCents,
+      });
+      map[p.id] = retailFromCost(cost, markupPct) ?? cost;
+    }
+    return map;
+  }, [markupPct, pricingByProductId, selectedPricingIdByProductId, selectedProducts]);
+
+  const minSelectedRetail = useMemo(() => {
+    const values = selectedProducts
+      .map((p) => selectedRetailByProductId[p.id])
+      .filter((n): n is number => typeof n === "number");
+    return values.length > 0 ? Math.min(...values) : undefined;
+  }, [selectedProducts, selectedRetailByProductId]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -255,6 +377,20 @@ export function DealerComparisonPage() {
                 disabled={!decoded}
               />
             </div>
+            <div className="md:col-span-4">
+              <div className="text-xs text-muted-foreground mb-1">Vehicle class</div>
+              <select
+                value={vehicleClass}
+                onChange={(e) => setVehicleClass(e.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
+                disabled={!decoded}
+              >
+                <option value="">Select (optional)</option>
+                <option value="CLASS_1">Class 1</option>
+                <option value="CLASS_2">Class 2</option>
+                <option value="CLASS_3">Class 3</option>
+              </select>
+            </div>
             <div className="md:col-span-4 rounded-xl border p-3 text-sm text-muted-foreground bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10">
               {decoded ? (
                 <div>
@@ -266,6 +402,66 @@ export function DealerComparisonPage() {
               ) : (
                 <div>Decode VIN to see the vehicle and eligible plans.</div>
               )}
+            </div>
+          </div>
+
+          <div className="px-6 pb-3">
+            <div className="rounded-xl border p-3 bg-background/50">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <select
+                  value={providerId}
+                  onChange={(e) => setProviderId(e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-sm"
+                >
+                  <option value="">All providers</option>
+                  {providerOptions.map((pid) => (
+                    <option key={pid} value={pid}>
+                      {providerDisplayName(providerById.get(pid), pid)}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={productType}
+                  onChange={(e) => setProductType(e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-sm"
+                >
+                  <option value="">All product types</option>
+                  {productTypeOptions.map((t) => (
+                    <option key={t} value={t}>
+                      {productTypeLabel(t)}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={priceSort}
+                  onChange={(e) => setPriceSort(e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-sm"
+                >
+                  <option value="">Sort by price</option>
+                  <option value="PRICE_ASC">Price: Low to High</option>
+                  <option value="PRICE_DESC">Price: High to Low</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="px-6 pb-6">
+            <div className="rounded-xl border p-3 bg-background/50">
+              <div className="text-xs font-medium text-foreground">Comparison criteria</div>
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+                {(Object.keys(metrics) as CompareMetric[]).map((m) => (
+                  <label key={m} className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={metrics[m]}
+                      onChange={(e) => setMetrics((s) => ({ ...s, [m]: e.target.checked }))}
+                    />
+                    <span className="text-foreground/90">{metricLabel(m)}</span>
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -286,15 +482,25 @@ export function DealerComparisonPage() {
           <div className="p-6">
             {!decoded ? <div className="text-sm text-muted-foreground">Decode a VIN above to show eligible plans.</div> : null}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredProducts.map((p) => {
+              {sortedFilteredProducts.map((p) => {
                 const selected = selectedIds.includes(p.id);
+                const variantEligibilityKnown =
+                  !decoded || typeof parsedMileage !== "number" ? true : eligibleVariantByProductIdQuery.isSuccess;
+                const hasEligibleVariant =
+                  !decoded || typeof parsedMileage !== "number" ? true : eligibleVariantByProductId[p.id] === true;
+                const disableCard = variantEligibilityKnown ? !hasEligibleVariant : false;
                 return (
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => toggleSelect(p.id)}
+                    onClick={() => {
+                      if (disableCard) return;
+                      toggleSelect(p.id);
+                    }}
+                    disabled={disableCard}
                     className={
                       "group text-left rounded-2xl border p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md " +
+                      (disableCard ? "opacity-60 cursor-not-allowed " : "") +
                       (selected
                         ? "border-blue-500/40 ring-2 ring-blue-500/20 bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10"
                         : "bg-background hover:bg-muted/50")
@@ -331,6 +537,7 @@ export function DealerComparisonPage() {
                       })()}
                     </div>
                     <div className="text-xs text-muted-foreground mt-2">Term: {termLabel(p)}</div>
+                    {disableCard ? <div className="text-xs text-muted-foreground mt-2">No eligible options for this vehicle</div> : null}
                   </button>
                 );
               })}
@@ -340,55 +547,96 @@ export function DealerComparisonPage() {
               {!productsQuery.isLoading && !productsQuery.isError && products.length === 0 ? (
                 <div className="text-sm text-muted-foreground">No published products yet.</div>
               ) : null}
-              {!productsQuery.isLoading && !productsQuery.isError && decoded && filteredProducts.length === 0 ? (
+              {!productsQuery.isLoading && !productsQuery.isError && decoded && filteredProductsWithVariants.length === 0 ? (
                 <div className="text-sm text-muted-foreground">No eligible plans for this vehicle.</div>
               ) : null}
             </div>
 
-            <div className="mt-6 rounded-2xl border p-5 ring-1 ring-blue-500/10 bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <select
-                  value={providerId}
-                  onChange={(e) => setProviderId(e.target.value)}
-                  className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
-                >
-                  <option value="">All providers</option>
-                  {providerOptions.map((pid) => (
-                    <option key={pid} value={pid}>
-                      {providerDisplayName(providerById.get(pid), pid)}
-                    </option>
-                  ))}
-                </select>
+            {selectedProducts.length > 0 ? (
+              <div className="mt-6 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
+                <div className="px-6 py-4 border-b flex items-start justify-between gap-4 flex-wrap bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
+                  <div>
+                    <div className="font-semibold">Selected plans & options</div>
+                    <div className="text-sm text-muted-foreground mt-1">Pick the exact pricing option (term/km/deductible/claim limit) to compare.</div>
+                  </div>
+                  <div className="text-xs text-muted-foreground">{selectedProducts.length} selected</div>
+                </div>
 
-                <select
-                  value={productType}
-                  onChange={(e) => setProductType(e.target.value)}
-                  className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
-                >
-                  <option value="">All product types</option>
-                  {productTypeOptions.map((t) => (
-                    <option key={t} value={t}>
-                      {productTypeLabel(t)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {selectedProducts.map((p) => {
+                    const rows = pricingByProductId[p.id] ?? [];
+                    const selectedPricing = selectedPricingRowFor(p);
+                    const retail = selectedRetailByProductId[p.id];
+                    return (
+                      <div
+                        key={p.id}
+                        className="rounded-2xl border bg-background p-4 shadow-sm ring-1 ring-blue-500/5 transition-shadow hover:shadow-md"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="font-semibold text-foreground truncate leading-tight">{p.name}</div>
+                            <div className="text-[11px] text-muted-foreground mt-1 truncate">
+                              {providerDisplayName(providerById.get(p.providerId), p.providerId)} • {productTypeLabel(p.productType)}
+                            </div>
+                          </div>
+                          <div className="shrink-0 flex flex-col items-end gap-2">
+                            <div className="inline-flex items-center rounded-full border bg-muted/30 px-2.5 py-1 text-xs font-semibold text-foreground whitespace-nowrap">
+                              {money(retail)}
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => toggleSelect(p.id)}
+                              className="h-8 px-2 text-xs"
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
 
-              <div className="font-semibold mt-4">Comparison criteria</div>
-              <div className="text-sm text-muted-foreground mt-1">Show/hide rows to keep the conversation focused.</div>
-              <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-3">
-                {(Object.keys(metrics) as CompareMetric[]).map((m) => (
-                  <label key={m} className="inline-flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={metrics[m]}
-                      onChange={(e) => setMetrics((s) => ({ ...s, [m]: e.target.checked }))}
-                    />
-                    {metricLabel(m)}
-                  </label>
-                ))}
+                        {rows.length > 0 ? (
+                          <div className="mt-3">
+                            <div className="text-[11px] text-muted-foreground mb-1">Pricing option</div>
+                            <select
+                              value={selectedPricingIdByProductId[p.id] ?? ""}
+                              onChange={(e) => setSelectedPricingIdByProductId((s) => ({ ...s, [p.id]: e.target.value }))}
+                              className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-sm"
+                            >
+                              {rows.map((r) => (
+                                <option key={r.id} value={r.id}>
+                                  {pricingOptionLabel(r)}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        ) : (
+                          <div className="mt-3 text-xs text-muted-foreground">No eligible pricing rows found for this plan.</div>
+                        )}
+
+                        <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                          <div className="rounded-xl border bg-muted/10 p-3">
+                            <div className="text-[11px] text-muted-foreground">Term</div>
+                            <div className="font-semibold text-foreground mt-1">
+                              {selectedPricing
+                                ? `${selectedPricing.termMonths === null ? "Unlimited" : `${selectedPricing.termMonths} mo`} / ${selectedPricing.termKm === null ? "Unlimited" : `${selectedPricing.termKm.toLocaleString()} km`}`
+                                : termLabel(p)}
+                            </div>
+                          </div>
+                          <div className="rounded-xl border bg-muted/10 p-3">
+                            <div className="text-[11px] text-muted-foreground">Deductible</div>
+                            <div className="font-semibold text-foreground mt-1">{money(selectedPricing?.deductibleCents ?? p.deductibleCents)}</div>
+                          </div>
+                          <div className="rounded-xl border bg-muted/10 p-3 col-span-2">
+                            <div className="text-[11px] text-muted-foreground">Claim limit</div>
+                            <div className="font-semibold text-foreground mt-1">{money(selectedPricing?.claimLimitCents)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            ) : null}
           </div>
         </div>
 
@@ -408,13 +656,22 @@ export function DealerComparisonPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/30">
-                    <th className="text-left px-6 py-3 text-xs text-muted-foreground w-[220px]">Criteria</th>
+                    <th className="text-left px-6 py-3 text-xs text-muted-foreground w-[220px] sticky left-0 bg-muted/30">Criteria</th>
                     {selectedProducts.map((p) => (
                       <th key={p.id} className="text-left px-6 py-3">
                         <div className="font-medium text-foreground">{p.name}</div>
                         <div className="text-xs text-muted-foreground mt-1">
                           {providerDisplayName(providerById.get(p.providerId), p.providerId)} • {productTypeLabel(p.productType)}
                         </div>
+                        {(() => {
+                          const selectedPricing = selectedPricingRowFor(p);
+                          if (!selectedPricing) return null;
+                          return (
+                            <div className="text-[11px] text-muted-foreground mt-2 truncate">
+                              Option: {pricingOptionLabel(selectedPricing)}
+                            </div>
+                          );
+                        })()}
                       </th>
                     ))}
                   </tr>
@@ -423,25 +680,30 @@ export function DealerComparisonPage() {
                 <tbody className="divide-y">
                   {activeMetrics.includes("PRICE") ? (
                     <tr className="odd:bg-muted/20">
-                      <td className="px-6 py-4 font-medium">Price</td>
+                      <td className="px-6 py-4 font-medium sticky left-0 bg-background">Price</td>
                       {selectedProducts.map((p) => (
                         <td
                           key={p.id}
                           className={
                             "px-6 py-4 font-medium " +
-                            (typeof minSelectedRetail === "number" && retailCentsFor(p, markupPct) === minSelectedRetail
+                            (typeof minSelectedRetail === "number" && selectedRetailByProductId[p.id] === minSelectedRetail
                               ? "text-foreground"
                               : "text-foreground")
                           }
                         >
-                          <div className="inline-flex items-center gap-2">
-                            <span>{money(retailCentsFor(p, markupPct))}</span>
-                            {typeof minSelectedRetail === "number" && retailCentsFor(p, markupPct) === minSelectedRetail ? (
-                              <span className="inline-flex items-center rounded-full border bg-background px-2 py-0.5 text-[11px] text-muted-foreground">
-                                Best price
-                              </span>
-                            ) : null}
-                          </div>
+                          {(() => {
+                            const retail = selectedRetailByProductId[p.id];
+                            return (
+                              <div className="inline-flex items-center gap-2">
+                                <span>{money(retail)}</span>
+                                {typeof minSelectedRetail === "number" && retail === minSelectedRetail ? (
+                                  <span className="inline-flex items-center rounded-full border bg-background px-2 py-0.5 text-[11px] text-muted-foreground">
+                                    Best price
+                                  </span>
+                                ) : null}
+                              </div>
+                            );
+                          })()}
                         </td>
                       ))}
                     </tr>
@@ -449,25 +711,44 @@ export function DealerComparisonPage() {
 
                   {activeMetrics.includes("DEDUCTIBLE") ? (
                     <tr className="odd:bg-muted/20">
-                      <td className="px-6 py-4 font-medium">Deductible</td>
+                      <td className="px-6 py-4 font-medium sticky left-0 bg-background">Deductible</td>
                       {selectedProducts.map((p) => (
-                        <td key={p.id} className="px-6 py-4">{money(p.deductibleCents)}</td>
+                        <td key={p.id} className="px-6 py-4">{(() => {
+                          const selectedPricing = selectedPricingRowFor(p);
+                          return money(selectedPricing?.deductibleCents ?? p.deductibleCents);
+                        })()}</td>
                       ))}
                     </tr>
                   ) : null}
 
                   {activeMetrics.includes("TERM") ? (
                     <tr className="odd:bg-muted/20">
-                      <td className="px-6 py-4 font-medium">Term</td>
+                      <td className="px-6 py-4 font-medium sticky left-0 bg-background">Term</td>
                       {selectedProducts.map((p) => (
-                        <td key={p.id} className="px-6 py-4">{termLabel(p)}</td>
+                        <td key={p.id} className="px-6 py-4">{(() => {
+                          const selectedPricing = selectedPricingRowFor(p);
+                          if (!selectedPricing) return termLabel(p);
+                          return `${selectedPricing.termMonths} mo / ${selectedPricing.termKm} km`;
+                        })()}</td>
+                      ))}
+                    </tr>
+                  ) : null}
+
+                  {activeMetrics.includes("CLAIM_LIMIT") ? (
+                    <tr className="odd:bg-muted/20">
+                      <td className="px-6 py-4 font-medium sticky left-0 bg-background">Claim limit</td>
+                      {selectedProducts.map((p) => (
+                        <td key={p.id} className="px-6 py-4">{(() => {
+                          const selectedPricing = selectedPricingRowFor(p);
+                          return money(selectedPricing?.claimLimitCents);
+                        })()}</td>
                       ))}
                     </tr>
                   ) : null}
 
                   {activeMetrics.includes("COVERAGE") ? (
                     <tr className="odd:bg-muted/20">
-                      <td className="px-6 py-4 font-medium">Coverage</td>
+                      <td className="px-6 py-4 font-medium sticky left-0 bg-background">Coverage</td>
                       {selectedProducts.map((p) => (
                         <td key={p.id} className="px-6 py-4 text-muted-foreground whitespace-pre-wrap">
                           {p.coverageDetails?.trim() ? p.coverageDetails : "—"}
@@ -478,7 +759,7 @@ export function DealerComparisonPage() {
 
                   {activeMetrics.includes("EXCLUSIONS") ? (
                     <tr className="odd:bg-muted/20">
-                      <td className="px-6 py-4 font-medium">Exclusions</td>
+                      <td className="px-6 py-4 font-medium sticky left-0 bg-background">Exclusions</td>
                       {selectedProducts.map((p) => (
                         <td key={p.id} className="px-6 py-4 text-muted-foreground whitespace-pre-wrap">
                           {p.exclusions?.trim() ? p.exclusions : "—"}

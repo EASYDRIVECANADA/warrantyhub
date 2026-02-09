@@ -90,6 +90,7 @@ export function DealerContractsPage() {
 
   const [tab, setTab] = useState<TabKey>(defaultTab);
   const [vin, setVin] = useState(prefilledVin);
+  const [q, setQ] = useState("");
 
   const listQuery = useQuery({
     queryKey: ["contracts"],
@@ -180,7 +181,38 @@ export function DealerContractsPage() {
     });
   })();
 
-  const filtered = tab === "ALL" ? visibleContracts : visibleContracts.filter((c) => c.status === tab);
+  const searched = (() => {
+    const query = q.trim().toLowerCase();
+    if (!query) return visibleContracts;
+    return visibleContracts.filter((c) => {
+      const hay = [
+        c.warrantyId,
+        c.contractNumber,
+        c.customerName,
+        c.vin,
+        c.vehicleYear,
+        c.vehicleMake,
+        c.vehicleModel,
+        c.vehicleTrim,
+      ]
+        .map((x) => (x ?? "").toString().toLowerCase())
+        .join(" ");
+      return hay.includes(query);
+    });
+  })();
+
+  const filtered = tab === "ALL" ? searched : searched.filter((c) => c.status === tab);
+
+  const contractCounts = useMemo(() => {
+    const all = visibleContracts;
+    return {
+      ALL: all.length,
+      DRAFT: all.filter((c) => c.status === "DRAFT").length,
+      SOLD: all.filter((c) => c.status === "SOLD").length,
+      REMITTED: all.filter((c) => c.status === "REMITTED").length,
+      PAID: all.filter((c) => c.status === "PAID").length,
+    };
+  }, [visibleContracts]);
 
   const providerIds = Array.from(
     new Set(
@@ -210,6 +242,11 @@ export function DealerContractsPage() {
 
   const tabs: TabKey[] = ["ALL", "DRAFT", "SOLD", "REMITTED", "PAID"];
 
+  const tabCount = (t: TabKey) => {
+    if (t === "ALL") return contractCounts.ALL;
+    return contractCounts[t];
+  };
+
   return (
     <PageShell
       badge="Dealer Portal"
@@ -221,151 +258,180 @@ export function DealerContractsPage() {
         </Button>
       }
     >
-      <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
-          <div className="px-6 py-4 border-b">
-            <div className="font-semibold">New Contract</div>
-            <div className="text-sm text-muted-foreground mt-1">Start by decoding the VIN to see which coverages are eligible.</div>
-          </div>
+      <div className="relative">
+        <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-yellow-400/10 blur-2xl" />
 
-          {selectedProduct ? (
-            <div className="px-6 py-4 border-b bg-muted/20">
-              <div className="text-xs text-muted-foreground">Selected product</div>
-              <div className="text-sm font-medium text-foreground mt-1">{selectedProduct.name}</div>
-              <div className="text-xs text-muted-foreground mt-1">This will be attached to the draft contract.</div>
-              <div className="mt-2">
-                <Button size="sm" variant="outline" asChild>
-                  <Link to="/dealer-marketplace">Change product</Link>
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="px-6 py-4 border-b bg-muted/10">
-              <div className="text-sm text-muted-foreground">
-                No product selected yet.
-                <Button size="sm" variant="outline" asChild className="ml-2">
-                  <Link to="/dealer-marketplace">Find Products</Link>
-                </Button>
-              </div>
-            </div>
-          )}
-
-          <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-4 gap-3">
-            <Input
-              value={vin}
-              onChange={(e) => setVin(e.target.value)}
-              placeholder="VIN (17 characters)"
-            />
-            <div className="hidden md:block" />
-            <div className="hidden md:block" />
-            <Button
-              onClick={() => {
-                void (async () => {
-                  const v = vin.trim();
-                  if (!v) return alertMissing("VIN is required.");
-                  if (!(await confirmProceed("Decode VIN and create Draft contract?"))) return;
-                  createMutation.mutate();
-                })();
-              }}
-              disabled={createMutation.isPending}
-            >
-              Create Draft
-            </Button>
-          </div>
-
-          {createMutation.isError ? (
-            <div className="px-6 pb-6 text-sm text-destructive">
-              {createMutation.error instanceof Error ? createMutation.error.message : "Failed to create draft"}
-            </div>
-          ) : null}
-        </div>
-
-      <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden">
-          <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap">
-            <div>
-              <div className="font-semibold">Contracts</div>
-              <div className="text-sm text-muted-foreground mt-1">Filter by lifecycle status and open a contract to manage it.</div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="lg:col-span-5 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-yellow-500/10">
+            <div className="px-6 py-4 border-b bg-gradient-to-r from-yellow-500/10 to-blue-600/10">
+              <div className="font-semibold">New Contract</div>
+              <div className="text-sm text-muted-foreground mt-1">Enter a VIN, then create a draft and fill out the customer info.</div>
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
-              {tabs.map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setTab(t)}
-                  className={
-                    "text-sm px-3 py-1.5 rounded-lg border transition-colors " +
-                    (tab === t
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-background hover:bg-muted text-muted-foreground")
-                  }
-                >
-                  {labelForTab(t)}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="hidden md:grid grid-cols-12 gap-3 px-6 py-3 border-b text-xs text-muted-foreground">
-            <div className="col-span-2">Contract #</div>
-            <div className="col-span-2">Customer</div>
-            <div className="col-span-3">Product</div>
-            <div className="col-span-2">Provider</div>
-            <div className="col-span-1">Status</div>
-            <div className="col-span-1">Created</div>
-            <div className="col-span-1 text-right">Actions</div>
-          </div>
-
-          <div className="divide-y">
-            {filtered.map((c) => (
-              <div key={c.id} className="px-6 py-4">
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                  <div className="md:col-span-2 text-sm font-medium text-foreground">{c.contractNumber}</div>
-
-                  <div className="md:col-span-2 text-sm text-foreground">{c.customerName}</div>
-
-                  <div className="md:col-span-3 text-sm text-muted-foreground">
-                    {(() => {
-                      const pid = (c.productId ?? "").trim();
-                      const p = pid ? productById.get(pid) : undefined;
-                      return p?.name ?? (pid ? "Selected product" : "—");
-                    })()}
-                  </div>
-
-                  <div className="md:col-span-2 text-sm text-muted-foreground">{providerDisplay(c.providerId)}</div>
-
-                  <div className="md:col-span-1">
-                    <span className={"inline-flex items-center text-xs px-2 py-1 rounded-md border " + statusPillClass(c.status)}>
-                      {labelForTab(c.status)}
-                    </span>
-                  </div>
-
-                  <div className="md:col-span-1 text-xs text-muted-foreground">{new Date(c.createdAt).toLocaleDateString()}</div>
-
-                  <div className="md:col-span-1 flex md:justify-end gap-2">
+            <div className="p-6 space-y-4">
+              {selectedProduct ? (
+                <div className="rounded-xl border p-4 bg-muted/10">
+                  <div className="text-xs text-muted-foreground">Selected plan</div>
+                  <div className="text-sm font-medium text-foreground mt-1">{selectedProduct.name}</div>
+                  <div className="mt-3">
                     <Button size="sm" variant="outline" asChild>
-                      <Link to={`/dealer-contracts/${c.id}`}>View</Link>
-                    </Button>
-                    <Button size="sm" asChild>
-                      <Link to={`/dealer-contracts/${c.id}/print/customer`}>Download</Link>
+                      <Link to="/dealer-marketplace">Change plan</Link>
                     </Button>
                   </div>
                 </div>
+              ) : (
+                <div className="rounded-xl border p-4 bg-muted/10">
+                  <div className="text-sm text-muted-foreground">No plan selected yet.</div>
+                  <div className="mt-3">
+                    <Button size="sm" variant="outline" asChild>
+                      <Link to="/dealer-marketplace">Find products</Link>
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">VIN</div>
+                <Input value={vin} onChange={(e) => setVin(e.target.value)} placeholder="VIN (17 characters)" />
               </div>
-            ))}
 
-            {listQuery.isLoading ? (
-              <div className="px-6 py-6 text-sm text-muted-foreground">Loading…</div>
-            ) : null}
+              <Button
+                className="w-full bg-yellow-400 text-black hover:bg-yellow-300"
+                onClick={() => {
+                  void (async () => {
+                    const v = vin.trim();
+                    if (!v) return alertMissing("VIN is required.");
+                    if (!(await confirmProceed("Decode VIN and create Draft contract?"))) return;
+                    createMutation.mutate();
+                  })();
+                }}
+                disabled={createMutation.isPending}
+              >
+                Create draft
+              </Button>
 
-            {!listQuery.isLoading && filtered.length === 0 ? (
-              <div className="px-6 py-10 text-sm text-muted-foreground">No contracts in this view yet.</div>
-            ) : null}
+              {createMutation.isError ? (
+                <div className="text-sm text-destructive">
+                  {createMutation.error instanceof Error ? createMutation.error.message : "Failed to create draft"}
+                </div>
+              ) : null}
 
-            {listQuery.isError ? (
-              <div className="px-6 py-6 text-sm text-destructive">Failed to load contracts.</div>
-            ) : null}
+              <div className="rounded-xl border p-4 bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10">
+                <div className="font-medium text-foreground">Quick status</div>
+                <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                  {tabs.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setTab(t)}
+                      className={
+                        "rounded-xl border p-3 text-left transition-colors " +
+                        (tab === t ? "bg-muted/50 border-blue-500/30" : "bg-background hover:bg-muted/30")
+                      }
+                    >
+                      <div className="text-xs text-muted-foreground">{labelForTab(t)}</div>
+                      <div className="text-lg font-semibold text-foreground mt-1">{tabCount(t)}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="lg:col-span-7 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
+            <div className="px-6 py-4 border-b flex items-start justify-between gap-4 flex-wrap bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
+              <div>
+                <div className="font-semibold">Contracts</div>
+                <div className="text-sm text-muted-foreground mt-1">Search and open a contract to manage it.</div>
+              </div>
+              <div className="w-full sm:w-[320px]">
+                <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search (name, VIN, contract #)…" />
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-b">
+              <div className="flex items-center gap-2 flex-wrap">
+                {tabs.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTab(t)}
+                    className={
+                      "text-sm px-3 py-1.5 rounded-lg border transition-colors " +
+                      (tab === t
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background hover:bg-muted text-muted-foreground")
+                    }
+                  >
+                    {labelForTab(t)}
+                    <span className="ml-2 text-xs opacity-70">{tabCount(t)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="hidden md:grid grid-cols-12 gap-3 px-6 py-3 border-b text-xs text-muted-foreground">
+              <div className="col-span-2">Contract #</div>
+              <div className="col-span-2">Customer</div>
+              <div className="col-span-3">Product</div>
+              <div className="col-span-2">Provider</div>
+              <div className="col-span-1">Status</div>
+              <div className="col-span-1">Created</div>
+              <div className="col-span-1 text-right">Actions</div>
+            </div>
+
+            <div className="divide-y">
+              {filtered.map((c) => (
+                <div key={c.id} className="px-6 py-4">
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                    <div className="md:col-span-2">
+                      <div className="text-sm font-medium text-foreground">{c.contractNumber}</div>
+                      <div className="text-xs text-muted-foreground mt-1">{c.warrantyId}</div>
+                    </div>
+
+                    <div className="md:col-span-2 text-sm text-foreground">{c.customerName || "—"}</div>
+
+                    <div className="md:col-span-3 text-sm text-muted-foreground">
+                      {(() => {
+                        const pid = (c.productId ?? "").trim();
+                        const p = pid ? productById.get(pid) : undefined;
+                        return p?.name ?? (pid ? "Selected product" : "—");
+                      })()}
+                    </div>
+
+                    <div className="md:col-span-2 text-sm text-muted-foreground">{providerDisplay(c.providerId)}</div>
+
+                    <div className="md:col-span-1">
+                      <span className={"inline-flex items-center text-xs px-2 py-1 rounded-md border " + statusPillClass(c.status)}>
+                        {labelForTab(c.status)}
+                      </span>
+                    </div>
+
+                    <div className="md:col-span-1 text-xs text-muted-foreground">{new Date(c.createdAt).toLocaleDateString()}</div>
+
+                    <div className="md:col-span-1 flex md:justify-end gap-2">
+                      <Button size="sm" variant="outline" asChild>
+                        <Link to={`/dealer-contracts/${c.id}`}>Open</Link>
+                      </Button>
+                      <Button size="sm" asChild className="bg-yellow-400 text-black hover:bg-yellow-300">
+                        <Link to={`/dealer-contracts/${c.id}/print/customer`}>Download</Link>
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {listQuery.isLoading ? <div className="px-6 py-6 text-sm text-muted-foreground">Loading…</div> : null}
+
+              {!listQuery.isLoading && filtered.length === 0 ? (
+                <div className="px-6 py-10 text-sm text-muted-foreground">No contracts found.</div>
+              ) : null}
+
+              {listQuery.isError ? <div className="px-6 py-6 text-sm text-destructive">Failed to load contracts.</div> : null}
+            </div>
           </div>
         </div>
+      </div>
     </PageShell>
   );
 }

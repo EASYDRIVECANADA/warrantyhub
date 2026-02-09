@@ -246,14 +246,32 @@ export function DealerContractPrintPage() {
                 <div>
                   <div className="text-[11px] text-slate-500">{type === "provider" ? "Provider cost" : "Retail price"}</div>
                   <div className="font-medium">
-                    {type === "provider" ? money(contract.pricingDealerCostCents) : money(contract.pricingBasePriceCents)}
+                    {type === "provider"
+                      ? money((contract.pricingDealerCostCents ?? 0) + (contract.addonTotalCostCents ?? 0))
+                      : money((contract.pricingBasePriceCents ?? 0) + (contract.addonTotalRetailCents ?? 0))}
                   </div>
                   <div className="text-[11px] text-slate-500 mt-1">Deductible: {money(contract.pricingDeductibleCents ?? selectedProduct?.deductibleCents)}</div>
                 </div>
               </div>
               <div className="mt-3 text-[11px] text-slate-500">
-                Term: {typeof contract.pricingTermMonths === "number" ? `${contract.pricingTermMonths} mo` : "—"} / {typeof contract.pricingTermKm === "number" ? `${contract.pricingTermKm} km` : "—"}
+                Term: {contract.pricingTermMonths === null ? "Unlimited" : typeof contract.pricingTermMonths === "number" ? `${contract.pricingTermMonths} mo` : "—"} / {contract.pricingTermKm === null ? "Unlimited" : typeof contract.pricingTermKm === "number" ? `${contract.pricingTermKm} km` : "—"}
               </div>
+
+              {Array.isArray((contract as any).addonSnapshot) && ((contract as any).addonSnapshot as any[]).length > 0 ? (
+                <div className="mt-3 text-[11px] text-slate-500">
+                  Add-ons:
+                  <div className="mt-1">
+                    {(((contract as any).addonSnapshot as any[]) || []).map((a) => (
+                      <div key={(a?.id ?? a?.name ?? Math.random()).toString()} className="flex items-center justify-between gap-3">
+                        <div>{(a?.name ?? "—").toString()}</div>
+                        <div>
+                          {money(type === "provider" ? ((a?.chosenPriceCents ?? a?.dealerCostCents ?? a?.basePriceCents ?? 0) as number) : ((a?.chosenPriceCents ?? a?.basePriceCents ?? 0) as number))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="mt-6 rounded-lg border p-4">

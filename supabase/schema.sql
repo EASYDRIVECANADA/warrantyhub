@@ -861,6 +861,27 @@ alter table public.contracts
   add column if not exists pricing_base_price_cents integer;
 
 alter table public.contracts
+  add column if not exists pricing_dealer_cost_cents integer;
+
+alter table public.contracts
+  add column if not exists pricing_vehicle_mileage_min_km integer;
+
+alter table public.contracts
+  add column if not exists pricing_vehicle_mileage_max_km integer;
+
+alter table public.contracts
+  add column if not exists pricing_vehicle_class text;
+
+alter table public.contracts
+  add column if not exists addon_snapshot jsonb;
+
+alter table public.contracts
+  add column if not exists addon_total_retail_cents integer;
+
+alter table public.contracts
+  add column if not exists addon_total_cost_cents integer;
+
+alter table public.contracts
   add column if not exists created_by_user_id text;
 
 alter table public.contracts
@@ -1063,13 +1084,26 @@ create table if not exists public.product_pricing (
   id uuid primary key default gen_random_uuid(),
   provider_id uuid not null references public.profiles(id) on delete cascade,
   product_id uuid not null references public.products(id) on delete cascade,
-  term_months integer not null,
-  term_km integer not null,
+  term_months integer,
+  term_km integer,
+  vehicle_mileage_min_km integer,
+  vehicle_mileage_max_km integer,
+  vehicle_class text,
+  claim_limit_cents integer,
   deductible_cents integer not null,
   base_price_cents integer not null,
   dealer_cost_cents integer,
   created_at timestamptz not null default now(),
-  unique (product_id, term_months, term_km, deductible_cents)
+  unique (
+    product_id,
+    term_months,
+    term_km,
+    vehicle_mileage_min_km,
+    vehicle_mileage_max_km,
+    vehicle_class,
+    deductible_cents,
+    claim_limit_cents
+  )
 );
 
 do $$
@@ -1115,6 +1149,60 @@ create policy "product_pricing_select_published_dealer"
 drop policy if exists "product_pricing_select_admin_all" on public.product_pricing;
 create policy "product_pricing_select_admin_all"
   on public.product_pricing
+  for select
+  to authenticated
+  using (exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.role in ('ADMIN','SUPER_ADMIN')
+  ));
+
+create table if not exists public.product_addons (
+  id uuid primary key default gen_random_uuid(),
+  provider_id uuid not null references public.profiles(id) on delete cascade,
+  product_id uuid not null references public.products(id) on delete cascade,
+  name text not null,
+  description text,
+  base_price_cents integer not null,
+  min_price_cents integer,
+  max_price_cents integer,
+  dealer_cost_cents integer,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (product_id, name)
+);
+
+alter table public.product_addons enable row level security;
+
+drop policy if exists "product_addons_provider_own" on public.product_addons;
+create policy "product_addons_provider_own"
+  on public.product_addons
+  for all
+  to authenticated
+  using (provider_id = auth.uid())
+  with check (provider_id = auth.uid());
+
+drop policy if exists "product_addons_select_published_dealer" on public.product_addons;
+create policy "product_addons_select_published_dealer"
+  on public.product_addons
+  for select
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.products pr
+      where pr.id = product_addons.product_id
+        and pr.published = true
+    )
+    and exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid() and p.role in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE','ADMIN','SUPER_ADMIN')
+    )
+  );
+
+drop policy if exists "product_addons_select_admin_all" on public.product_addons;
+create policy "product_addons_select_admin_all"
+  on public.product_addons
   for select
   to authenticated
   using (exists (

@@ -2,8 +2,12 @@ export type ProductPricing = {
   id: string;
   providerId: string;
   productId: string;
-  termMonths: number;
-  termKm: number;
+  termMonths: number | null;
+  termKm: number | null;
+  vehicleMileageMinKm?: number;
+  vehicleMileageMaxKm?: number | null;
+  vehicleClass?: string;
+  claimLimitCents?: number;
   deductibleCents: number;
   basePriceCents: number;
   dealerCostCents?: number;
@@ -12,8 +16,12 @@ export type ProductPricing = {
 
 export type CreateProductPricingInput = {
   productId: string;
-  termMonths: number;
-  termKm: number;
+  termMonths: number | null;
+  termKm: number | null;
+  vehicleMileageMinKm?: number;
+  vehicleMileageMaxKm?: number | null;
+  vehicleClass?: string;
+  claimLimitCents?: number;
   deductibleCents: number;
   basePriceCents: number;
   dealerCostCents?: number;

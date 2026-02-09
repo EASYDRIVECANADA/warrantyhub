@@ -82,6 +82,20 @@ function readDealerMemberships(): any[] {
   }
 }
 
+function inferDealerIdFromMemberships(userId: string): string | undefined {
+  const uid = (userId ?? "").toString().trim();
+  if (!uid) return undefined;
+  const memberships = readDealerMemberships();
+  const active = memberships.find((m) => {
+    const mid = (m?.userId ?? "").toString().trim();
+    if (mid !== uid) return false;
+    const status = (m?.status ?? "").toString().trim().toUpperCase();
+    return !status || status === "ACTIVE";
+  });
+  const dealerId = (active?.dealerId ?? "").toString().trim();
+  return dealerId || undefined;
+}
+
 function toAuthUser(u: LocalUserRecord): AuthUser {
   const active = u.isActive !== false;
   const rawRole = u.role;
@@ -92,6 +106,10 @@ function toAuthUser(u: LocalUserRecord): AuthUser {
       : rawRole;
   let effectiveDealerId =
     effectiveRole === "DEALER_ADMIN" ? (u.dealerId ?? u.id) : effectiveRole === "DEALER_EMPLOYEE" ? u.dealerId : undefined;
+
+  if (effectiveRole === "DEALER_EMPLOYEE" && !effectiveDealerId) {
+    effectiveDealerId = inferDealerIdFromMemberships(u.id);
+  }
 
   if ((effectiveRole === "DEALER_ADMIN" || effectiveRole === "DEALER_EMPLOYEE") && effectiveDealerId) {
     const memberships = readDealerMemberships();

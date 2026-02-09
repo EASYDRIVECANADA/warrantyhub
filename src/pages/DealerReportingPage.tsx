@@ -200,8 +200,8 @@ export function DealerReportingPage() {
     let paidCount = 0;
 
     for (const c of filtered) {
-      const r = c.pricingBasePriceCents ?? 0;
-      const k = c.pricingDealerCostCents ?? 0;
+      const r = (c.pricingBasePriceCents ?? 0) + (c.addonTotalRetailCents ?? 0);
+      const k = (c.pricingDealerCostCents ?? 0) + (c.addonTotalCostCents ?? 0);
       if (c.status === "SOLD" || c.status === "REMITTED" || c.status === "PAID") {
         retail += r;
         cost += k;
@@ -233,8 +233,8 @@ export function DealerReportingPage() {
     for (const c of filtered) {
       const key = (c.soldByEmail ?? c.createdByEmail ?? "").trim().toLowerCase();
       if (!key) continue;
-      const r = c.pricingBasePriceCents ?? 0;
-      const k = c.pricingDealerCostCents ?? 0;
+      const r = (c.pricingBasePriceCents ?? 0) + (c.addonTotalRetailCents ?? 0);
+      const k = (c.pricingDealerCostCents ?? 0) + (c.addonTotalCostCents ?? 0);
       const current = m.get(key) ?? { count: 0, retail: 0, cost: 0 };
       const next = {
         count: current.count + 1,
@@ -275,8 +275,8 @@ export function DealerReportingPage() {
         const p = c.productId ? productById.get(c.productId) : undefined;
         const effectiveProvider = (c.providerId ?? p?.providerId ?? "").trim();
         const providerName = effectiveProvider ? providerDisplayName(providerById.get(effectiveProvider), effectiveProvider) : "";
-        const retail = c.pricingBasePriceCents ?? 0;
-        const cost = c.pricingDealerCostCents ?? 0;
+        const retail = (c.pricingBasePriceCents ?? 0) + (c.addonTotalRetailCents ?? 0);
+        const cost = (c.pricingDealerCostCents ?? 0) + (c.addonTotalCostCents ?? 0);
         const margin = retail - cost;
 
         return [
@@ -488,8 +488,8 @@ export function DealerReportingPage() {
 
         <div className="divide-y">
           {filtered.slice(0, 200).map((c) => {
-            const retail = c.pricingBasePriceCents ?? 0;
-            const cost = c.pricingDealerCostCents ?? 0;
+            const retail = (c.pricingBasePriceCents ?? 0) + (c.addonTotalRetailCents ?? 0);
+            const cost = (c.pricingDealerCostCents ?? 0) + (c.addonTotalCostCents ?? 0);
             const margin = retail - cost;
             return (
               <div key={c.id} className="px-6 py-4">

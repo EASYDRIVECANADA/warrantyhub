@@ -13,9 +13,15 @@ type ContractsRow = {
   product_pricing_id?: string | null;
   pricing_term_months?: number | null;
   pricing_term_km?: number | null;
+  pricing_vehicle_mileage_min_km?: number | null;
+  pricing_vehicle_mileage_max_km?: number | null;
+  pricing_vehicle_class?: string | null;
   pricing_deductible_cents?: number | null;
   pricing_base_price_cents?: number | null;
   pricing_dealer_cost_cents?: number | null;
+  addon_snapshot?: unknown | null;
+  addon_total_retail_cents?: number | null;
+  addon_total_cost_cents?: number | null;
   created_by_user_id?: string | null;
   created_by_email?: string | null;
   sold_by_user_id?: string | null;
@@ -58,11 +64,22 @@ function toContract(r: ContractsRow): Contract {
     providerId: r.provider_id ?? undefined,
     productId: r.product_id ?? undefined,
     productPricingId: r.product_pricing_id ?? undefined,
-    pricingTermMonths: typeof r.pricing_term_months === "number" ? r.pricing_term_months : undefined,
-    pricingTermKm: typeof r.pricing_term_km === "number" ? r.pricing_term_km : undefined,
+    pricingTermMonths: typeof r.pricing_term_months === "number" ? r.pricing_term_months : r.pricing_term_months === null ? null : undefined,
+    pricingTermKm: typeof r.pricing_term_km === "number" ? r.pricing_term_km : r.pricing_term_km === null ? null : undefined,
+    pricingVehicleMileageMinKm: typeof r.pricing_vehicle_mileage_min_km === "number" ? r.pricing_vehicle_mileage_min_km : undefined,
+    pricingVehicleMileageMaxKm:
+      typeof r.pricing_vehicle_mileage_max_km === "number"
+        ? r.pricing_vehicle_mileage_max_km
+        : r.pricing_vehicle_mileage_max_km === null
+          ? null
+          : undefined,
+    pricingVehicleClass: typeof r.pricing_vehicle_class === "string" ? r.pricing_vehicle_class : undefined,
     pricingDeductibleCents: typeof r.pricing_deductible_cents === "number" ? r.pricing_deductible_cents : undefined,
     pricingBasePriceCents: typeof r.pricing_base_price_cents === "number" ? r.pricing_base_price_cents : undefined,
     pricingDealerCostCents: typeof r.pricing_dealer_cost_cents === "number" ? r.pricing_dealer_cost_cents : undefined,
+    addonSnapshot: r.addon_snapshot ?? undefined,
+    addonTotalRetailCents: typeof r.addon_total_retail_cents === "number" ? r.addon_total_retail_cents : undefined,
+    addonTotalCostCents: typeof r.addon_total_cost_cents === "number" ? r.addon_total_cost_cents : undefined,
     createdByUserId: r.created_by_user_id ?? undefined,
     createdByEmail: r.created_by_email ?? undefined,
     soldByUserId: r.sold_by_user_id ?? undefined,
@@ -143,10 +160,21 @@ export const supabaseContractsApi: ContractsApi = {
       provider_id: input.providerId,
       product_id: input.productId,
       product_pricing_id: input.productPricingId,
-      pricing_term_months: typeof input.pricingTermMonths === "number" ? input.pricingTermMonths : undefined,
-      pricing_term_km: typeof input.pricingTermKm === "number" ? input.pricingTermKm : undefined,
+      pricing_term_months: typeof input.pricingTermMonths === "number" ? input.pricingTermMonths : input.pricingTermMonths === null ? null : undefined,
+      pricing_term_km: typeof input.pricingTermKm === "number" ? input.pricingTermKm : input.pricingTermKm === null ? null : undefined,
+      pricing_vehicle_mileage_min_km: typeof input.pricingVehicleMileageMinKm === "number" ? input.pricingVehicleMileageMinKm : undefined,
+      pricing_vehicle_mileage_max_km:
+        typeof input.pricingVehicleMileageMaxKm === "number"
+          ? input.pricingVehicleMileageMaxKm
+          : input.pricingVehicleMileageMaxKm === null
+            ? null
+            : undefined,
+      pricing_vehicle_class: typeof input.pricingVehicleClass === "string" ? input.pricingVehicleClass : undefined,
       pricing_deductible_cents: typeof input.pricingDeductibleCents === "number" ? input.pricingDeductibleCents : undefined,
       pricing_base_price_cents: typeof input.pricingBasePriceCents === "number" ? input.pricingBasePriceCents : undefined,
+      addon_snapshot: (input as any).addonSnapshot,
+      addon_total_retail_cents: typeof (input as any).addonTotalRetailCents === "number" ? (input as any).addonTotalRetailCents : undefined,
+      addon_total_cost_cents: typeof (input as any).addonTotalCostCents === "number" ? (input as any).addonTotalCostCents : undefined,
       created_by_user_id: input.createdByUserId,
       created_by_email: input.createdByEmail,
       customer_email: input.customerEmail,
@@ -258,6 +286,21 @@ export const supabaseContractsApi: ContractsApi = {
       if (typeof v === "number") updateRowBase.pricing_term_km = v;
       if (v === null) updateRowBase.pricing_term_km = null;
     }
+    if ("pricingVehicleMileageMinKm" in patch) {
+      const v = (patch as any).pricingVehicleMileageMinKm as number | null | undefined;
+      if (typeof v === "number") (updateRowBase as any).pricing_vehicle_mileage_min_km = v;
+      if (v === null) (updateRowBase as any).pricing_vehicle_mileage_min_km = null;
+    }
+    if ("pricingVehicleMileageMaxKm" in patch) {
+      const v = (patch as any).pricingVehicleMileageMaxKm as number | null | undefined;
+      if (typeof v === "number") (updateRowBase as any).pricing_vehicle_mileage_max_km = v;
+      if (v === null) (updateRowBase as any).pricing_vehicle_mileage_max_km = null;
+    }
+    if ("pricingVehicleClass" in patch) {
+      const v = (patch as any).pricingVehicleClass as string | null | undefined;
+      if (typeof v === "string") (updateRowBase as any).pricing_vehicle_class = v;
+      if (v === null) (updateRowBase as any).pricing_vehicle_class = null;
+    }
     if ("pricingDeductibleCents" in patch) {
       const v = (patch as any).pricingDeductibleCents as number | null | undefined;
       if (typeof v === "number") updateRowBase.pricing_deductible_cents = v;
@@ -272,6 +315,21 @@ export const supabaseContractsApi: ContractsApi = {
       const v = (patch as any).pricingDealerCostCents as number | null | undefined;
       if (typeof v === "number") (updateRowBase as any).pricing_dealer_cost_cents = v;
       if (v === null) (updateRowBase as any).pricing_dealer_cost_cents = null;
+    }
+    if ("addonSnapshot" in patch) {
+      const v = (patch as any).addonSnapshot as unknown | null | undefined;
+      if (v !== undefined) (updateRowBase as any).addon_snapshot = v;
+      if (v === null) (updateRowBase as any).addon_snapshot = null;
+    }
+    if ("addonTotalRetailCents" in patch) {
+      const v = (patch as any).addonTotalRetailCents as number | null | undefined;
+      if (typeof v === "number") (updateRowBase as any).addon_total_retail_cents = v;
+      if (v === null) (updateRowBase as any).addon_total_retail_cents = null;
+    }
+    if ("addonTotalCostCents" in patch) {
+      const v = (patch as any).addonTotalCostCents as number | null | undefined;
+      if (typeof v === "number") (updateRowBase as any).addon_total_cost_cents = v;
+      if (v === null) (updateRowBase as any).addon_total_cost_cents = null;
     }
 
     if (typeof patch.createdByUserId === "string") updateRowBase.created_by_user_id = patch.createdByUserId;
@@ -327,6 +385,21 @@ export const supabaseContractsApi: ContractsApi = {
       if (typeof v === "number") baseOnly.pricing_term_km = v;
       if (v === null) baseOnly.pricing_term_km = null;
     }
+    if ("pricingVehicleMileageMinKm" in patch) {
+      const v = (patch as any).pricingVehicleMileageMinKm as number | null | undefined;
+      if (typeof v === "number") (baseOnly as any).pricing_vehicle_mileage_min_km = v;
+      if (v === null) (baseOnly as any).pricing_vehicle_mileage_min_km = null;
+    }
+    if ("pricingVehicleMileageMaxKm" in patch) {
+      const v = (patch as any).pricingVehicleMileageMaxKm as number | null | undefined;
+      if (typeof v === "number") (baseOnly as any).pricing_vehicle_mileage_max_km = v;
+      if (v === null) (baseOnly as any).pricing_vehicle_mileage_max_km = null;
+    }
+    if ("pricingVehicleClass" in patch) {
+      const v = (patch as any).pricingVehicleClass as string | null | undefined;
+      if (typeof v === "string") (baseOnly as any).pricing_vehicle_class = v;
+      if (v === null) (baseOnly as any).pricing_vehicle_class = null;
+    }
     if ("pricingDeductibleCents" in patch) {
       const v = (patch as any).pricingDeductibleCents as number | null | undefined;
       if (typeof v === "number") baseOnly.pricing_deductible_cents = v;
@@ -336,6 +409,26 @@ export const supabaseContractsApi: ContractsApi = {
       const v = (patch as any).pricingBasePriceCents as number | null | undefined;
       if (typeof v === "number") baseOnly.pricing_base_price_cents = v;
       if (v === null) baseOnly.pricing_base_price_cents = null;
+    }
+    if ("pricingDealerCostCents" in patch) {
+      const v = (patch as any).pricingDealerCostCents as number | null | undefined;
+      if (typeof v === "number") (baseOnly as any).pricing_dealer_cost_cents = v;
+      if (v === null) (baseOnly as any).pricing_dealer_cost_cents = null;
+    }
+    if ("addonSnapshot" in patch) {
+      const v = (patch as any).addonSnapshot as unknown | null | undefined;
+      if (v !== undefined) (baseOnly as any).addon_snapshot = v;
+      if (v === null) (baseOnly as any).addon_snapshot = null;
+    }
+    if ("addonTotalRetailCents" in patch) {
+      const v = (patch as any).addonTotalRetailCents as number | null | undefined;
+      if (typeof v === "number") (baseOnly as any).addon_total_retail_cents = v;
+      if (v === null) (baseOnly as any).addon_total_retail_cents = null;
+    }
+    if ("addonTotalCostCents" in patch) {
+      const v = (patch as any).addonTotalCostCents as number | null | undefined;
+      if (typeof v === "number") (baseOnly as any).addon_total_cost_cents = v;
+      if (v === null) (baseOnly as any).addon_total_cost_cents = null;
     }
     if (typeof patch.createdByUserId === "string") baseOnly.created_by_user_id = patch.createdByUserId;
     if (typeof patch.createdByEmail === "string") baseOnly.created_by_email = patch.createdByEmail;
