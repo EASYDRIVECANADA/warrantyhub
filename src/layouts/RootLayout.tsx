@@ -127,21 +127,11 @@ export function RootLayout() {
     if (!allowed) return <Navigate to="/request-access" replace />;
   }
 
-  if (isLoading && !user) {
-    return (
-      <div className="min-h-screen bg-background text-foreground">
-        <Navbar />
-        <main className="pt-16">
-          <div style={{ padding: 24, color: "#6b7280" }}>Loading…</div>
-        </main>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Navbar />
       <main className="pt-16">
+        {isLoading && !user ? <div style={{ padding: 24, color: "#6b7280" }}>Loading…</div> : null}
         <RouteErrorBoundary key={location.pathname}>
           <Outlet />
         </RouteErrorBoundary>
