@@ -22,6 +22,20 @@ function money(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function asText(v: unknown) {
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean" || typeof v === "bigint") return String(v);
+  if (v instanceof Date) return v.toISOString();
+  if (v && typeof v === "object") {
+    try {
+      return JSON.stringify(v);
+    } catch {
+      return "[object]";
+    }
+  }
+  return "";
+}
+
 type SummaryCard = {
   title: string;
   value: string;
@@ -501,10 +515,10 @@ export function DealerAdminPage() {
 
               <div className="divide-y">
                 {actors.map((email) => (
-                  <div key={email} className="px-6 py-4">
+                  <div key={asText(email)} className="px-6 py-4">
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                       <div className="md:col-span-4">
-                        <div className="text-sm font-medium text-foreground break-all">{email}</div>
+                        <div className="text-sm font-medium text-foreground break-all">{asText(email)}</div>
                       </div>
                       <div className="md:col-span-2 text-sm text-right text-muted-foreground">{attribution.createdBy.get(email) ?? 0}</div>
                       <div className="md:col-span-2 text-sm text-right text-muted-foreground">{attribution.soldBy.get(email) ?? 0}</div>
@@ -535,9 +549,9 @@ export function DealerAdminPage() {
                   <div key={e.id} className="px-6 py-4">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <div className="text-sm font-medium text-foreground">{e.kind}</div>
-                        <div className="text-xs text-muted-foreground mt-1 break-all">{e.message ?? "—"}</div>
-                        <div className="text-[11px] text-muted-foreground mt-1 break-all">{e.actorEmail ?? ""}</div>
+                        <div className="text-sm font-medium text-foreground">{asText(e.kind)}</div>
+                        <div className="text-xs text-muted-foreground mt-1 break-all">{asText(e.message ?? "—")}</div>
+                        <div className="text-[11px] text-muted-foreground mt-1 break-all">{asText(e.actorEmail ?? "")}</div>
                       </div>
                       <div className="text-xs text-muted-foreground whitespace-nowrap">{new Date(e.createdAt).toLocaleString()}</div>
                     </div>
