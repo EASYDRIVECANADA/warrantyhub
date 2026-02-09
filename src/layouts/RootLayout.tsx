@@ -1,10 +1,41 @@
-import { useEffect, useRef } from "react";
+import { Component, useEffect, useRef } from "react";
 import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { Navbar } from "../components/Navbar";
 import { SupportWidget } from "../components/SupportWidget";
 import type { Role } from "../lib/auth/types";
 import { useAuth } from "../providers/AuthProvider";
+
+class RouteErrorBoundary extends Component<
+  { children: React.ReactNode },
+  { hasError: boolean; message?: string }
+> {
+  state: { hasError: boolean; message?: string } = { hasError: false };
+
+  static getDerivedStateFromError(err: unknown) {
+    const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "Unexpected error";
+    return { hasError: true, message: msg };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 24 }}>
+          <div style={{ fontWeight: 600, marginBottom: 8 }}>Something went wrong.</div>
+          <div style={{ color: "#6b7280" }}>{this.state.message ?? "Unexpected error"}</div>
+          <button
+            style={{ marginTop: 16, padding: "8px 12px", border: "1px solid #e5e7eb", borderRadius: 6 }}
+            onClick={() => this.setState({ hasError: false, message: undefined })}
+            type="button"
+          >
+            Try again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export function RootLayout() {
   const { user, isLoading, refreshUser } = useAuth();
@@ -75,7 +106,9 @@ export function RootLayout() {
     <div className="min-h-screen bg-background text-foreground">
       <Navbar />
       <main className="pt-16">
-        <Outlet />
+        <RouteErrorBoundary>
+          <Outlet />
+        </RouteErrorBoundary>
       </main>
       <SupportWidget />
     </div>
