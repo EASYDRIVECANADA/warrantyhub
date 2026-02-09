@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate } from "react-router-dom";
 import { BarChart3, DollarSign, FileText, Users } from "lucide-react";
 
@@ -10,6 +10,7 @@ import { getAppMode } from "../lib/runtime";
 import { useDealerMarkupPct } from "../lib/dealerMarkup";
 import { listAuditEvents, logAuditEvent } from "../lib/auditLog";
 import { useAuth } from "../providers/AuthProvider";
+import { getSupabaseClient } from "../lib/supabase/client";
 import { getBatchesApi } from "../lib/batches/batches";
 import type { Batch } from "../lib/batches/types";
 import { getContractsApi } from "../lib/contracts/contracts";
@@ -148,6 +149,8 @@ export function DealerAdminPage() {
   const employeesApi = useMemo(() => getEmployeesApi(), []);
   const { user } = useAuth();
 
+  const qc = useQueryClient();
+
   const mode = useMemo(() => getAppMode(), []);
 
   if (!user) return <Navigate to="/sign-in" replace />;
@@ -187,7 +190,41 @@ export function DealerAdminPage() {
 
   const invites = readInvites();
   const invite = dealerKey ? invites[dealerKey] : undefined;
-  const inviteCode = (invite?.code ?? "").trim();
+  const localInviteCode = (invite?.code ?? "").trim();
+
+  const inviteCodeQuery = useQuery({
+    queryKey: ["dealer-employee-invite", mode, dealerKey],
+    enabled: mode === "supabase" && Boolean(dealerKey),
+    queryFn: async () => {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error("Supabase is not configured");
+      const did = (dealerKey ?? "").trim();
+      if (!did) return "";
+      const { data, error } = await supabase.from("dealer_employee_invites").select("code").eq("dealer_id", did).maybeSingle();
+      if (error) throw new Error(error.message);
+      return ((data as any)?.code ?? "").toString().trim();
+    },
+  });
+
+  const generateInviteMutation = useMutation({
+    mutationFn: async () => {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error("Supabase is not configured");
+      const did = (dealerKey ?? "").trim();
+      if (!did) throw new Error("Dealership is missing");
+      const code = generateInviteCode();
+      const { error } = await supabase
+        .from("dealer_employee_invites")
+        .upsert({ dealer_id: did, code, updated_at: new Date().toISOString() }, { onConflict: "dealer_id" });
+      if (error) throw new Error(error.message);
+      return code;
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["dealer-employee-invite"] });
+    },
+  });
+
+  const inviteCode = mode === "supabase" ? (inviteCodeQuery.data ?? "") : localInviteCode;
 
   const contractsQuery = useQuery({
     queryKey: ["contracts"],
@@ -365,6 +402,28 @@ export function DealerAdminPage() {
                     disabled={!dealerKey}
                     onClick={() => {
                       if (!dealerKey) return;
+
+                      if (mode === "supabase") {
+                        void (async () => {
+                          const code = await generateInviteMutation.mutateAsync();
+                          logAuditEvent({
+                            kind: "DEALER_INVITE_CODE_GENERATED",
+                            actorUserId: user?.id,
+                            actorEmail: user?.email,
+                            actorRole: user?.role,
+                            dealerId,
+                            entityType: "dealer_invite",
+                            entityId: dealerId,
+                            message: inviteCode ? "Regenerated invite code" : "Generated invite code",
+                          });
+                          try {
+                            await navigator.clipboard.writeText(code);
+                          } catch {
+                          }
+                        })();
+                        return;
+                      }
+
                       const users = readLocalUsers();
                       const dealerName = (users.find((u) => (u.id ?? "").toString() === dealerId)?.companyName ?? "").toString().trim() || undefined;
                       const now = new Date().toISOString();

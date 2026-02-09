@@ -183,6 +183,37 @@ export function AdminAccessRequestsPage() {
           }
         }
 
+        const maybeEnsureDealerLink = async () => {
+          if (input.status !== "APPROVED") return;
+          if (current?.requestType !== "DEALER") return;
+          if (effectiveAssignedRole !== "DEALER_ADMIN") return;
+
+          const email = (current?.email ?? "").trim().toLowerCase();
+          if (!email) throw new Error("Requester email is missing");
+
+          const profileLookup = await supabase.from("profiles").select("id, email").eq("email", email).maybeSingle();
+          if (profileLookup.error) throw new Error(toErrorMessage(profileLookup.error));
+          const profileId = (profileLookup.data as any)?.id as string | undefined;
+          if (!profileId) throw new Error("Requester profile not found");
+
+          const dealerName = (effectiveAssignedCompany ?? "").trim();
+          if (!dealerName) throw new Error("Assigned company is required for approval");
+
+          const dealerInsert = await supabase.from("dealers").insert({ name: dealerName, markup_pct: 0 }).select("id").single();
+          if (dealerInsert.error) throw new Error(toErrorMessage(dealerInsert.error));
+          const dealerId = (dealerInsert.data as any)?.id as string | undefined;
+          if (!dealerId) throw new Error("Failed to create dealership");
+
+          const membershipInsert = await supabase
+            .from("dealer_members")
+            .insert({ dealer_id: dealerId, user_id: profileId, role: "DEALER_ADMIN", status: "ACTIVE" });
+          if (membershipInsert.error) throw new Error(toErrorMessage(membershipInsert.error));
+        };
+
+        if (input.status === "APPROVED") {
+          await maybeEnsureDealerLink();
+        }
+
         const updateRow: Record<string, unknown> = {
           status: input.status,
           reviewed_at: now,
@@ -251,27 +282,6 @@ export function AdminAccessRequestsPage() {
                 .eq("id", profileId);
 
               if (profileUpdate.error) throw new Error(toErrorMessage(profileUpdate.error));
-
-              if (current?.requestType === "DEALER" && (effectiveAssignedRole === "DEALER_ADMIN" || effectiveAssignedRole === "DEALER")) {
-                const dealerName = effectiveAssignedCompany.trim();
-                if (!dealerName) throw new Error("Assigned company is required for approval");
-
-                const dealerInsert = await supabase
-                  .from("dealers")
-                  .insert({ name: dealerName, markup_pct: 0 })
-                  .select("id")
-                  .single();
-
-                if (dealerInsert.error) throw new Error(toErrorMessage(dealerInsert.error));
-                const dealerId = (dealerInsert.data as any)?.id as string | undefined;
-                if (!dealerId) throw new Error("Failed to create dealership");
-
-                const membershipInsert = await supabase
-                  .from("dealer_members")
-                  .insert({ dealer_id: dealerId, user_id: profileId, role: "DEALER_ADMIN", status: "ACTIVE" });
-
-                if (membershipInsert.error) throw new Error(toErrorMessage(membershipInsert.error));
-              }
             }
           }
         }
