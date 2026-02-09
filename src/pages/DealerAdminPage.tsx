@@ -207,7 +207,7 @@ export function DealerAdminPage() {
   const localInviteCode = (invite?.code ?? "").trim();
 
   const inviteCodeQuery = useQuery({
-    queryKey: ["dealer-employee-invite", mode, dealerKey],
+    queryKey: ["dealer-employee-invite-code", mode, dealerKey],
     enabled: mode === "supabase" && Boolean(dealerKey),
     queryFn: async () => {
       const supabase = getSupabaseClient();
@@ -235,6 +235,7 @@ export function DealerAdminPage() {
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["dealer-employee-invite"] });
+      await qc.invalidateQueries({ queryKey: ["dealer-employee-invite-code"] });
     },
   });
 
