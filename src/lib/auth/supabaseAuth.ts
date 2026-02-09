@@ -26,26 +26,24 @@ async function getActiveDealerMembershipInfo(userId: string): Promise<DealerMemb
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error("Supabase is not configured");
 
-  const { data, error } = await supabase
+  const { data: membership, error: membershipError } = await supabase
     .from("dealer_members")
-    .select("dealer_id, dealers(name), role, status, created_at")
+    .select("dealer_id, role, status, created_at")
     .eq("user_id", userId)
     .eq("status", "ACTIVE")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  if (error) throw new Error(error.message);
-  if (!data) return {};
+  if (membershipError) throw new Error(membershipError.message);
+  const dealerId = ((membership as any)?.dealer_id ?? "").toString().trim();
+  if (!dealerId) return {};
 
-  const dealerId = (data as any)?.dealer_id ?? undefined;
-  const dealers = (data as any)?.dealers;
-  const dealerName = (dealers?.name ?? dealers?.[0]?.name ?? "").toString().trim() || undefined;
+  const { data: dealerRow, error: dealerError } = await supabase.from("dealers").select("name").eq("id", dealerId).maybeSingle();
+  if (dealerError) throw new Error(dealerError.message);
+  const dealerName = ((dealerRow as any)?.name ?? "").toString().trim() || undefined;
 
-  return {
-    dealerId: typeof dealerId === "string" ? dealerId : undefined,
-    dealerName,
-  };
+  return { dealerId, dealerName };
 }
 
 async function getProfileAuthState(userId: string, email: string): Promise<ProfileAuthState> {
