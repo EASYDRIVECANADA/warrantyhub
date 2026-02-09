@@ -106,7 +106,7 @@ export function RootLayout() {
     <div className="min-h-screen bg-background text-foreground">
       <Navbar />
       <main className="pt-16">
-        <RouteErrorBoundary>
+        <RouteErrorBoundary key={location.pathname}>
           <Outlet />
         </RouteErrorBoundary>
       </main>

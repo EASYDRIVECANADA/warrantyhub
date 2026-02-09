@@ -46,6 +46,20 @@ function formatMoney(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function asText(v: unknown) {
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean" || typeof v === "bigint") return String(v);
+  if (v instanceof Date) return v.toISOString();
+  if (v && typeof v === "object") {
+    try {
+      return JSON.stringify(v);
+    } catch {
+      return "[object]";
+    }
+  }
+  return "";
+}
+
 type ActivityItem =
   | { kind: "contract"; id: string; createdAt: string; label: string }
   | { kind: "remittance"; id: string; createdAt: string; label: string };
@@ -295,7 +309,7 @@ export function DealerDashboardPage() {
       kind: "contract" as const,
       id: c.id,
       createdAt: c.updatedAt ?? c.createdAt,
-      label: `Contract ${c.contractNumber} • ${c.customerName}`,
+      label: `Contract ${asText(c.contractNumber)} • ${asText(c.customerName)}`,
     })),
     ...(isEmployee
       ? []
@@ -336,13 +350,15 @@ export function DealerDashboardPage() {
   const filteredContracts = q
     ? visibleContracts.filter(
         (c) =>
-          c.contractNumber.toLowerCase().includes(q) ||
-          c.customerName.toLowerCase().includes(q) ||
-          c.status.toLowerCase().includes(q),
+          asText(c.contractNumber).toLowerCase().includes(q) ||
+          asText(c.customerName).toLowerCase().includes(q) ||
+          asText(c.status).toLowerCase().includes(q),
       )
     : [];
   const filteredRemittances = q
-    ? visibleRemittances.filter((r) => r.batchNumber.toLowerCase().includes(q) || r.status.toLowerCase().includes(q))
+    ? visibleRemittances.filter(
+        (r) => asText(r.batchNumber).toLowerCase().includes(q) || asText(r.status).toLowerCase().includes(q),
+      )
     : [];
 
   const kpiCards: SummaryCard[] = [
@@ -593,11 +609,11 @@ export function DealerDashboardPage() {
                   <div key={c.id} className="px-6 py-4">
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                       <div className="md:col-span-3">
-                        <div className="text-sm font-medium">{c.warrantyId}</div>
-                        <div className="text-xs text-muted-foreground mt-1">{c.status}</div>
+                        <div className="text-sm font-medium">{asText(c.warrantyId)}</div>
+                        <div className="text-xs text-muted-foreground mt-1">{asText(c.status)}</div>
                       </div>
-                      <div className="md:col-span-3 text-sm">{c.contractNumber}</div>
-                      <div className="md:col-span-4 text-sm">{c.customerName}</div>
+                      <div className="md:col-span-3 text-sm">{asText(c.contractNumber)}</div>
+                      <div className="md:col-span-4 text-sm">{asText(c.customerName)}</div>
                       <div className="md:col-span-2 flex md:justify-end gap-2">
                         <Button size="sm" asChild>
                           <Link to={`/dealer-contracts/${c.id}`}>View</Link>
@@ -637,10 +653,10 @@ export function DealerDashboardPage() {
                     {filteredContracts.map((c) => (
                       <Link key={c.id} to={`/dealer-contracts/${c.id}`} className="block px-6 py-4 hover:bg-muted/40">
                         <div className="flex items-center justify-between gap-3">
-                          <div className="font-medium">{c.contractNumber}</div>
-                          <div className="text-xs text-muted-foreground">{c.status}</div>
+                          <div className="font-medium">{asText(c.contractNumber)}</div>
+                          <div className="text-xs text-muted-foreground">{asText(c.status)}</div>
                         </div>
-                        <div className="text-sm text-muted-foreground mt-1">{c.customerName}</div>
+                        <div className="text-sm text-muted-foreground mt-1">{asText(c.customerName)}</div>
                       </Link>
                     ))}
                     {filteredContracts.length === 0 ? (
