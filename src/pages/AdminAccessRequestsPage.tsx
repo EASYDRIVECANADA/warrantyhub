@@ -14,6 +14,7 @@ type AccessRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
 
 type AccessRequest = {
   id: string;
+  requesterId?: string;
   requestType: "DEALER" | "PROVIDER";
   company: string;
   name: string;
@@ -115,13 +116,14 @@ export function AdminAccessRequestsPage() {
         const { data, error } = await supabase
           .from("access_requests")
           .select(
-            "id, request_type, company, name, email, message, rejection_message, status, created_at, reviewed_at, reviewed_by_email, assigned_role, assigned_company",
+            "id, requester_id, request_type, company, name, email, message, rejection_message, status, created_at, reviewed_at, reviewed_by_email, assigned_role, assigned_company",
           )
           .order("created_at", { ascending: false });
 
         if (error) throw error;
         return (data as any[]).map((r) => ({
           id: r.id,
+          requesterId: r.requester_id ?? undefined,
           requestType: r.request_type,
           company: r.company,
           name: r.name,
@@ -188,12 +190,20 @@ export function AdminAccessRequestsPage() {
           if (current?.requestType !== "DEALER") return;
           if (effectiveAssignedRole !== "DEALER_ADMIN") return;
 
+          const requesterId = (current?.requesterId ?? "").trim();
           const email = (current?.email ?? "").trim().toLowerCase();
-          if (!email) throw new Error("Requester email is missing");
 
-          const profileLookup = await supabase.from("profiles").select("id, email").eq("email", email).maybeSingle();
-          if (profileLookup.error) throw new Error(toErrorMessage(profileLookup.error));
-          const profileId = (profileLookup.data as any)?.id as string | undefined;
+          let profileId: string | undefined;
+          if (requesterId) {
+            profileId = requesterId;
+          } else {
+            if (!email) throw new Error("Requester email is missing");
+
+            const profileLookup = await supabase.from("profiles").select("id, email").eq("email", email).maybeSingle();
+            if (profileLookup.error) throw new Error(toErrorMessage(profileLookup.error));
+            profileId = (profileLookup.data as any)?.id as string | undefined;
+          }
+
           if (!profileId) throw new Error("Requester profile not found");
 
           const dealerName = (effectiveAssignedCompany ?? "").trim();
@@ -234,11 +244,20 @@ export function AdminAccessRequestsPage() {
         if (error) throw new Error(toErrorMessage(error));
 
         if (input.status === "APPROVED" && effectiveAssignedRole && effectiveAssignedCompany) {
+          const requesterId = (current?.requesterId ?? "").trim();
           const email = (current?.email ?? "").trim().toLowerCase();
-          if (email) {
+
+          let profileId: string | undefined;
+          if (requesterId) {
+            profileId = requesterId;
+          } else if (email) {
             const profileLookup = await supabase.from("profiles").select("id, email").eq("email", email).maybeSingle();
             if (!profileLookup.error && profileLookup.data?.id) {
-              const profileId = profileLookup.data.id as string;
+              profileId = profileLookup.data.id as string;
+            }
+          }
+
+          if (profileId) {
 
               let providerCompanyId: string | null = null;
               if (current?.requestType === "PROVIDER") {
@@ -282,7 +301,6 @@ export function AdminAccessRequestsPage() {
                 .eq("id", profileId);
 
               if (profileUpdate.error) throw new Error(toErrorMessage(profileUpdate.error));
-            }
           }
         }
 

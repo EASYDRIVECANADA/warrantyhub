@@ -185,7 +185,7 @@ export function RequestAccessPage() {
 
         const { error: insertError } = await supabase.from("access_requests").insert({
           request_type: rt,
-          company,
+          company: c,
           name: n,
           email: em,
           requester_id: user.id,

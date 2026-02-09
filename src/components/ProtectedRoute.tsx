@@ -6,7 +6,13 @@ import { useAuth } from "../providers/AuthProvider";
 export function ProtectedRoute({ allowedRoles }: { allowedRoles?: Role[] }) {
   const { user, isLoading } = useAuth();
 
-  if (isLoading && !user) return null;
+  if (isLoading && !user) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center text-sm text-muted-foreground">
+        Loading…
+      </div>
+    );
+  }
 
   if (!user) return <Navigate to="/sign-in" replace />;
 
