@@ -39,6 +39,8 @@ export function RegisterDealershipPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  const isEmailConfirmationNotice = Boolean(error && error.toLowerCase().includes("confirm your email"));
+
   const validateStep = (target: 1 | 2 | 3) => {
     const bn = dealershipName.trim();
     const ph = phone.trim();
@@ -130,16 +132,16 @@ export function RegisterDealershipPage() {
             <div className="p-6 pt-0">
               <form className="space-y-4" onSubmit={onSubmit}>
                 <div className="rounded-xl border bg-background p-4">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="grid grid-cols-3 gap-3">
                     {[
                       { k: 1 as const, label: "Dealership" },
                       { k: 2 as const, label: "Compliance" },
                       { k: 3 as const, label: "Account" },
-                    ].map((s, idx) => (
-                      <div key={s.k} className="flex items-center gap-2">
+                    ].map((s) => (
+                      <div key={s.k} className="flex items-center justify-center gap-2 min-w-0">
                         <div
                           className={
-                            "w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold border " +
+                            "w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold border shrink-0 " +
                             (step === s.k
                               ? "bg-yellow-300 text-slate-900 border-yellow-300"
                               : step > s.k
@@ -149,8 +151,14 @@ export function RegisterDealershipPage() {
                         >
                           {s.k}
                         </div>
-                        <div className={"text-sm font-medium " + (step === s.k ? "text-foreground" : "text-muted-foreground")}>{s.label}</div>
-                        {idx < 2 ? <div className="hidden sm:block w-10 h-px bg-border ml-2" /> : null}
+                        <div
+                          className={
+                            "text-xs sm:text-sm font-medium truncate " +
+                            (step === s.k ? "text-foreground" : "text-muted-foreground")
+                          }
+                        >
+                          {s.label}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -299,7 +307,15 @@ export function RegisterDealershipPage() {
                   </div>
                 ) : null}
 
-                {error ? <div className="text-sm text-destructive">{error}</div> : null}
+                {error ? (
+                  isEmailConfirmationNotice ? (
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                      {error}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-destructive">{error}</div>
+                  )
+                ) : null}
 
                 <div className="flex items-center justify-between gap-3">
                   <Button

@@ -111,6 +111,8 @@ export function DealerEmployeeSignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [suppressRedirect, setSuppressRedirect] = useState(false);
 
+  const isEmailConfirmationNotice = Boolean(error && error.toLowerCase().includes("confirm your email"));
+
   useEffect(() => {
     const fromQuery = searchParams.get("code") ?? "";
     if (!fromQuery.trim()) return;
@@ -315,7 +317,15 @@ export function DealerEmployeeSignupPage() {
                   />
                 </div>
 
-                {error ? <div className="text-sm text-destructive">{error}</div> : null}
+                {error ? (
+                  isEmailConfirmationNotice ? (
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                      {error}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-destructive">{error}</div>
+                  )
+                ) : null}
 
                 <Button type="submit" className="w-full bg-yellow-300 text-slate-900 hover:bg-yellow-200" disabled={isLoading}>
                   Create Account

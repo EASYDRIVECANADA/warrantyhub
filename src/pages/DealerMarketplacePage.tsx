@@ -394,101 +394,137 @@ export function DealerMarketplacePage() {
               <div className="text-sm text-muted-foreground mt-1">Narrow down eligible products.</div>
             </div>
 
-            <div className="p-6 grid grid-cols-1 md:grid-cols-12 gap-3">
-            <div className="md:col-span-12">
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products" />
-            </div>
+            <div className="p-6 space-y-4">
+              <div className="rounded-xl border p-4 bg-background/50">
+                <div className="text-xs font-medium text-foreground">Search</div>
+                <div className="mt-2">
+                  <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products" className="h-9 text-sm" />
+                </div>
+              </div>
 
-            <div className="md:col-span-6">
-              <select
-                value={providerId}
-                onChange={(e) => setProviderId(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
-              >
-                <option value="">All providers</option>
-                {providerOptions.map((pid) => (
-                  <option key={pid} value={pid}>
-                    {providerDisplayName(providerById.get(pid), pid)}
-                  </option>
-                ))}
-              </select>
-            </div>
+              <div className="rounded-xl border p-4 bg-background/50">
+                <div className="text-xs font-medium text-foreground">Provider & type</div>
+                <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <select
+                    value={providerId}
+                    onChange={(e) => setProviderId(e.target.value)}
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-sm"
+                  >
+                    <option value="">All providers</option>
+                    {providerOptions.map((pid) => (
+                      <option key={pid} value={pid}>
+                        {providerDisplayName(providerById.get(pid), pid)}
+                      </option>
+                    ))}
+                  </select>
 
-            <div className="md:col-span-6">
-              <select
-                value={productType}
-                onChange={(e) => setProductType(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
-              >
-                <option value="">All product types</option>
-                {productTypeOptions.map((t) => (
-                  <option key={t} value={t}>
-                    {productTypeLabel(t)}
-                  </option>
-                ))}
-              </select>
-            </div>
+                  <select
+                    value={productType}
+                    onChange={(e) => setProductType(e.target.value)}
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-sm"
+                  >
+                    <option value="">All product types</option>
+                    {productTypeOptions.map((t) => (
+                      <option key={t} value={t}>
+                        {productTypeLabel(t)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
 
-            <div className="md:col-span-4">
-              <Input value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} placeholder="Max price ($)" inputMode="decimal" />
-            </div>
-            <div className="md:col-span-4">
-              <select
-                value={priceSort}
-                onChange={(e) => setPriceSort(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
-              >
-                <option value="">Sort by price</option>
-                <option value="PRICE_ASC">Price: Low to High</option>
-                <option value="PRICE_DESC">Price: High to Low</option>
-              </select>
-            </div>
-            <div className="md:col-span-4">
-              <Input value={maxYears} onChange={(e) => setMaxYears(e.target.value)} placeholder="Max years eligible" inputMode="numeric" />
-            </div>
-            <div className="md:col-span-4">
-              <Input value={maxKm} onChange={(e) => setMaxKm(e.target.value)} placeholder="Max km eligible" inputMode="numeric" />
-            </div>
+              <div className="rounded-xl border p-4 bg-background/50">
+                <div className="text-xs font-medium text-foreground">Price & eligibility</div>
+                <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <Input
+                    value={maxPrice}
+                    onChange={(e) => setMaxPrice(e.target.value)}
+                    placeholder="Max price ($)"
+                    inputMode="decimal"
+                    className="h-9 text-sm"
+                  />
+                  <select
+                    value={priceSort}
+                    onChange={(e) => setPriceSort(e.target.value)}
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-sm"
+                  >
+                    <option value="">Sort by price</option>
+                    <option value="PRICE_ASC">Price: Low to High</option>
+                    <option value="PRICE_DESC">Price: High to Low</option>
+                  </select>
+                  <Input
+                    value={maxDeductible}
+                    onChange={(e) => setMaxDeductible(e.target.value)}
+                    placeholder="Max deductible ($)"
+                    inputMode="decimal"
+                    className="h-9 text-sm"
+                  />
 
-            <div className="md:col-span-4">
-              <Input value={minTermMonths} onChange={(e) => setMinTermMonths(e.target.value)} placeholder="Min term (months)" inputMode="numeric" />
-            </div>
-            <div className="md:col-span-4">
-              <Input value={minTermKm} onChange={(e) => setMinTermKm(e.target.value)} placeholder="Min term (km)" inputMode="numeric" />
-            </div>
-            <div className="md:col-span-4">
-              <Input value={maxDeductible} onChange={(e) => setMaxDeductible(e.target.value)} placeholder="Max deductible ($)" inputMode="decimal" />
-            </div>
+                  <Input
+                    value={maxYears}
+                    onChange={(e) => setMaxYears(e.target.value)}
+                    placeholder="Max years eligible"
+                    inputMode="numeric"
+                    className="h-9 text-sm"
+                  />
+                  <Input
+                    value={maxKm}
+                    onChange={(e) => setMaxKm(e.target.value)}
+                    placeholder="Max km eligible"
+                    inputMode="numeric"
+                    className="h-9 text-sm"
+                  />
+                  <div className="hidden md:block" />
 
-            <div className="md:col-span-12 flex gap-2 flex-wrap">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSearch("");
-                  setProviderId("");
-                  setProductType("");
-                  setPriceSort("");
-                  setMaxPrice("");
-                  setMaxYears("");
-                  setMaxKm("");
-                  setMinTermMonths("");
-                  setMinTermKm("");
-                  setMaxDeductible("");
-                }}
-              >
-                Clear filters
-              </Button>
-              <div className="text-xs text-muted-foreground flex items-center">
-                {decoded ? (
-                  <span className="inline-flex items-center rounded-full border bg-background px-2.5 py-1">
-                    {filteredByVariant.length} eligible product{filteredByVariant.length === 1 ? "" : "s"}
-                  </span>
-                ) : (
-                  "Decode VIN to see products"
-                )}
+                  <Input
+                    value={minTermMonths}
+                    onChange={(e) => setMinTermMonths(e.target.value)}
+                    placeholder="Min term (months)"
+                    inputMode="numeric"
+                    className="h-9 text-sm"
+                  />
+                  <Input
+                    value={minTermKm}
+                    onChange={(e) => setMinTermKm(e.target.value)}
+                    placeholder="Min term (km)"
+                    inputMode="numeric"
+                    className="h-9 text-sm"
+                  />
+                  <div className="hidden md:block" />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <Button
+                  variant="outline"
+                  className="h-9"
+                  onClick={() => {
+                    setSearch("");
+                    setProviderId("");
+                    setProductType("");
+                    setPriceSort("");
+                    setMaxPrice("");
+                    setMaxYears("");
+                    setMaxKm("");
+                    setMinTermMonths("");
+                    setMinTermKm("");
+                    setMaxDeductible("");
+                  }}
+                >
+                  Clear filters
+                </Button>
+
+                <div className="text-xs text-muted-foreground">
+                  {decoded ? (
+                    <span className="inline-flex items-center rounded-full border bg-background px-2.5 py-1">
+                      {filteredByVariant.length} eligible product{filteredByVariant.length === 1 ? "" : "s"}
+                    </span>
+                  ) : (
+                    "Decode VIN to see products"
+                  )}
+                </div>
               </div>
             </div>
-          </div>
         </div>
       </div>
       </div>

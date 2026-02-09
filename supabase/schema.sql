@@ -88,6 +88,22 @@ as $$
   );
 $$;
 
+create or replace function public.is_active_dealer_member(target_dealer_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.dealer_members dm
+    where dm.dealer_id = target_dealer_id
+      and dm.user_id = auth.uid()
+      and dm.status = 'ACTIVE'
+  );
+$$;
+
 create or replace function public.can_update_profile(target_id uuid, new_role text)
 returns boolean
 language sql
@@ -768,7 +784,7 @@ create policy "access_requests_update_admin"
         or
         (
           public.current_role() = 'SUPER_ADMIN'
-          and assigned_role in ('DEALER','PROVIDER','ADMIN')
+          and assigned_role in ('DEALER','DEALER_ADMIN','PROVIDER','ADMIN')
         )
       )
     )
@@ -917,12 +933,37 @@ alter table public.contracts
 alter table public.contracts enable row level security;
 
 drop policy if exists "contracts_all_authenticated" on public.contracts;
-create policy "contracts_all_authenticated"
+drop policy if exists "contracts_admin_all" on public.contracts;
+create policy "contracts_admin_all"
   on public.contracts
   for all
   to authenticated
-  using (true)
-  with check (true);
+  using (public.is_admin())
+  with check (public.is_admin());
+
+drop policy if exists "contracts_provider_own" on public.contracts;
+create policy "contracts_provider_own"
+  on public.contracts
+  for select
+  to authenticated
+  using (
+    public.current_role() = 'PROVIDER'
+    and provider_id = auth.uid()
+  );
+
+drop policy if exists "contracts_dealer_member" on public.contracts;
+create policy "contracts_dealer_member"
+  on public.contracts
+  for all
+  to authenticated
+  using (
+    public.current_role() in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE')
+    and public.is_active_dealer_member(dealer_id)
+  )
+  with check (
+    public.current_role() in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE')
+    and public.is_active_dealer_member(dealer_id)
+  );
 
 create table if not exists public.remittances (
   id uuid primary key default gen_random_uuid(),
@@ -944,12 +985,37 @@ alter table public.remittances
 alter table public.remittances enable row level security;
 
 drop policy if exists "remittances_all_authenticated" on public.remittances;
-create policy "remittances_all_authenticated"
+drop policy if exists "remittances_admin_all" on public.remittances;
+create policy "remittances_admin_all"
   on public.remittances
   for all
   to authenticated
-  using (true)
-  with check (true);
+  using (public.is_admin())
+  with check (public.is_admin());
+
+drop policy if exists "remittances_provider_own" on public.remittances;
+create policy "remittances_provider_own"
+  on public.remittances
+  for select
+  to authenticated
+  using (
+    public.current_role() = 'PROVIDER'
+    and provider_id = auth.uid()
+  );
+
+drop policy if exists "remittances_dealer_member" on public.remittances;
+create policy "remittances_dealer_member"
+  on public.remittances
+  for all
+  to authenticated
+  using (
+    public.current_role() in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE')
+    and public.is_active_dealer_member(dealer_id)
+  )
+  with check (
+    public.current_role() in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE')
+    and public.is_active_dealer_member(dealer_id)
+  );
 
 create table if not exists public.batches (
   id uuid primary key default gen_random_uuid(),
@@ -986,12 +1052,37 @@ alter table public.batches
 alter table public.batches enable row level security;
 
 drop policy if exists "batches_all_authenticated" on public.batches;
-create policy "batches_all_authenticated"
+drop policy if exists "batches_admin_all" on public.batches;
+create policy "batches_admin_all"
   on public.batches
   for all
   to authenticated
-  using (true)
-  with check (true);
+  using (public.is_admin())
+  with check (public.is_admin());
+
+drop policy if exists "batches_provider_own" on public.batches;
+create policy "batches_provider_own"
+  on public.batches
+  for select
+  to authenticated
+  using (
+    public.current_role() = 'PROVIDER'
+    and provider_id = auth.uid()
+  );
+
+drop policy if exists "batches_dealer_member" on public.batches;
+create policy "batches_dealer_member"
+  on public.batches
+  for all
+  to authenticated
+  using (
+    public.current_role() in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE')
+    and public.is_active_dealer_member(dealer_id)
+  )
+  with check (
+    public.current_role() in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE')
+    and public.is_active_dealer_member(dealer_id)
+  );
 
 create table if not exists public.employees (
   id uuid primary key default gen_random_uuid(),

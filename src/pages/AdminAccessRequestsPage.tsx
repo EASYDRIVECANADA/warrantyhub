@@ -251,6 +251,27 @@ export function AdminAccessRequestsPage() {
                 .eq("id", profileId);
 
               if (profileUpdate.error) throw new Error(toErrorMessage(profileUpdate.error));
+
+              if (current?.requestType === "DEALER" && (effectiveAssignedRole === "DEALER_ADMIN" || effectiveAssignedRole === "DEALER")) {
+                const dealerName = effectiveAssignedCompany.trim();
+                if (!dealerName) throw new Error("Assigned company is required for approval");
+
+                const dealerInsert = await supabase
+                  .from("dealers")
+                  .insert({ name: dealerName, markup_pct: 0 })
+                  .select("id")
+                  .single();
+
+                if (dealerInsert.error) throw new Error(toErrorMessage(dealerInsert.error));
+                const dealerId = (dealerInsert.data as any)?.id as string | undefined;
+                if (!dealerId) throw new Error("Failed to create dealership");
+
+                const membershipInsert = await supabase
+                  .from("dealer_members")
+                  .insert({ dealer_id: dealerId, user_id: profileId, role: "DEALER_ADMIN", status: "ACTIVE" });
+
+                if (membershipInsert.error) throw new Error(toErrorMessage(membershipInsert.error));
+              }
             }
           }
         }
