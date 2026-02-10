@@ -244,7 +244,7 @@ export function HomePage() {
 
           <div className="text-center mb-12">
             <h3 className="font-display text-2xl md:text-3xl font-bold text-foreground mb-4">Built for Dealerships</h3>
-            <p className="text-muted-foreground max-w-2xl mx-auto">Designed for professional dealership teams — not retail buyers.</p>
+            <p className="text-muted-foreground max-w-2xl mx-auto">Designed for professional dealership teams - not retail buyers.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
@@ -328,7 +328,7 @@ export function HomePage() {
           <div className="text-center mb-12">
             <h3 className="font-display text-2xl md:text-3xl font-bold text-foreground mb-4">For Warranty & Service Providers</h3>
             <p className="text-muted-foreground max-w-3xl mx-auto">
-              Bridge Warranty opens the door to dealerships that are historically difficult to access — grow distribution without exclusivity barriers.
+              Bridge Warranty opens the door to dealerships that are historically difficult to access - grow distribution without exclusivity barriers.
             </p>
           </div>
 
@@ -351,7 +351,7 @@ export function HomePage() {
 
           <div className="text-center mb-12">
             <h3 className="font-display text-2xl md:text-3xl font-bold text-foreground mb-4">One Login. Role-Based Access.</h3>
-            <p className="text-muted-foreground max-w-2xl mx-auto">Each role sees only what they need — clean, fast, and intuitive.</p>
+            <p className="text-muted-foreground max-w-2xl mx-auto">Each role sees only what they need - clean, fast, and intuitive.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
