@@ -155,7 +155,8 @@ export function RootLayout() {
     location.pathname === "/sign-in" ||
     location.pathname === "/register-dealership" ||
     location.pathname === "/forgot-password" ||
-    location.pathname === "/reset-password";
+    location.pathname === "/reset-password" ||
+    location.pathname === "/dealer-employee-signup";
 
   const showDealerAdminShell = Boolean(user) && user?.role === "DEALER_ADMIN" && !isAuthLikeRoute;
 
