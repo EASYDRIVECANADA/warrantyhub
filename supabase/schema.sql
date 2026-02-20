@@ -1197,6 +1197,272 @@ create table if not exists public.product_pricing (
   )
 );
 
+alter table public.product_pricing
+  add column if not exists is_default boolean not null default false;
+
+create unique index if not exists product_pricing_one_default_per_product
+  on public.product_pricing (product_id)
+  where is_default;
+
+create unique index if not exists product_pricing_unique_row_coalesced
+  on public.product_pricing (
+    product_id,
+    coalesce(term_months, -1),
+    coalesce(term_km, -1),
+    coalesce(vehicle_mileage_min_km, -1),
+    coalesce(vehicle_mileage_max_km, -1),
+    coalesce(vehicle_class, ''),
+    deductible_cents,
+    coalesce(claim_limit_cents, -1)
+  );
+
+do $$
+begin
+  alter table public.product_pricing
+    add constraint product_pricing_term_months_check
+    check (term_months is null or term_months > 0);
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter table public.product_pricing
+    add constraint product_pricing_term_km_check
+    check (term_km is null or term_km > 0);
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter table public.product_pricing
+    add constraint product_pricing_vehicle_mileage_min_km_check
+    check (vehicle_mileage_min_km is null or vehicle_mileage_min_km >= 0);
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter table public.product_pricing
+    add constraint product_pricing_vehicle_mileage_max_km_check
+    check (vehicle_mileage_max_km is null or vehicle_mileage_max_km >= 0);
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter table public.product_pricing
+    add constraint product_pricing_vehicle_mileage_band_check
+    check (
+      vehicle_mileage_min_km is null
+      or vehicle_mileage_max_km is null
+      or vehicle_mileage_max_km >= vehicle_mileage_min_km
+    );
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter table public.product_pricing
+    add constraint product_pricing_claim_limit_cents_check
+    check (claim_limit_cents is null or claim_limit_cents > 0);
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter table public.product_pricing
+    add constraint product_pricing_deductible_cents_check
+    check (deductible_cents >= 0);
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter table public.product_pricing
+    add constraint product_pricing_base_price_cents_check
+    check (base_price_cents > 0);
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter table public.product_pricing
+    add constraint product_pricing_dealer_cost_cents_check
+    check (dealer_cost_cents is null or dealer_cost_cents >= 0);
+exception
+  when duplicate_object then null;
+end $$;
+
+create or replace function public.product_pricing_unset_other_defaults()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.is_default is true then
+    update public.product_pricing
+      set is_default = false
+      where product_id = new.product_id
+        and id <> new.id
+        and is_default is true;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_product_pricing_unset_other_defaults on public.product_pricing;
+create trigger trg_product_pricing_unset_other_defaults
+  after insert or update of is_default
+  on public.product_pricing
+  for each row
+  execute function public.product_pricing_unset_other_defaults();
+
+create or replace function public.ensure_product_has_default_pricing(p_product_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  has_default boolean;
+  first_id uuid;
+begin
+  select exists(
+    select 1 from public.product_pricing
+    where product_id = p_product_id and is_default is true
+  ) into has_default;
+
+  if has_default then
+    return;
+  end if;
+
+  select id
+    from public.product_pricing
+    where product_id = p_product_id
+    order by created_at asc
+    limit 1
+    into first_id;
+
+  if first_id is null then
+    raise exception 'Cannot publish product %: no pricing rows exist', p_product_id;
+  end if;
+
+  update public.product_pricing
+    set is_default = true
+    where id = first_id;
+end;
+$$;
+
+create or replace function public.products_require_default_pricing_on_publish()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.published is true and (old.published is distinct from true) then
+    perform public.ensure_product_has_default_pricing(new.id);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_products_require_default_pricing_on_publish on public.products;
+create trigger trg_products_require_default_pricing_on_publish
+  before update of published
+  on public.products
+  for each row
+  execute function public.products_require_default_pricing_on_publish();
+
+create or replace function public.sync_product_legacy_pricing_from_default(p_product_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  row record;
+begin
+  select
+    term_months,
+    term_km,
+    deductible_cents,
+    base_price_cents,
+    dealer_cost_cents
+  into row
+  from public.product_pricing
+  where product_id = p_product_id
+    and is_default is true
+  limit 1;
+
+  if row is null then
+    update public.products
+      set term_months = null,
+          term_km = null,
+          deductible_cents = null,
+          base_price_cents = null,
+          dealer_cost_cents = null,
+          updated_at = now()
+      where id = p_product_id;
+    return;
+  end if;
+
+  update public.products
+    set term_months = row.term_months,
+        term_km = row.term_km,
+        deductible_cents = row.deductible_cents,
+        base_price_cents = row.base_price_cents,
+        dealer_cost_cents = row.dealer_cost_cents,
+        updated_at = now()
+    where id = p_product_id;
+end;
+$$;
+
+create or replace function public.product_pricing_sync_product_legacy_pricing()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  pid uuid;
+  still_has_rows boolean;
+begin
+  pid := coalesce(new.product_id, old.product_id);
+  if pid is null then
+    return coalesce(new, old);
+  end if;
+
+  select exists(
+    select 1 from public.product_pricing where product_id = pid
+  ) into still_has_rows;
+
+  if still_has_rows then
+    perform public.ensure_product_has_default_pricing(pid);
+  end if;
+
+  perform public.sync_product_legacy_pricing_from_default(pid);
+
+  return coalesce(new, old);
+end;
+$$;
+
+drop trigger if exists trg_product_pricing_sync_product_legacy_pricing on public.product_pricing;
+create trigger trg_product_pricing_sync_product_legacy_pricing
+  after insert or update or delete
+  on public.product_pricing
+  for each row
+  execute function public.product_pricing_sync_product_legacy_pricing();
+
 do $$
 begin
   alter table public.contracts
@@ -1253,6 +1519,9 @@ create table if not exists public.product_addons (
   product_id uuid not null references public.products(id) on delete cascade,
   name text not null,
   description text,
+  pricing_type text,
+  applies_to_all_pricing_rows boolean not null default true,
+  applicable_pricing_row_ids uuid[],
   base_price_cents integer not null,
   min_price_cents integer,
   max_price_cents integer,
@@ -1262,6 +1531,12 @@ create table if not exists public.product_addons (
   updated_at timestamptz not null default now(),
   unique (product_id, name)
 );
+
+alter table public.product_addons
+  add column if not exists applies_to_all_pricing_rows boolean not null default true;
+
+alter table public.product_addons
+  add column if not exists applicable_pricing_row_ids uuid[];
 
 alter table public.product_addons enable row level security;
 
@@ -1301,25 +1576,6 @@ create policy "product_addons_select_admin_all"
     where p.id = auth.uid() and p.role in ('ADMIN','SUPER_ADMIN')
   ));
 
-drop policy if exists "product_documents_select_dealer" on public.product_documents;
-create policy "product_documents_select_dealer"
-  on public.product_documents
-  for select
-  to authenticated
-  using (
-    exists (
-      select 1 from public.profiles p
-      where p.id = auth.uid() and p.role in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE','ADMIN','SUPER_ADMIN')
-    )
-    and product_id is not null
-    and exists (
-      select 1
-      from public.products pr
-      where pr.id = product_documents.product_id
-        and pr.published = true
-    )
-  );
-
 create table if not exists public.product_documents (
   id uuid primary key default gen_random_uuid(),
   provider_id uuid not null references public.profiles(id) on delete cascade,
@@ -1341,6 +1597,25 @@ create policy "product_documents_provider_own"
   to authenticated
   using (provider_id = auth.uid())
   with check (provider_id = auth.uid());
+
+drop policy if exists "product_documents_select_dealer" on public.product_documents;
+create policy "product_documents_select_dealer"
+  on public.product_documents
+  for select
+  to authenticated
+  using (
+    exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid() and p.role in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE','ADMIN','SUPER_ADMIN')
+    )
+    and product_id is not null
+    and exists (
+      select 1
+      from public.products pr
+      where pr.id = product_documents.product_id
+        and pr.published = true
+    )
+  );
 
 create table if not exists public.provider_team_members (
   id uuid primary key default gen_random_uuid(),

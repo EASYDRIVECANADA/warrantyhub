@@ -33,6 +33,8 @@ import { ProviderProductsPage } from "../pages/ProviderProductsPage";
 import { ProviderRemittancePrintPage } from "../pages/ProviderRemittancePrintPage";
 import { ProviderRemittancesPage } from "../pages/ProviderRemittancesPage";
 import { SignInPage } from "../pages/SignInPage";
+import { ForgotPasswordPage } from "../pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "../pages/ResetPasswordPage";
 import { SuperAdminPlatformPage } from "../pages/SuperAdminPlatformPage";
 import { SuperAdminCompaniesPage } from "../pages/SuperAdminCompaniesPage";
 import { RequestAccessPage } from "../pages/RequestAccessPage";
@@ -52,6 +54,8 @@ export function AppRouter() {
         <Route path="dealer-employee-signup" element={<DealerEmployeeSignupPage />} />
 
         <Route path="sign-in" element={<SignInPage />} />
+        <Route path="forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="reset-password" element={<ResetPasswordPage />} />
         <Route path="get-started" element={<Navigate to="/register-dealership" replace />} />
 
         <Route path="login" element={<Navigate to="/sign-in" replace />} />

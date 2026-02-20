@@ -155,6 +155,12 @@ export const localContractsApi: ContractsApi = {
     return item;
   },
 
+  async delete(id: string) {
+    const items = read();
+    const next = items.filter((c) => c.id !== id);
+    write(next);
+  },
+
   async update(id: string, patch: ContractPatch) {
     const now = new Date().toISOString();
     const items = read();

@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { FileText, Package, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -13,6 +13,9 @@ import type { Product } from "../lib/products/types";
 import { getProvidersApi } from "../lib/providers/providers";
 import { confirmProceed, sanitizeLettersOnly, sanitizeWordsOnly } from "../lib/utils";
 import { useAuth } from "../providers/AuthProvider";
+import { getProductPricingApi } from "../lib/productPricing/productPricing";
+import type { ProductPricing } from "../lib/productPricing/types";
+import { defaultPricingRow } from "../lib/productPricing/defaultRow";
 
 function dealerLabelFromContract(c: Contract) {
   const created = (c.createdByEmail ?? "").trim();
@@ -38,11 +41,52 @@ function monthLabel(key: string) {
   return `${names[Math.max(0, Math.min(11, mm - 1))]} ${y}`;
 }
 
+function pricingUniqKey(r: {
+  termMonths: number | null;
+  termKm: number | null;
+  vehicleMileageMinKm?: number;
+  vehicleMileageMaxKm?: number | null;
+  vehicleClass?: string;
+  deductibleCents: number;
+  claimLimitCents?: number;
+}) {
+  const termMonths = r.termMonths;
+  const termKm = r.termKm;
+  const mileageMin = typeof r.vehicleMileageMinKm === "number" ? r.vehicleMileageMinKm : null;
+  const mileageMax = r.vehicleMileageMaxKm === null ? null : typeof r.vehicleMileageMaxKm === "number" ? r.vehicleMileageMaxKm : null;
+  const vehicleClass = typeof r.vehicleClass === "string" && r.vehicleClass.trim() ? r.vehicleClass.trim() : null;
+  const claimLimit = typeof r.claimLimitCents === "number" ? r.claimLimitCents : null;
+  return JSON.stringify([termMonths, termKm, mileageMin, mileageMax, vehicleClass, r.deductibleCents, claimLimit]);
+}
+
+function validatePricingHealth(rows: ProductPricing[]) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { ok: false, reason: "Missing pricing", primary: null as ProductPricing | null };
+  }
+
+  const defaults = rows.filter((r) => r.isDefault);
+  if (defaults.length !== 1) {
+    return { ok: false, reason: "Default row not set", primary: defaultPricingRow(rows) };
+  }
+
+  const seen = new Set<string>();
+  for (const r of rows) {
+    const key = pricingUniqKey(r);
+    if (seen.has(key)) {
+      return { ok: false, reason: "Duplicate rows", primary: defaultPricingRow(rows) };
+    }
+    seen.add(key);
+  }
+
+  return { ok: true, reason: null as string | null, primary: defaults[0] ?? defaultPricingRow(rows) };
+}
+
 export function ProviderDashboardPage() {
   const { user } = useAuth();
   const providersApi = useMemo(() => getProvidersApi(), []);
   const productsApi = useMemo(() => getProductsApi(), []);
   const contractsApi = useMemo(() => getContractsApi(), []);
+  const pricingApi = useMemo(() => getProductPricingApi(), []);
 
   const myProfileQuery = useQuery({
     queryKey: ["my-provider-profile"],
@@ -91,6 +135,42 @@ export function ProviderDashboardPage() {
   const products = (productsQuery.data ?? []) as Product[];
   const publishedCount = products.filter((p) => p.published).length;
   const draftCount = products.filter((p) => !p.published).length;
+
+  const pricingHealthProductIds = useMemo(() => {
+    return products
+      .map((p) => (p.id ?? "").trim())
+      .filter(Boolean);
+  }, [products]);
+
+  const pricingHealthQueries = useQueries({
+    queries: pricingHealthProductIds.map((productId) => ({
+      queryKey: ["provider-dashboard-pricing-health", productId],
+      queryFn: () => pricingApi.list({ productId }),
+      staleTime: 15_000,
+    })),
+  });
+
+  const pricingHealthByProductId = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof validatePricingHealth>>();
+    for (let i = 0; i < pricingHealthQueries.length; i += 1) {
+      const q = pricingHealthQueries[i]!;
+      const productId = pricingHealthProductIds[i] ?? "";
+      if (!productId) continue;
+      const rows = (q.data ?? []) as ProductPricing[];
+      map.set(productId, validatePricingHealth(rows));
+    }
+    return map;
+  }, [pricingHealthProductIds, pricingHealthQueries]);
+
+  const publishedPricingIssuesCount = useMemo(() => {
+    let n = 0;
+    for (const p of products) {
+      if (!p.published) continue;
+      const h = pricingHealthByProductId.get(p.id);
+      if (!h || !h.ok) n += 1;
+    }
+    return n;
+  }, [pricingHealthByProductId, products]);
 
   const productsById = useMemo(() => new Map(products.map((p) => [p.id, p] as const)), [products]);
 
@@ -182,7 +262,10 @@ export function ProviderDashboardPage() {
                 <div>
                   <div className="text-sm text-muted-foreground">Products</div>
                   <div className="text-3xl font-bold text-foreground mt-2">{products.length}</div>
-                  <div className="text-xs text-muted-foreground mt-2">{publishedCount} published • {draftCount} draft</div>
+                  <div className="text-xs text-muted-foreground mt-2">
+                    {publishedCount} published • {draftCount} draft
+                    {publishedPricingIssuesCount > 0 ? ` • ${publishedPricingIssuesCount} published w/ pricing issues` : ""}
+                  </div>
                 </div>
                 <div className="p-3 rounded-xl bg-muted text-primary border">
                   <Package className="w-5 h-5" />

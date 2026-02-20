@@ -6,7 +6,7 @@ import { getContractsApi } from "../lib/contracts/contracts";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
 import { getProvidersApi } from "../lib/providers/providers";
 import type { Contract } from "../lib/contracts/types";
-import type { Product } from "../lib/products/types";
+import type { MarketplaceProduct } from "../lib/marketplace/api";
 import type { ProviderPublic } from "../lib/providers/types";
 import { BRAND } from "../lib/brand";
 import { getAppMode } from "../lib/runtime";
@@ -45,6 +45,13 @@ function titleForCopyType(t: CopyType) {
   return "Customer Copy";
 }
 
+function addonPricingTypeLabel(raw: unknown) {
+  const t = typeof raw === "string" ? raw.trim().toUpperCase() : "";
+  if (t === "PER_TERM") return "Per term";
+  if (t === "PER_CLAIM") return "Per claim";
+  return "Fixed";
+}
+
 export function DealerContractPrintPage() {
   const { user } = useAuth();
   const { id, copyType } = useParams();
@@ -71,7 +78,7 @@ export function DealerContractPrintPage() {
 
   const contract = contractQuery.data as Contract | null | undefined;
 
-  const products = (productsQuery.data ?? []) as Product[];
+  const products = (productsQuery.data ?? []) as MarketplaceProduct[];
   const productById = new Map(products.map((p) => [p.id, p] as const));
   const selectedProduct = (() => {
     const pid = (contract?.productId ?? "").trim();
@@ -250,7 +257,7 @@ export function DealerContractPrintPage() {
                       ? money((contract.pricingDealerCostCents ?? 0) + (contract.addonTotalCostCents ?? 0))
                       : money((contract.pricingBasePriceCents ?? 0) + (contract.addonTotalRetailCents ?? 0))}
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-1">Deductible: {money(contract.pricingDeductibleCents ?? selectedProduct?.deductibleCents)}</div>
+                  <div className="text-[11px] text-slate-500 mt-1">Deductible: {money(contract.pricingDeductibleCents ?? undefined)}</div>
                 </div>
               </div>
               <div className="mt-3 text-[11px] text-slate-500">
@@ -263,7 +270,10 @@ export function DealerContractPrintPage() {
                   <div className="mt-1">
                     {(((contract as any).addonSnapshot as any[]) || []).map((a) => (
                       <div key={(a?.id ?? a?.name ?? Math.random()).toString()} className="flex items-center justify-between gap-3">
-                        <div>{(a?.name ?? "—").toString()}</div>
+                        <div>
+                          {(a?.name ?? "—").toString()}
+                          <span className="text-slate-400"> • {addonPricingTypeLabel(a?.pricingType)}</span>
+                        </div>
                         <div>
                           {money(type === "provider" ? ((a?.chosenPriceCents ?? a?.dealerCostCents ?? a?.basePriceCents ?? 0) as number) : ((a?.chosenPriceCents ?? a?.basePriceCents ?? 0) as number))}
                         </div>

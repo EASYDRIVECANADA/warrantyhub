@@ -9,6 +9,7 @@ type ProductPricingRow = {
   product_id: string;
   term_months: number | null;
   term_km: number | null;
+  is_default?: boolean | null;
   vehicle_mileage_min_km?: number | null;
   vehicle_mileage_max_km?: number | null;
   vehicle_class?: string | null;
@@ -26,6 +27,7 @@ function toPricing(r: ProductPricingRow): ProductPricing {
     productId: r.product_id,
     termMonths: r.term_months,
     termKm: r.term_km,
+    isDefault: r.is_default === true,
     vehicleMileageMinKm: typeof r.vehicle_mileage_min_km === "number" ? r.vehicle_mileage_min_km : undefined,
     vehicleMileageMaxKm:
       typeof r.vehicle_mileage_max_km === "number" ? r.vehicle_mileage_max_km : r.vehicle_mileage_max_km === null ? null : undefined,
@@ -67,6 +69,7 @@ export const supabaseProductPricingApi: ProductPricingApi = {
       .from("product_pricing")
       .select("*")
       .eq("product_id", options.productId)
+      .order("is_default", { ascending: false })
       .order("created_at", { ascending: false });
 
     if (error) throw error;
@@ -111,11 +114,22 @@ export const supabaseProductPricingApi: ProductPricingApi = {
 
     const providerId = await currentUserId();
 
+    if (input.isDefault === true) {
+      const { error: clearError } = await supabase
+        .from("product_pricing")
+        .update({ is_default: false })
+        .eq("product_id", input.productId)
+        .eq("provider_id", providerId)
+        .eq("is_default", true);
+      if (clearError) throw clearError;
+    }
+
     const insertRow: Record<string, unknown> = {
       provider_id: providerId,
       product_id: input.productId,
       term_months: input.termMonths,
       term_km: input.termKm,
+      is_default: input.isDefault === true,
       deductible_cents: input.deductibleCents,
       base_price_cents: input.basePriceCents,
       dealer_cost_cents: typeof input.dealerCostCents === "number" ? input.dealerCostCents : null,

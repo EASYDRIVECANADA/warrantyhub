@@ -4,6 +4,7 @@ export type ContractsApi = {
   list(): Promise<Contract[]>;
   get(id: string): Promise<Contract | null>;
   create(input: CreateContractInput): Promise<Contract>;
+  delete(id: string): Promise<void>;
   update(
     id: string,
     patch: Partial<

@@ -26,6 +26,8 @@ function providerShort(id: string | undefined) {
 
 type RemittanceTabKey = "ALL" | RemittanceWorkflowStatus;
 
+type ContractPickerView = "READY" | "SOLD";
+
 function remittanceTabLabel(t: RemittanceTabKey) {
   if (t === "ALL") return "All";
   if (t === "DRAFT") return "Draft";
@@ -75,7 +77,9 @@ export function DealerRemittancesPage() {
   const [amount, setAmount] = useState("");
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [contractSearch, setContractSearch] = useState("");
-  const [remittanceTab, setRemittanceTab] = useState<RemittanceTabKey>("ALL");
+  const [remittanceTab, setRemittanceTab] = useState<RemittanceTabKey>("DRAFT");
+  const [contractPickerView, setContractPickerView] = useState<ContractPickerView>("READY");
+  const [remittanceSearch, setRemittanceSearch] = useState("");
 
   const contractsQuery = useQuery({
     queryKey: ["contracts"],
@@ -116,48 +120,6 @@ export function DealerRemittancesPage() {
 
   const visibleContractIds = useMemo(() => new Set(visibleContracts.map((c) => c.id)), [visibleContracts]);
   const soldContracts = visibleContracts.filter((c) => c.status === "SOLD");
-
-  const filteredSoldContracts = useMemo(() => {
-    const query = contractSearch.trim().toLowerCase();
-    if (!query) return soldContracts;
-    return soldContracts.filter((c) => {
-      const hay = [c.warrantyId, c.contractNumber, c.customerName]
-        .map((x) => (x ?? "").toString().toLowerCase())
-        .join(" ");
-      return hay.includes(query);
-    });
-  }, [contractSearch, soldContracts]);
-
-  const selectedIds = soldContracts.filter((c) => selected[c.id]).map((c) => c.id);
-  const selectedContracts = soldContracts.filter((c) => selected[c.id]);
-
-  const selectedProviderId = useMemo(() => {
-    const set = new Set(selectedContracts.map((c) => (c.providerId ?? "").trim()).filter(Boolean));
-    if (set.size === 0) return undefined;
-    if (set.size === 1) return Array.from(set)[0];
-    return "__multiple__";
-  }, [selectedContracts]);
-
-  const calculatedTotalCents = useMemo(() => {
-    return selectedContracts.reduce((sum, c) => {
-      const cost =
-        typeof c.pricingDealerCostCents === "number"
-          ? c.pricingDealerCostCents
-          : typeof c.pricingBasePriceCents === "number"
-            ? c.pricingBasePriceCents
-            : 0;
-      const addonCost = typeof c.addonTotalCostCents === "number" ? c.addonTotalCostCents : 0;
-      return sum + cost + addonCost;
-    }, 0);
-  }, [selectedContracts]);
-
-  useEffect(() => {
-    if (selectedIds.length === 0) {
-      setAmount("");
-      return;
-    }
-    setAmount((calculatedTotalCents / 100).toFixed(2));
-  }, [calculatedTotalCents, selectedIds.length]);
 
   const createRemittanceMutation = useMutation({
     mutationFn: async () => {
@@ -259,6 +221,68 @@ export function DealerRemittancesPage() {
     .filter((b) => Array.isArray(b.contractIds) && b.contractIds.length > 0)
     .filter((b) => (b.contractIds ?? []).every((id) => visibleContractIds.has(id)));
 
+  const contractIdsInAnyBatch = useMemo(() => {
+    const ids = new Set<string>();
+    for (const b of myRemittances) {
+      const list = Array.isArray(b.contractIds) ? (b.contractIds as string[]) : [];
+      for (const id of list) ids.add(id);
+    }
+    return ids;
+  }, [myRemittances]);
+
+  const readyToRemitContracts = useMemo(() => {
+    return soldContracts.filter((c) => !contractIdsInAnyBatch.has(c.id));
+  }, [contractIdsInAnyBatch, soldContracts]);
+
+  const pickableContracts = contractPickerView === "READY" ? readyToRemitContracts : soldContracts;
+
+  const filteredSoldContracts = useMemo(() => {
+    const query = contractSearch.trim().toLowerCase();
+    if (!query) return pickableContracts;
+    return pickableContracts.filter((c) => {
+      const hay = [c.warrantyId, c.contractNumber, c.customerName]
+        .map((x) => (x ?? "").toString().toLowerCase())
+        .join(" ");
+      return hay.includes(query);
+    });
+  }, [contractSearch, pickableContracts]);
+
+  useEffect(() => {
+    setSelected({});
+    setContractSearch("");
+  }, [contractPickerView]);
+
+  const selectedIds = pickableContracts.filter((c) => selected[c.id]).map((c) => c.id);
+  const selectedContracts = pickableContracts.filter((c) => selected[c.id]);
+
+  const selectedProviderId = useMemo(() => {
+    const set = new Set(selectedContracts.map((c) => (c.providerId ?? "").trim()).filter(Boolean));
+    if (set.size === 0) return undefined;
+    if (set.size === 1) return Array.from(set)[0];
+    return "__multiple__";
+  }, [selectedContracts]);
+
+  const calculatedTotalCents = useMemo(() => {
+    return selectedContracts.reduce((sum, c) => {
+      const cost =
+        typeof c.pricingDealerCostCents === "number"
+          ? c.pricingDealerCostCents
+          : typeof c.pricingBasePriceCents === "number"
+            ? c.pricingBasePriceCents
+            : 0;
+      const addonCost = typeof c.addonTotalCostCents === "number" ? c.addonTotalCostCents : 0;
+      return sum + cost + addonCost;
+    }, 0);
+  }, [selectedContracts]);
+
+  useEffect(() => {
+    if (selectedIds.length === 0) {
+      setAmount("");
+      return;
+    }
+    setAmount((calculatedTotalCents / 100).toFixed(2));
+  }, [calculatedTotalCents, selectedIds.length]);
+
   const derivedWorkflow = (b: Batch): RemittanceWorkflowStatus => {
     const s = b.remittanceStatus;
     if (s) return s;
@@ -292,419 +316,347 @@ export function DealerRemittancesPage() {
     return "inline-flex items-center text-xs px-2 py-1 rounded-md border bg-muted text-muted-foreground";
   };
 
-  const remittanceTabs: RemittanceTabKey[] = ["ALL", "DRAFT", "SUBMITTED", "APPROVED", "REJECTED", "PAID"];
-  const showSection = (k: RemittanceWorkflowStatus) => remittanceTab === "ALL" || remittanceTab === k;
+  const remittanceTabs: RemittanceTabKey[] = ["DRAFT", "SUBMITTED", "APPROVED", "REJECTED", "PAID"];
   const remittancePrintUrl = (id: string) => `/dealer-remittances/batches/${id}/print`;
+
+  const remittancesForTab = useMemo(() => {
+    const list =
+      remittanceTab === "ALL"
+        ? myRemittances
+        : remittanceTab === "DRAFT"
+          ? pending
+          : remittanceTab === "SUBMITTED"
+            ? submitted
+            : remittanceTab === "APPROVED"
+              ? approved
+              : remittanceTab === "REJECTED"
+                ? rejected
+                : paid;
+
+    const q = remittanceSearch.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((r) => {
+      const hay = [r.batchNumber, providerShort(r.providerId)]
+        .map((x) => (x ?? "").toString().toLowerCase())
+        .join(" ");
+      return hay.includes(q);
+    });
+  }, [approved, myRemittances, paid, pending, rejected, remittanceSearch, remittanceTab, submitted]);
 
   return (
     <PageShell
-      badge="Dealer Portal"
       title="Remittances"
       subtitle="Create remittances for SOLD contracts and submit them for review."
-      actions={
-        <Button variant="outline" asChild>
-          <Link to="/dealer-dashboard">Back to dashboard</Link>
-        </Button>
-      }
     >
       <div className="relative">
         <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-yellow-400/10 blur-2xl" />
 
-        <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
-          <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
-            <div className="font-semibold">Remittances overview</div>
-            <div className="text-sm text-muted-foreground mt-1">Track draft → submitted → approved → paid. Filter the sections below.</div>
-          </div>
-          <div className="p-6 grid grid-cols-2 md:grid-cols-6 gap-3">
-            {remittanceTabs.map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setRemittanceTab(t)}
-                className={
-                  "rounded-xl border p-3 text-left transition-colors " +
-                  (remittanceTab === t ? "bg-muted/50 border-blue-500/30" : "bg-background hover:bg-muted/30")
-                }
-              >
-                <div className="text-xs text-muted-foreground">{remittanceTabLabel(t)}</div>
-                <div className="text-lg font-semibold text-foreground mt-1">{remittanceCounts[t]}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-6 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-yellow-500/10">
-          <div className="px-6 py-4 border-b bg-gradient-to-r from-yellow-500/10 to-blue-600/10">
-            <div className="font-semibold">Create remittance</div>
-            <div className="text-sm text-muted-foreground mt-1">Select SOLD contracts (same provider), then create the draft remittance.</div>
-          </div>
-
-          <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-            <div>
-              <div className="text-xs text-muted-foreground mb-1">Remittance #</div>
-              <Input value={remittanceNumber} onChange={(e) => setRemittanceNumber(e.target.value)} placeholder="Remittance #" disabled={busy} />
-            </div>
-
-            <div>
-              <div className="text-xs text-muted-foreground mb-1">Amount</div>
-              <Input value={amount} placeholder="199.99" inputMode="decimal" disabled={true} />
-              <div className="mt-2 text-xs text-muted-foreground">Total is calculated from selected contracts using provider cost.</div>
-            </div>
-
-            <Button
-              className="bg-yellow-400 text-black hover:bg-yellow-300"
-              disabled={busy || selectedIds.length === 0 || selectedProviderId === "__multiple__"}
-              onClick={() => {
-                void (async () => {
-                  const r = remittanceNumber.trim();
-                  if (!r) return alertMissing("Remittance # is required.");
-                  if (selectedIds.length === 0) return alertMissing("Select at least 1 SOLD contract.");
-                  if (selectedProviderId === "__multiple__") return alertMissing("Select contracts from a single provider.");
-                  if (!(await confirmProceed(`Create remittance ${r} for ${selectedIds.length} contract(s)?`))) return;
-                  createRemittanceMutation.mutate();
-                })();
-              }}
-            >
-              Create remittance
-            </Button>
-          </div>
-
-          <div className="px-6 pb-6">
-            {createRemittanceMutation.isError ? (
-              <div className="mt-4 text-sm text-destructive">
-                {createRemittanceMutation.error instanceof Error ? createRemittanceMutation.error.message : "Failed to create remittance"}
-              </div>
-            ) : null}
-
-            <div className="mt-4 rounded-xl border p-4 bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10">
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                  <div className="text-xs text-muted-foreground">Selected contracts</div>
-                  <div className="text-sm text-foreground mt-1">
-                    {selectedIds.length} selected
-                    {selectedProviderId && selectedProviderId !== "__multiple__" ? ` • ${providerShort(selectedProviderId)}` : ""}
-                    {selectedProviderId === "__multiple__" ? " • Multiple providers" : ""}
-                  </div>
-                </div>
-                <div className="text-sm font-medium">Total {money(calculatedTotalCents)}</div>
-              </div>
-              {selectedProviderId === "__multiple__" ? (
-                <div className="mt-2 text-sm text-destructive">A remittance can only include contracts from one provider. Uncheck contracts to continue.</div>
-              ) : null}
-            </div>
-
-            <div className="mt-6 rounded-xl border overflow-hidden">
-              <div className="px-4 py-3 border-b bg-muted/20">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="w-full md:w-[320px]">
-                    <Input
-                      value={contractSearch}
-                      onChange={(e) => setContractSearch(e.target.value)}
-                      placeholder="Search sold contracts (warranty id, contract #, customer)…"
-                      disabled={busy}
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={busy || filteredSoldContracts.length === 0}
-                      onClick={() => {
-                        setSelected((prev) => {
-                          const providerForBulk =
-                            selectedProviderId && selectedProviderId !== "__multiple__"
-                              ? selectedProviderId
-                              : (filteredSoldContracts.find((c) => (c.providerId ?? "").trim())?.providerId ?? "").trim();
-                          const next: Record<string, boolean> = { ...prev };
-                          for (const c of filteredSoldContracts) {
-                            const pid = (c.providerId ?? "").trim();
-                            if (providerForBulk && pid && pid !== providerForBulk) continue;
-                            next[c.id] = true;
-                          }
-                          return next;
-                        });
-                      }}
+        <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
+          <div className="p-6">
+            <div className="rounded-2xl border bg-background p-4">
+              <div className="text-base font-semibold">Create Remittance</div>
+              <div className="mt-3 flex items-center gap-3 flex-wrap">
+                <div className="inline-flex items-center rounded-lg border bg-background p-1">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setContractPickerView("READY")}
+                    className={
+                      "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors " +
+                      (contractPickerView === "READY" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/40")
+                    }
+                  >
+                    <span
+                      className={
+                        "inline-flex h-4 w-4 items-center justify-center rounded border text-[10px] " +
+                        (contractPickerView === "READY" ? "border-white/30 bg-white/20" : "border-border bg-background")
+                      }
+                      aria-hidden
                     >
-                      Select visible
-                    </Button>
-                    <Button size="sm" variant="outline" disabled={busy || selectedIds.length === 0} onClick={() => setSelected({})}>
-                      Clear
-                    </Button>
-                  </div>
+                      {contractPickerView === "READY" ? "✓" : ""}
+                    </span>
+                    Ready to remit
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setContractPickerView("SOLD")}
+                    className={
+                      "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors " +
+                      (contractPickerView === "SOLD" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/40")
+                    }
+                  >
+                    <span
+                      className={
+                        "inline-flex h-4 w-4 items-center justify-center rounded border text-[10px] " +
+                        (contractPickerView === "SOLD" ? "border-white/30 bg-white/20" : "border-border bg-background")
+                      }
+                      aria-hidden
+                    >
+                      {contractPickerView === "SOLD" ? "✓" : ""}
+                    </span>
+                    All sold
+                  </button>
                 </div>
-                <div className="mt-3 grid grid-cols-12 gap-2 text-sm text-muted-foreground">
-                  <div className="col-span-1">Pick</div>
-                  <div className="col-span-3">Warranty ID</div>
-                  <div className="col-span-2">Contract #</div>
-                  <div className="col-span-3">Customer</div>
-                  <div className="col-span-2">Provider</div>
-                  <div className="col-span-1 text-right">Cost</div>
+
+                <div className="w-full sm:w-[220px]">
+                  <Input
+                    value={remittanceNumber}
+                    onChange={(e) => setRemittanceNumber(e.target.value)}
+                    placeholder="Remittance #"
+                    disabled={busy}
+                  />
+                </div>
+
+                <div className="w-full sm:w-[140px]">
+                  <Input value={amount} placeholder="0.00" inputMode="decimal" disabled={true} />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Button
+                    className="bg-yellow-400 text-black hover:bg-yellow-300"
+                    disabled={busy || selectedIds.length === 0 || selectedProviderId === "__multiple__"}
+                    onClick={() => {
+                      void (async () => {
+                        const r = remittanceNumber.trim();
+                        if (!r) return alertMissing("Remittance # is required.");
+                        if (selectedIds.length === 0) return alertMissing("Select at least 1 SOLD contract.");
+                        if (selectedProviderId === "__multiple__") return alertMissing("Select contracts from a single provider.");
+                        if (!(await confirmProceed(`Create remittance ${r} for ${selectedIds.length} contract(s)?`))) return;
+                        createRemittanceMutation.mutate();
+                      })();
+                    }}
+                  >
+                    Create Remittance
+                  </Button>
                 </div>
               </div>
 
-            <div className="divide-y">
-              {filteredSoldContracts.map((c) => (
-                <div key={c.id} className="grid grid-cols-12 gap-2 px-4 py-3 text-sm items-center">
-                  <div className="col-span-1">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(selected[c.id])}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        if (checked) {
-                          const pid = (c.providerId ?? "").trim();
-                          if (selectedProviderId && selectedProviderId !== "__multiple__" && pid && pid !== selectedProviderId) {
-                            alertMissing("A remittance can only include contracts from one provider.");
-                            return;
-                          }
-                        }
-                        setSelected((s) => ({ ...s, [c.id]: checked }));
-                      }}
-                      disabled={busy}
-                    />
-                  </div>
-                  <div className="col-span-3 font-medium">{c.warrantyId}</div>
-                  <div className="col-span-2">{c.contractNumber}</div>
-                  <div className="col-span-3">{c.customerName}</div>
-                  <div className="col-span-2 text-xs text-muted-foreground">{providerShort(c.providerId)}</div>
-                  <div className="col-span-1 text-right text-xs text-muted-foreground">
-                    {(() => {
-                      const cost =
-                        typeof c.pricingDealerCostCents === "number"
-                          ? c.pricingDealerCostCents
-                          : typeof c.pricingBasePriceCents === "number"
-                            ? c.pricingBasePriceCents
-                            : 0;
-                      return money(cost);
-                    })()}
-                  </div>
-                </div>
-              ))}
-
-              {contractsQuery.isLoading ? <div className="px-4 py-6 text-sm text-muted-foreground">Loading…</div> : null}
-              {!contractsQuery.isLoading && soldContracts.length === 0 ? (
-                <div className="px-4 py-8 text-sm text-muted-foreground">
-                  <div className="font-medium text-foreground">No SOLD contracts yet</div>
-                  <div className="mt-1">Sell a contract in the Contracts page (status must be SOLD), then come back here to create a remittance.</div>
-                  <div className="mt-3">
-                    <Button size="sm" variant="outline" asChild>
-                      <Link to="/dealer-contracts?tab=SOLD">Go to Contracts</Link>
-                    </Button>
-                  </div>
+              {createRemittanceMutation.isError ? (
+                <div className="mt-4 text-sm text-destructive">
+                  {createRemittanceMutation.error instanceof Error ? createRemittanceMutation.error.message : "Failed to create remittance"}
                 </div>
               ) : null}
-              {!contractsQuery.isLoading && soldContracts.length > 0 && filteredSoldContracts.length === 0 ? (
-                <div className="px-4 py-6 text-sm text-muted-foreground">No SOLD contracts match your search.</div>
-              ) : null}
-              {contractsQuery.isError ? <div className="px-4 py-6 text-sm text-destructive">Failed to load contracts.</div> : null}
-            </div>
-          </div>
-        </div>
 
-        </div>
-
-        {showSection("DRAFT") ? (
-        <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
-          <div className="px-6 py-4 border-b flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <div className="font-semibold">Draft Remittances</div>
-              <div className="text-sm text-muted-foreground mt-1">Draft remittances can be submitted when ready.</div>
-            </div>
-            <span className="text-sm text-muted-foreground">{pending.length} total</span>
-          </div>
-
-          <div className="divide-y">
-            {pending.map((r) => (
-              <div key={r.id} className="px-6 py-4">
+              <div className="mt-4 rounded-xl border p-4 bg-muted/20">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div>
-                    <div className="text-sm font-medium">Remittance {r.batchNumber}</div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {r.contractIds.length} contract(s) • {providerShort(r.providerId)} • Created {new Date(r.createdAt).toLocaleString()}
+                    <div className="text-xs text-muted-foreground">Selected contracts</div>
+                    <div className="text-sm text-foreground mt-1">
+                      {selectedIds.length} selected
+                      {selectedProviderId && selectedProviderId !== "__multiple__" ? ` • ${providerShort(selectedProviderId)}` : ""}
+                      {selectedProviderId === "__multiple__" ? " • Multiple providers" : ""}
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="text-sm font-medium">{money(r.totalCents)}</div>
-                    <span className={statusBadge("DRAFT")}>Draft</span>
-                    <Button size="sm" variant="outline" asChild>
-                      <Link to={remittancePrintUrl(r.id)}>Download</Link>
-                    </Button>
-                    <Button
-                      className="bg-yellow-400 text-black hover:bg-yellow-300"
-                      size="sm"
-                      onClick={() => {
-                        void (async () => {
-                          if (!(await confirmProceed(`Submit remittance ${r.batchNumber}?`))) return;
-                          submitRemittanceMutation.mutate(r.id);
-                        })();
-                      }}
-                      disabled={submitRemittanceMutation.isPending}
-                    >
-                      Submit
-                    </Button>
-                  </div>
+                  <div className="text-sm font-medium">Provider total {money(calculatedTotalCents)}</div>
                 </div>
+                {selectedProviderId === "__multiple__" ? (
+                  <div className="mt-2 text-sm text-destructive">A remittance can only include contracts from one provider. Uncheck contracts to continue.</div>
+                ) : null}
               </div>
-            ))}
 
-            {submitRemittanceMutation.isError ? (
-              <div className="px-6 py-6 text-sm text-destructive">
-                {submitRemittanceMutation.error instanceof Error ? submitRemittanceMutation.error.message : "Failed to submit remittance"}
-              </div>
-            ) : null}
-
-            {batchesQuery.isLoading ? <div className="px-6 py-6 text-sm text-muted-foreground">Loading…</div> : null}
-            {!batchesQuery.isLoading && pending.length === 0 ? (
-              <div className="px-6 py-10 text-sm text-muted-foreground">No draft remittances yet.</div>
-            ) : null}
-            {batchesQuery.isError ? <div className="px-6 py-6 text-sm text-destructive">Failed to load remittances.</div> : null}
-          </div>
-        </div>
-      ) : null}
-
-        {showSection("SUBMITTED") ? (
-        <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-yellow-500/10">
-          <div className="px-6 py-4 border-b flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <div className="font-semibold">Submitted Remittances</div>
-              <div className="text-sm text-muted-foreground mt-1">Submitted remittances are reviewed by administrators.</div>
-            </div>
-            <span className="text-sm text-muted-foreground">{submitted.length} total</span>
-          </div>
-
-          <div className="divide-y">
-            {submitted.map((r) => (
-              <div key={r.id} className="px-6 py-4">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div>
-                    <div className="text-sm font-medium">Remittance {r.batchNumber}</div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {r.contractIds.length} contract(s) • {providerShort(r.providerId)} • Submitted {new Date(r.submittedAt ?? r.createdAt).toLocaleString()}
+              <div className="mt-4 rounded-xl border overflow-hidden">
+                <div className="px-4 py-3 border-b bg-background">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="text-xs text-muted-foreground">
+                      {contractPickerView === "READY" ? "Showing ready-to-remit SOLD contracts." : "Showing all SOLD contracts."}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy || filteredSoldContracts.length === 0}
+                        onClick={() => {
+                          setSelected((prev) => {
+                            const providerForBulk =
+                              selectedProviderId && selectedProviderId !== "__multiple__"
+                                ? selectedProviderId
+                                : (filteredSoldContracts.find((c) => (c.providerId ?? "").trim())?.providerId ?? "").trim();
+                            const next: Record<string, boolean> = { ...prev };
+                            for (const c of filteredSoldContracts) {
+                              const pid = (c.providerId ?? "").trim();
+                              if (providerForBulk && pid && pid !== providerForBulk) continue;
+                              next[c.id] = true;
+                            }
+                            return next;
+                          });
+                        }}
+                      >
+                        Select visible
+                      </Button>
+                      <Button size="sm" variant="outline" disabled={busy || selectedIds.length === 0} onClick={() => setSelected({})}>
+                        Clear
+                      </Button>
                     </div>
                   </div>
+                </div>
 
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="text-sm font-medium">{money(r.totalCents)}</div>
-                    <span className={statusBadge("SUBMITTED")}>Submitted</span>
-                    <Button size="sm" variant="outline" asChild>
-                      <Link to={remittancePrintUrl(r.id)}>Download</Link>
-                    </Button>
+                <div className="max-h-[320px] overflow-auto">
+                  <div className="divide-y">
+                    {filteredSoldContracts.map((c) => (
+                      <div key={c.id} className="grid grid-cols-12 gap-2 px-4 py-3 text-sm items-center">
+                        <div className="col-span-1">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(selected[c.id])}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              if (checked) {
+                                const pid = (c.providerId ?? "").trim();
+                                if (selectedProviderId && selectedProviderId !== "__multiple__" && pid && pid !== selectedProviderId) {
+                                  alertMissing("A remittance can only include contracts from one provider.");
+                                  return;
+                                }
+                              }
+                              setSelected((s) => ({ ...s, [c.id]: checked }));
+                            }}
+                            disabled={busy}
+                          />
+                        </div>
+                        <div className="col-span-4 font-medium truncate">{c.warrantyId}</div>
+                        <div className="col-span-3 truncate">{c.customerName}</div>
+                        <div className="col-span-3 text-xs text-muted-foreground truncate">{providerShort(c.providerId)}</div>
+                        <div className="col-span-1 text-right text-xs text-muted-foreground">
+                          {(() => {
+                            const cost =
+                              typeof c.pricingDealerCostCents === "number"
+                                ? c.pricingDealerCostCents
+                                : typeof c.pricingBasePriceCents === "number"
+                                  ? c.pricingBasePriceCents
+                                  : 0;
+                            return money(cost);
+                          })()}
+                        </div>
+                      </div>
+                    ))}
+
+                    {contractsQuery.isLoading ? <div className="px-4 py-6 text-sm text-muted-foreground">Loading…</div> : null}
+                    {!contractsQuery.isLoading && soldContracts.length === 0 ? (
+                      <div className="px-4 py-8 text-sm text-muted-foreground">
+                        <div className="font-medium text-foreground">No SOLD contracts yet</div>
+                        <div className="mt-1">Sell a contract in the Contracts page (status must be SOLD), then come back here to create a remittance.</div>
+                        <div className="mt-3">
+                          <Button size="sm" variant="outline" asChild>
+                            <Link to="/dealer-contracts?tab=SOLD">Go to Contracts</Link>
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+                    {!contractsQuery.isLoading && soldContracts.length > 0 && filteredSoldContracts.length === 0 ? (
+                      <div className="px-4 py-6 text-sm text-muted-foreground">No SOLD contracts match your search.</div>
+                    ) : null}
+                    {contractsQuery.isError ? <div className="px-4 py-6 text-sm text-destructive">Failed to load contracts.</div> : null}
                   </div>
                 </div>
               </div>
-            ))}
-
-            {batchesQuery.isLoading ? <div className="px-6 py-6 text-sm text-muted-foreground">Loading…</div> : null}
-            {!batchesQuery.isLoading && submitted.length === 0 ? (
-              <div className="px-6 py-10 text-sm text-muted-foreground">No submitted remittances yet.</div>
-            ) : null}
-            {batchesQuery.isError ? <div className="px-6 py-6 text-sm text-destructive">Failed to load remittances.</div> : null}
-          </div>
-        </div>
-      ) : null}
-
-        {showSection("APPROVED") ? (
-        <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
-          <div className="px-6 py-4 border-b flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <div className="font-semibold">Approved</div>
-              <div className="text-sm text-muted-foreground mt-1">Approved remittances are awaiting provider payment.</div>
             </div>
-            <span className="text-sm text-muted-foreground">{approved.length} total</span>
-          </div>
-          <div className="divide-y">
-            {approved.map((r) => (
-              <div key={r.id} className="px-6 py-4">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div>
-                    <div className="text-sm font-medium">Remittance {r.batchNumber}</div>
-                    <div className="text-xs text-muted-foreground mt-1">{r.contractIds.length} contract(s) • {providerShort(r.providerId)}</div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="text-sm font-medium">{money(r.totalCents)}</div>
-                    <span className={statusBadge("APPROVED")}>Approved</span>
-                    <Button size="sm" variant="outline" asChild>
-                      <Link to={remittancePrintUrl(r.id)}>Download</Link>
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {!batchesQuery.isLoading && approved.length === 0 ? (
-              <div className="px-6 py-10 text-sm text-muted-foreground">No approved remittances yet.</div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
 
-        {showSection("REJECTED") ? (
-        <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-yellow-500/10">
-          <div className="px-6 py-4 border-b flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <div className="font-semibold">Rejected</div>
-              <div className="text-sm text-muted-foreground mt-1">Rejected remittances require admin follow-up.</div>
-            </div>
-            <span className="text-sm text-muted-foreground">{rejected.length} total</span>
-          </div>
-          <div className="divide-y">
-            {rejected.map((r) => (
-              <div key={r.id} className="px-6 py-4">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div>
-                    <div className="text-sm font-medium">Remittance {r.batchNumber}</div>
-                    <div className="text-xs text-muted-foreground mt-1">Reason: {(r.rejectionReason ?? "—").trim() || "—"}</div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="text-sm font-medium">{money(r.totalCents)}</div>
-                    <span className={statusBadge("REJECTED")}>Rejected</span>
-                    <Button size="sm" variant="outline" asChild>
-                      <Link to={remittancePrintUrl(r.id)}>Download</Link>
-                    </Button>
-                  </div>
+            <div className="mt-6 rounded-2xl border bg-background overflow-hidden">
+              <div className="px-5 py-4 border-b flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {remittanceTabs.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setRemittanceTab(t)}
+                      className={
+                        "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm border transition-colors " +
+                        (remittanceTab === t
+                          ? "bg-background border-primary text-foreground shadow-sm"
+                          : "bg-background hover:bg-muted/40 border-transparent text-muted-foreground")
+                      }
+                    >
+                      <span className="font-medium">{remittanceTabLabel(t)}</span>
+                      <span className="text-xs text-muted-foreground">({remittanceCounts[t]})</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="w-full sm:w-[260px]">
+                  <Input value={remittanceSearch} onChange={(e) => setRemittanceSearch(e.target.value)} placeholder="Search" disabled={busy} />
                 </div>
               </div>
-            ))}
-            {!batchesQuery.isLoading && rejected.length === 0 ? (
-              <div className="px-6 py-10 text-sm text-muted-foreground">No rejected remittances.</div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
 
-        {showSection("PAID") ? (
-        <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
-          <div className="px-6 py-4 border-b flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <div className="font-semibold">Paid</div>
-              <div className="text-sm text-muted-foreground mt-1">Completed remittances.</div>
-            </div>
-            <span className="text-sm text-muted-foreground">{paid.length} total</span>
-          </div>
-          <div className="divide-y">
-            {paid.map((r) => (
-              <div key={r.id} className="px-6 py-4">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div>
-                    <div className="text-sm font-medium">Remittance {r.batchNumber}</div>
-                    <div className="text-xs text-muted-foreground mt-1">Paid {new Date(r.paidAt ?? r.createdAt).toLocaleDateString()}</div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="text-sm font-medium">{money(r.totalCents)}</div>
-                    <span className={statusBadge("PAID")}>Paid</span>
-                    <Button size="sm" variant="outline" asChild>
-                      <Link to={remittancePrintUrl(r.id)}>Download</Link>
-                    </Button>
-                  </div>
-                </div>
+              <div className="overflow-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-xs text-muted-foreground">
+                    <tr className="border-b">
+                      <th className="px-5 py-3 text-left font-medium">Remittance #</th>
+                      <th className="px-5 py-3 text-left font-medium">Provider</th>
+                      <th className="px-5 py-3 text-center font-medium">Contracts</th>
+                      <th className="px-5 py-3 text-right font-medium">Batch Total</th>
+                      <th className="px-5 py-3 text-left font-medium">Status</th>
+                      <th className="px-5 py-3 text-left font-medium">Date</th>
+                      <th className="px-5 py-3 text-right font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {remittancesForTab.map((r) => {
+                      const workflow = derivedWorkflow(r);
+                      return (
+                        <tr key={r.id} className="hover:bg-muted/20">
+                          <td className="px-5 py-3 font-medium">{r.batchNumber}</td>
+                          <td className="px-5 py-3 text-muted-foreground">{providerShort(r.providerId)}</td>
+                          <td className="px-5 py-3 text-center">{Array.isArray(r.contractIds) ? r.contractIds.length : 0}</td>
+                          <td className="px-5 py-3 text-right font-medium">{money(r.totalCents)}</td>
+                          <td className="px-5 py-3">
+                            <span className={statusBadge(workflow)}>{remittanceTabLabel(workflow)}</span>
+                          </td>
+                          <td className="px-5 py-3 text-muted-foreground">
+                            {new Date((r.submittedAt ?? r.createdAt) as string).toLocaleDateString()}
+                          </td>
+                          <td className="px-5 py-3 text-right">
+                            <div className="inline-flex items-center gap-2">
+                              <Button size="sm" variant="outline" asChild>
+                                <Link to={remittancePrintUrl(r.id)}>Download</Link>
+                              </Button>
+                              {workflow === "DRAFT" ? (
+                                <Button
+                                  size="sm"
+                                  className="bg-yellow-400 text-black hover:bg-yellow-300"
+                                  onClick={() => {
+                                    void (async () => {
+                                      if (!(await confirmProceed(`Submit remittance ${r.batchNumber}?`))) return;
+                                      submitRemittanceMutation.mutate(r.id);
+                                    })();
+                                  }}
+                                  disabled={submitRemittanceMutation.isPending}
+                                >
+                                  Submit
+                                </Button>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    {batchesQuery.isLoading ? (
+                      <tr>
+                        <td className="px-5 py-6 text-sm text-muted-foreground" colSpan={7}>
+                          Loading…
+                        </td>
+                      </tr>
+                    ) : null}
+                    {!batchesQuery.isLoading && remittancesForTab.length === 0 ? (
+                      <tr>
+                        <td className="px-5 py-8 text-sm text-muted-foreground" colSpan={7}>
+                          No remittances found.
+                        </td>
+                      </tr>
+                    ) : null}
+                    {batchesQuery.isError ? (
+                      <tr>
+                        <td className="px-5 py-6 text-sm text-destructive" colSpan={7}>
+                          Failed to load remittances.
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
               </div>
-            ))}
-            {!batchesQuery.isLoading && paid.length === 0 ? (
-              <div className="px-6 py-10 text-sm text-muted-foreground">No paid remittances yet.</div>
-            ) : null}
+            </div>
           </div>
         </div>
-      ) : null}
       </div>
     </PageShell>
   );

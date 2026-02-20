@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { Bell, Clock, Mail, ShieldCheck } from "lucide-react";
+
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { getAppMode } from "../lib/runtime";
@@ -348,13 +350,23 @@ export function RequestAccessPage() {
     })();
   }, [autoRequested, loadingMyRequest, myRequest, signupIntent, user]);
 
+  const isPendingView = !loadingMyRequest && myRequest?.status === "PENDING";
+  const isApprovedView = !loadingMyRequest && myRequest?.status === "APPROVED";
+  const isRejectedView = !loadingMyRequest && myRequest?.status === "REJECTED";
+
+  const submittedAtLabel = myRequest?.createdAt ? new Date(myRequest.createdAt).toLocaleString() : "";
+  const requestTypeLabel = myRequest?.requestType === "PROVIDER" ? "Provider" : "Dealer";
+
   return (
-    <div className="container mx-auto px-4 py-12">
-      <div className="max-w-xl mx-auto">
-        <h1 className="text-3xl font-semibold tracking-tight">Request Access</h1>
-        <p className="text-muted-foreground mt-2">
-          Your account is created, but access must be approved by an admin.
-        </p>
+    <div className="min-h-screen bg-slate-50">
+      <div className="container mx-auto px-4 py-12">
+        <div className="max-w-4xl mx-auto">
+          {isPendingView ? null : (
+            <>
+              <h1 className="text-3xl font-semibold tracking-tight">Request Access</h1>
+              <p className="text-muted-foreground mt-2">Your account is created, but access must be approved by an admin.</p>
+            </>
+          )}
 
         {autoJoining ? (
           <div className="mt-6 rounded-lg border bg-card p-4 text-sm">Joining your dealership…</div>
@@ -379,38 +391,143 @@ export function RequestAccessPage() {
           </div>
         ) : null}
 
-        {loadingMyRequest ? (
-          <div className="mt-6 rounded-lg border bg-card p-4 text-sm">Loading request status…</div>
-        ) : null}
+          {loadingMyRequest ? (
+            <div className="mt-6 rounded-lg border bg-card p-4 text-sm">Loading request status…</div>
+          ) : null}
 
-        {!loadingMyRequest && myRequest?.status === "PENDING" ? (
-          <div className="mt-6 rounded-lg border bg-card p-4 text-sm">
-            <div className="font-medium">Account pending approval</div>
-            <div className="text-muted-foreground mt-1">
-              Submitted {new Date(myRequest.createdAt).toLocaleString()}. You’ll be able to access the platform once a Super Admin approves your dealership.
-            </div>
-            <div className="mt-4 grid grid-cols-1 gap-2">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-muted-foreground">Request type</div>
-                <div className="font-medium">{myRequest.requestType === "PROVIDER" ? "Provider" : "Dealer"}</div>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-muted-foreground">Company</div>
-                <div className="font-medium text-right break-words">{myRequest.company}</div>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-muted-foreground">Submitted</div>
-                <div className="font-medium">{new Date(myRequest.createdAt).toLocaleString()}</div>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-muted-foreground">Status</div>
-                <div className="font-medium">Pending</div>
-              </div>
-            </div>
-          </div>
-        ) : null}
+          {isPendingView ? (
+            <div className="mt-6">
+              <div className="text-center">
+                <div className="inline-flex items-center gap-2 rounded-full border border-yellow-300/40 bg-yellow-100 px-4 py-1 text-[11px] font-semibold tracking-wide text-slate-900">
+                  <span className="h-2 w-2 rounded-full bg-yellow-400" />
+                  PENDING ADMIN APPROVAL
+                </div>
 
-        {!loadingMyRequest && myRequest?.status === "APPROVED" ? (
+                <div className="mt-5 flex items-center justify-center">
+                  <div className="relative">
+                    <div className="h-20 w-20 rounded-full border bg-white shadow-sm flex items-center justify-center">
+                      <Clock className="h-8 w-8 text-slate-900" />
+                    </div>
+                    <div className="absolute -right-1 -bottom-1 h-7 w-7 rounded-full bg-yellow-300 border border-yellow-200 flex items-center justify-center">
+                      <span className="text-[11px] font-bold text-slate-900">✓</span>
+                    </div>
+                  </div>
+                </div>
+
+                <h1 className="mt-6 text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 font-display">
+                  You&apos;re on the list, there!
+                </h1>
+                <p className="mt-3 text-sm text-muted-foreground max-w-xl mx-auto">
+                  Your dealership registration has been received. Our admin team will review and activate your account shortly.
+                </p>
+              </div>
+
+              <div className="mt-8 flex items-center justify-center">
+                <div className="w-full max-w-2xl">
+                  <div className="grid grid-cols-3 items-center gap-4">
+                    <div className="text-center">
+                      <div className="mx-auto h-10 w-10 rounded-full bg-yellow-300 text-slate-900 flex items-center justify-center shadow-sm">
+                        <span className="text-xs font-bold">1</span>
+                      </div>
+                      <div className="mt-2 text-[11px] font-semibold text-yellow-600">Application</div>
+                      <div className="text-[11px] font-semibold text-yellow-600">Submitted</div>
+                    </div>
+
+                    <div className="text-center relative">
+                      <div className="absolute left-0 right-0 top-5 h-px bg-slate-200" />
+                      <div className="relative mx-auto h-10 w-10 rounded-full bg-primary text-white flex items-center justify-center shadow-sm">
+                        <span className="text-xs font-bold">2</span>
+                      </div>
+                      <div className="mt-2 text-[11px] font-semibold text-slate-900">Admin Review</div>
+                    </div>
+
+                    <div className="text-center">
+                      <div className="mx-auto h-10 w-10 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center">
+                        <span className="text-xs font-bold">3</span>
+                      </div>
+                      <div className="mt-2 text-[11px] font-semibold text-slate-500">Account</div>
+                      <div className="text-[11px] font-semibold text-slate-500">Activated</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8 flex justify-center">
+                <div className="w-full max-w-2xl rounded-xl border bg-white shadow-sm overflow-hidden">
+                  <div className="flex items-center gap-2 px-5 py-3 bg-slate-50 border-b">
+                    <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center">
+                      <ShieldCheck className="h-4 w-4 text-slate-900" />
+                    </div>
+                    <div className="text-sm font-semibold text-slate-900">Application Details</div>
+                  </div>
+
+                  <div className="px-5 py-4 text-sm">
+                    <div className="flex items-center justify-between gap-3 py-2 border-b">
+                      <div className="text-muted-foreground">Company</div>
+                      <div className="font-medium text-right break-words text-slate-900">{myRequest?.company}</div>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 py-2 border-b">
+                      <div className="text-muted-foreground">Request type</div>
+                      <div className="font-medium text-slate-900">{requestTypeLabel}</div>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 py-2 border-b">
+                      <div className="text-muted-foreground">Submitted</div>
+                      <div className="font-medium text-slate-900">{submittedAtLabel}</div>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 pt-2">
+                      <div className="text-muted-foreground">Status</div>
+                      <div className="inline-flex items-center gap-2 rounded-full border border-yellow-300/40 bg-yellow-100 px-3 py-1 text-xs font-semibold text-slate-900">
+                        <span className="h-2 w-2 rounded-full bg-yellow-400" />
+                        Pending Review
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-center">
+                <div className="w-full max-w-2xl rounded-xl border bg-white shadow-sm p-4 flex items-start gap-3">
+                  <div className="h-9 w-9 rounded-lg bg-slate-100 flex items-center justify-center">
+                    <Mail className="h-4 w-4 text-primary" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">We’ll email you when you’re approved</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Once our admin approves your account, you’ll receive an email with your login details and next steps.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8 flex justify-center">
+                <div className="w-full max-w-2xl grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="rounded-xl border bg-white shadow-sm p-4 text-center">
+                    <div className="mx-auto h-10 w-10 rounded-full bg-yellow-100 flex items-center justify-center">
+                      <Clock className="h-5 w-5 text-yellow-600" />
+                    </div>
+                    <div className="mt-3 text-sm font-semibold text-slate-900">Quick Review</div>
+                    <div className="mt-1 text-xs text-muted-foreground">Most accounts are reviewed within 1–2 business days</div>
+                  </div>
+                  <div className="rounded-xl border bg-white shadow-sm p-4 text-center">
+                    <div className="mx-auto h-10 w-10 rounded-full bg-yellow-100 flex items-center justify-center">
+                      <Bell className="h-5 w-5 text-yellow-600" />
+                    </div>
+                    <div className="mt-3 text-sm font-semibold text-slate-900">Instant Alert</div>
+                    <div className="mt-1 text-xs text-muted-foreground">You’ll be notified immediately upon approval</div>
+                  </div>
+                  <div className="rounded-xl border bg-white shadow-sm p-4 text-center">
+                    <div className="mx-auto h-10 w-10 rounded-full bg-yellow-100 flex items-center justify-center">
+                      <ShieldCheck className="h-5 w-5 text-yellow-600" />
+                    </div>
+                    <div className="mt-3 text-sm font-semibold text-slate-900">Secure Access</div>
+                    <div className="mt-1 text-xs text-muted-foreground">Your data is protected throughout the process</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {isApprovedView ? (
           <div className="mt-6 rounded-lg border bg-card p-4 text-sm">
             <div className="font-medium">Access approved</div>
             <div className="text-muted-foreground mt-1">Your access was approved. Your portal will update automatically.</div>
@@ -431,7 +548,7 @@ export function RequestAccessPage() {
           </div>
         ) : null}
 
-        {!loadingMyRequest && myRequest?.status === "REJECTED" ? (
+          {isRejectedView ? (
           <div className="mt-6 rounded-lg border bg-card p-4 text-sm">
             <div className="font-medium">Your request was not approved</div>
             <div className="text-muted-foreground mt-1">You can submit a new request below.</div>
@@ -444,13 +561,13 @@ export function RequestAccessPage() {
           </div>
         ) : null}
 
-        {status === "error" ? (
+          {status === "error" ? (
           <div className="mt-6 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
             {error ?? "Request failed"}
           </div>
-        ) : null}
+          ) : null}
 
-        {signupIntent === "DEALERSHIP" || autoJoining ? null : (!loadingMyRequest && myRequest?.status === "PENDING" ? null : (
+          {signupIntent === "DEALERSHIP" || autoJoining ? null : (isPendingView ? null : (
           <form className="mt-6 space-y-4" onSubmit={onSubmit}>
           <div className="space-y-2">
             <label className="text-sm font-medium">I am a…</label>
@@ -513,7 +630,8 @@ export function RequestAccessPage() {
             </p>
           )}
           </form>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );

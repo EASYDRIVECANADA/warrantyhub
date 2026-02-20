@@ -7,5 +7,8 @@ export function hasSupabaseEnv() {
 export type AppMode = "supabase" | "local";
 
 export function getAppMode(): AppMode {
+  const forced = (import.meta.env.VITE_APP_MODE as string | undefined)?.trim().toLowerCase();
+  if (forced === "local") return "local";
+  if (forced === "supabase") return hasSupabaseEnv() ? "supabase" : "local";
   return hasSupabaseEnv() ? "supabase" : "local";
 }

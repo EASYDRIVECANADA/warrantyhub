@@ -1,7 +1,7 @@
 import { getSupabaseClient } from "../supabase/client";
 
 import type { ProductAddonsApi } from "./api";
-import type { CreateProductAddonInput, ProductAddon } from "./types";
+import type { AddonPricingType, CreateProductAddonInput, ProductAddon } from "./types";
 
 type ProductAddonsRow = {
   id: string;
@@ -9,6 +9,9 @@ type ProductAddonsRow = {
   product_id: string;
   name: string;
   description?: string | null;
+  pricing_type?: string | null;
+  applies_to_all_pricing_rows?: boolean | null;
+  applicable_pricing_row_ids?: string[] | null;
   base_price_cents: number;
   min_price_cents?: number | null;
   max_price_cents?: number | null;
@@ -21,12 +24,20 @@ type ProductAddonsRow = {
 function toAddon(r: ProductAddonsRow): ProductAddon {
   const min = typeof r.min_price_cents === "number" ? r.min_price_cents : r.base_price_cents;
   const max = typeof r.max_price_cents === "number" ? r.max_price_cents : min;
+  const raw = typeof (r as any).pricing_type === "string" ? String((r as any).pricing_type) : "";
+  const pricingType: AddonPricingType | undefined =
+    raw === "PER_TERM" || raw === "PER_CLAIM" || raw === "FIXED" ? (raw as AddonPricingType) : "FIXED";
   return {
     id: r.id,
     providerId: r.provider_id,
     productId: r.product_id,
     name: r.name,
     description: r.description ?? undefined,
+    pricingType,
+    appliesToAllPricingRows: typeof (r as any).applies_to_all_pricing_rows === "boolean" ? Boolean((r as any).applies_to_all_pricing_rows) : undefined,
+    applicablePricingRowIds: Array.isArray((r as any).applicable_pricing_row_ids)
+      ? ((r as any).applicable_pricing_row_ids as unknown[]).filter((x) => typeof x === "string")
+      : undefined,
     basePriceCents: r.base_price_cents,
     minPriceCents: min,
     maxPriceCents: max,
@@ -86,6 +97,12 @@ export const supabaseProductAddonsApi: ProductAddonsApi = {
       product_id: input.productId,
       name: input.name,
       description: input.description,
+      pricing_type: typeof (input as any).pricingType === "string" ? ((input as any).pricingType as string) : undefined,
+      applies_to_all_pricing_rows:
+        typeof (input as any).appliesToAllPricingRows === "boolean" ? Boolean((input as any).appliesToAllPricingRows) : true,
+      applicable_pricing_row_ids: Array.isArray((input as any).applicablePricingRowIds)
+        ? ((input as any).applicablePricingRowIds as unknown[]).filter((x) => typeof x === "string")
+        : undefined,
       base_price_cents: input.basePriceCents,
       min_price_cents: typeof input.minPriceCents === "number" ? input.minPriceCents : undefined,
       max_price_cents: typeof input.maxPriceCents === "number" ? input.maxPriceCents : undefined,
@@ -109,6 +126,13 @@ export const supabaseProductAddonsApi: ProductAddonsApi = {
     const updateRow: Record<string, unknown> = { updated_at: now };
     if (typeof patch.name === "string") updateRow.name = patch.name;
     if (typeof patch.description === "string") updateRow.description = patch.description;
+    if (typeof (patch as any).pricingType === "string") updateRow.pricing_type = (patch as any).pricingType;
+    if (typeof (patch as any).appliesToAllPricingRows === "boolean") {
+      updateRow.applies_to_all_pricing_rows = Boolean((patch as any).appliesToAllPricingRows);
+    }
+    if (Array.isArray((patch as any).applicablePricingRowIds)) {
+      updateRow.applicable_pricing_row_ids = ((patch as any).applicablePricingRowIds as unknown[]).filter((x) => typeof x === "string");
+    }
     if (typeof patch.basePriceCents === "number") updateRow.base_price_cents = patch.basePriceCents;
     if (typeof patch.minPriceCents === "number") updateRow.min_price_cents = patch.minPriceCents;
     if (typeof patch.maxPriceCents === "number") updateRow.max_price_cents = patch.maxPriceCents;

@@ -7,7 +7,7 @@ import type { Batch } from "../lib/batches/types";
 import { getContractsApi } from "../lib/contracts/contracts";
 import type { Contract } from "../lib/contracts/types";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
-import type { Product } from "../lib/products/types";
+import type { MarketplaceProduct } from "../lib/marketplace/api";
 import { BRAND } from "../lib/brand";
 import { getAppMode } from "../lib/runtime";
 import { useAuth } from "../providers/AuthProvider";
@@ -72,7 +72,7 @@ export function DealerRemittanceBatchPrintPage() {
 
   const batch = ((batchesQuery.data ?? []) as Batch[]).find((b) => b.id === batchId);
   const contracts = (contractsQuery.data ?? []) as Contract[];
-  const products = (productsQuery.data ?? []) as Product[];
+  const products = (productsQuery.data ?? []) as MarketplaceProduct[];
 
   const uid = (user?.id ?? "").trim();
   const uem = (user?.email ?? "").trim().toLowerCase();

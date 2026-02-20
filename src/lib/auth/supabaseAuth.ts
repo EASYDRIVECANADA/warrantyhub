@@ -197,6 +197,28 @@ export const supabaseAuthApi: AuthApi = {
     return { id: user.id, email: user.email, role: "UNASSIGNED" };
   },
 
+  async requestPasswordReset(email, redirectTo) {
+    const supabase = getSupabaseClient();
+    if (!supabase) throw new Error("Supabase is not configured");
+
+    const e = email.trim();
+    if (!e) throw new Error("Email is required");
+
+    const { error } = await supabase.auth.resetPasswordForEmail(e, { redirectTo });
+    if (error) throw new Error(error.message);
+  },
+
+  async updatePassword(newPassword) {
+    const supabase = getSupabaseClient();
+    if (!supabase) throw new Error("Supabase is not configured");
+
+    const p = newPassword.trim();
+    if (!p) throw new Error("Password is required");
+
+    const { error } = await supabase.auth.updateUser({ password: p });
+    if (error) throw new Error(error.message);
+  },
+
   async signOut() {
     const supabase = getSupabaseClient();
     if (!supabase) return;

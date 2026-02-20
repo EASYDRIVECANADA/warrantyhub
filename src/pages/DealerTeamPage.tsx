@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Navigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "../components/ui/button";
@@ -451,24 +451,60 @@ export function DealerTeamPage() {
 
   return (
     <PageShell
-      badge="Dealer Portal"
       title="Team"
-      subtitle="Manage dealer staff access."
-      actions={
-        <Button variant="outline" asChild>
-          <Link to="/dealer-admin">Back to dashboard</Link>
-        </Button>
-      }
+      subtitle="Manage dealership staff access."
     >
       {error ? <div className="text-sm text-destructive">{error}</div> : null}
 
-      <div className="mt-6 rounded-2xl border bg-card shadow-card overflow-hidden">
-        <div className="px-6 py-4 border-b flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <div className="font-semibold">Invite Dealer Employee</div>
-            <div className="text-sm text-muted-foreground mt-1">Generate an invite code/link for staff to sign up and join your dealership.</div>
+      <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden">
+        <div className="px-6 py-4 border-b">
+          <div className="font-semibold">Invite New Member</div>
+        </div>
+        <div className="p-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
+            <div className="lg:col-span-5">
+              <div className="text-xs text-muted-foreground mb-1">Email</div>
+              <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter email address" disabled={busy} />
+            </div>
+            <div className="lg:col-span-5">
+              <div className="text-xs text-muted-foreground mb-1" title="Admins can manage team, remittances, and reporting. Employees focus on find products and contracts.">
+                Role
+              </div>
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value as DealerTeamRole)}
+                className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
+                disabled={busy}
+              >
+                <option value="DEALER_EMPLOYEE">Dealer Employee</option>
+                <option value="DEALER_ADMIN">Dealer Admin</option>
+              </select>
+            </div>
+            <div className="lg:col-span-2 flex lg:justify-end">
+              <Button
+                onClick={() => {
+                  void (async () => {
+                    setError(null);
+                    const em = email.trim();
+                    if (!em) return alertMissing("Email is required.");
+                    if (!(await confirmProceed(`Invite ${em}?`))) return;
+                    inviteMutation.mutate();
+                  })();
+                }}
+                disabled={busy}
+                className="bg-primary text-primary-foreground hover:bg-primary/90 w-full lg:w-auto"
+              >
+                Send Invite
+              </Button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+        </div>
+      </div>
+
+      <div className="mt-6 rounded-2xl border bg-card shadow-card overflow-hidden">
+        <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap">
+          <div className="font-semibold">Quick Invite Link</div>
+          <div className="flex items-center gap-2 flex-wrap">
             <Button
               variant="outline"
               size="sm"
@@ -557,74 +593,39 @@ export function DealerTeamPage() {
           </div>
         </div>
 
-        <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-6">
-            <div className="text-xs text-muted-foreground">Invite Code</div>
-            <div className="mt-2 font-mono text-lg tracking-wider rounded-lg border bg-background px-4 py-3">
-              {inviteCode || "Not generated yet"}
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
+            <div className="lg:col-span-4">
+              <div className="text-xs text-muted-foreground mb-1">Invite code</div>
+              <Input
+                value={inviteCode || "Not generated yet"}
+                readOnly
+                className="font-mono"
+              />
             </div>
-            {inviteQuery.data?.createdAt ? (
-              <div className="mt-2 text-xs text-muted-foreground">Updated {new Date(inviteQuery.data.createdAt).toLocaleString()}</div>
-            ) : null}
-          </div>
-          <div className="lg:col-span-6">
-            <div className="text-xs text-muted-foreground">Invite Link</div>
-            <div className="mt-2 rounded-lg border bg-background px-4 py-3 text-sm break-all">
-              {inviteLink || "Generate an invite code to create a link"}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden">
-        <div className="px-6 py-4 border-b flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <div className="font-semibold">Invite Staff</div>
-            <div className="text-sm text-muted-foreground mt-1">Invite by email and assign a role.</div>
-          </div>
-          <Button
-            onClick={() => {
-              void (async () => {
-                setError(null);
-                const em = email.trim();
-                if (!em) return alertMissing("Email is required.");
-                if (!(await confirmProceed(`Invite ${em}?`))) return;
-                inviteMutation.mutate();
-              })();
-            }}
-            disabled={busy}
-          >
-            Invite
-          </Button>
-        </div>
-
-        <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-6 space-y-3">
-            <div>
-              <div className="text-xs text-muted-foreground mb-1">Email</div>
-              <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="staff@dealer.com" disabled={busy} />
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground mb-1">Role</div>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value as DealerTeamRole)}
-                className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
-                disabled={busy}
-              >
-                <option value="DEALER_ADMIN">Dealer Admin</option>
-                <option value="DEALER_EMPLOYEE">Dealer Employee</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="lg:col-span-6 rounded-xl border p-4">
-            <div className="font-semibold">Role Definitions</div>
-            <div className="text-sm text-muted-foreground mt-2">Use roles to safely control access inside the Dealer Portal.</div>
-            <div className="mt-3 text-sm text-muted-foreground">
-              Dealer Admin: office/money/control (team, contracts, remittances).
-              <br />
-              Dealer Employee: showroom/selling (create and manage their own contracts).
+            <div className="lg:col-span-8">
+              <div className="text-xs text-muted-foreground mb-1">Invite Link</div>
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <Input value={inviteLink || "Generate an invite code to create a link"} readOnly />
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!inviteLink}
+                  onClick={() => {
+                    void (async () => {
+                      if (!inviteLink) return;
+                      try {
+                        await navigator.clipboard.writeText(inviteLink);
+                      } catch {
+                      }
+                    })();
+                  }}
+                >
+                  Copy Link
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -634,13 +635,12 @@ export function DealerTeamPage() {
         <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap">
           <div>
             <div className="font-semibold">Your Team</div>
-            <div className="text-sm text-muted-foreground mt-1">Staff members associated with your dealer account.</div>
           </div>
           <div className="text-sm text-muted-foreground">{members.length} member(s)</div>
         </div>
 
         <div className="hidden md:grid grid-cols-12 gap-3 px-6 py-3 border-b text-xs text-muted-foreground">
-          <div className="col-span-5">Email</div>
+          <div className="col-span-5">Member</div>
           <div className="col-span-3">Role</div>
           <div className="col-span-2">Status</div>
           <div className="col-span-2 text-right">Action</div>

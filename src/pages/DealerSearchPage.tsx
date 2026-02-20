@@ -7,7 +7,8 @@ import { Input } from "../components/ui/input";
 import { getContractsApi } from "../lib/contracts/contracts";
 import type { Contract } from "../lib/contracts/types";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
-import type { Product, ProductType } from "../lib/products/types";
+import type { MarketplaceProduct } from "../lib/marketplace/api";
+import type { ProductType } from "../lib/products/types";
 import { getProvidersApi } from "../lib/providers/providers";
 import type { ProviderPublic } from "../lib/providers/types";
 import { alertMissing, confirmProceed } from "../lib/utils";
@@ -179,7 +180,7 @@ export function DealerSearchPage() {
   });
 
   const contracts = (contractsQuery.data ?? []) as Contract[];
-  const products = (productsQuery.data ?? []) as Product[];
+  const products = (productsQuery.data ?? []) as MarketplaceProduct[];
 
   const uid = (user?.id ?? "").trim();
   const uem = (user?.email ?? "").trim().toLowerCase();

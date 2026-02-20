@@ -69,11 +69,14 @@ function read(): ProductPricing[] {
           productId,
           termMonths: typeof r.termMonths === "number" ? r.termMonths : null,
           termKm: typeof r.termKm === "number" ? r.termKm : null,
+          isDefault: (r as any).isDefault === true,
           vehicleMileageMinKm: typeof r.vehicleMileageMinKm === "number" ? r.vehicleMileageMinKm : undefined,
           vehicleMileageMaxKm:
             typeof r.vehicleMileageMaxKm === "number" ? r.vehicleMileageMaxKm : r.vehicleMileageMaxKm === null ? null : undefined,
           vehicleClass: typeof r.vehicleClass === "string" ? r.vehicleClass : undefined,
           claimLimitCents: typeof (r as any).claimLimitCents === "number" ? (r as any).claimLimitCents : undefined,
+          claimLimitType: typeof (r as any).claimLimitType === "string" ? (r as any).claimLimitType : undefined,
+          claimLimitAmountCents: typeof (r as any).claimLimitAmountCents === "number" ? (r as any).claimLimitAmountCents : undefined,
           deductibleCents: typeof r.deductibleCents === "number" ? r.deductibleCents : 0,
           basePriceCents: typeof r.basePriceCents === "number" ? r.basePriceCents : 0,
           dealerCostCents: typeof r.dealerCostCents === "number" ? r.dealerCostCents : undefined,
@@ -103,7 +106,13 @@ export const localProductPricingApi: ProductPricingApi = {
     return read()
       .filter((r) => r.productId === productId)
       .filter((r) => (role === "PROVIDER" ? r.providerId === uid : true))
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      .sort((a, b) => {
+        const ad = a.isDefault ? 1 : 0;
+        const bd = b.isDefault ? 1 : 0;
+        const diff = bd - ad;
+        if (diff) return diff;
+        return b.createdAt.localeCompare(a.createdAt);
+      });
   },
 
   async create(input: CreateProductPricingInput) {
@@ -145,6 +154,7 @@ export const localProductPricingApi: ProductPricingApi = {
       productId: input.productId,
       termMonths: input.termMonths,
       termKm: input.termKm,
+      isDefault: input.isDefault === true,
       vehicleMileageMinKm: typeof input.vehicleMileageMinKm === "number" ? input.vehicleMileageMinKm : undefined,
       vehicleMileageMaxKm:
         input.vehicleMileageMaxKm === undefined
@@ -154,13 +164,21 @@ export const localProductPricingApi: ProductPricingApi = {
             : input.vehicleMileageMaxKm,
       vehicleClass: typeof input.vehicleClass === "string" ? input.vehicleClass : undefined,
       claimLimitCents: typeof input.claimLimitCents === "number" ? input.claimLimitCents : undefined,
+      claimLimitType: typeof (input as any).claimLimitType === "string" ? (input as any).claimLimitType : undefined,
+      claimLimitAmountCents: typeof (input as any).claimLimitAmountCents === "number" ? (input as any).claimLimitAmountCents : undefined,
       deductibleCents: input.deductibleCents,
       basePriceCents: input.basePriceCents,
       dealerCostCents: typeof input.dealerCostCents === "number" ? input.dealerCostCents : undefined,
       createdAt: now,
     };
 
-    write([item, ...read()]);
+    const existing = read();
+    const next =
+      item.isDefault === true
+        ? existing.map((r) => (r.productId === item.productId && r.providerId === uid ? { ...r, isDefault: false } : r))
+        : existing;
+
+    write([item, ...next]);
     return item;
   },
 

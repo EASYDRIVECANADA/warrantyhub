@@ -31,6 +31,7 @@ export function Navbar() {
 
   const location = useLocation();
   const isActive = (path: string) => location.pathname === path;
+  const hideProfileLink = location.pathname === "/request-access";
 
   const dashboardPath =
     user?.role === "UNASSIGNED"
@@ -68,7 +69,7 @@ export function Navbar() {
                   isActive("/find-insurance") ? "text-primary" : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                Find Warranty
+                Home
                 {isActive("/find-insurance") ? (
                   <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-accent rounded-full" />
                 ) : null}
@@ -114,16 +115,20 @@ export function Navbar() {
             <div className="hidden md:flex items-center gap-3">
               {user ? (
                 <>
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link to="/profile">Profile</Link>
-                  </Button>
+                  {hideProfileLink ? null : (
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link to="/profile">Profile</Link>
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
+                    className="hover:bg-red-500/10 hover:text-red-600"
                     onClick={() => {
                       void (async () => {
-                        if (!(await confirmProceed(`Sign out of ${BRAND.name}?`))) return;
+                        if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
                         await signOut();
+                        window.location.assign("/find-insurance");
                       })();
                     }}
                   >
@@ -145,16 +150,20 @@ export function Navbar() {
             <div className="md:hidden">
               {user ? (
                 <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link to="/profile">Profile</Link>
-                  </Button>
+                  {hideProfileLink ? null : (
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link to="/profile">Profile</Link>
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
+                    className="hover:bg-red-500/10 hover:text-red-600"
                     onClick={() => {
                       void (async () => {
-                        if (!(await confirmProceed(`Sign out of ${BRAND.name}?`))) return;
+                        if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
                         await signOut();
+                        window.location.assign("/find-insurance");
                       })();
                     }}
                   >

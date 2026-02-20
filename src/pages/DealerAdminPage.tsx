@@ -348,49 +348,41 @@ export function DealerAdminPage() {
 
   return (
     <PageShell
-      badge="Dealer Admin"
       title="Dealer Admin Dashboard"
-      subtitle="Reporting, remittance oversight, and staff management."
-      actions={
-        <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" asChild>
-            <Link to="/dealer-admin">Dashboard</Link>
-          </Button>
-          <Button asChild className="bg-yellow-400 text-black hover:bg-yellow-300">
-            <Link to="/dealer-remittances">Remittances</Link>
-          </Button>
-        </div>
-      }
     >
       <div className="relative">
         <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-yellow-400/10 blur-2xl" />
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-8 space-y-8">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-9 space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 auto-rows-fr">
               {summaryCards.map((c) => {
                 const Icon = iconForSummary(c.icon);
                 const a = accentForSummary(c.icon);
                 const body = (
                   <div
                     className={
-                      "rounded-2xl border bg-card shadow-card p-6 ring-1 transition-all hover:-translate-y-0.5 hover:shadow-md h-full overflow-hidden flex flex-col " +
+                      "group rounded-2xl border bg-card shadow-card p-4 ring-1 transition-all hover:-translate-y-0.5 hover:shadow-md h-full overflow-hidden flex flex-col " +
                       a.ring
                     }
                   >
                     <div className="flex items-center justify-between gap-4">
-                      <div className="text-sm text-muted-foreground">{c.title}</div>
+                      <div className="text-[13px] text-muted-foreground">{c.title}</div>
                       <div
                         className={
-                          "shrink-0 h-12 w-12 rounded-2xl border ring-1 ring-white/30 flex items-center justify-center " +
+                          "shrink-0 h-10 w-10 rounded-2xl border ring-1 ring-white/30 flex items-center justify-center " +
                           a.iconWrap
                         }
                       >
-                        <Icon className="w-6 h-6" />
+                        <Icon className="w-5 h-5" />
                       </div>
                     </div>
-                    <div className="text-3xl font-bold text-foreground mt-3 leading-none break-all">{c.value}</div>
-                    {c.subtitle ? <div className="text-xs text-muted-foreground mt-3 leading-relaxed">{c.subtitle}</div> : null}
+                    <div className="text-2xl font-bold text-foreground mt-3 leading-none break-all">{c.value}</div>
+                    {c.subtitle ? (
+                      <div className="text-[11px] text-muted-foreground mt-2 leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity">
+                        {c.subtitle}
+                      </div>
+                    ) : null}
                   </div>
                 );
 
@@ -405,22 +397,55 @@ export function DealerAdminPage() {
             </div>
 
             <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-yellow-500/10">
-              <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap bg-gradient-to-r from-yellow-500/10 to-blue-600/10">
-                <div>
-                  <div className="font-semibold">Employee Invite Code</div>
-                  <div className="text-sm text-muted-foreground mt-1">Share this with dealership staff to join your dealership.</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={!dealerKey}
-                    onClick={() => {
-                      if (!dealerKey) return;
+              <div className="px-6 py-4 border-b bg-gradient-to-r from-yellow-500/10 to-blue-600/10">
+                <div className="font-semibold">Settings</div>
+                <div className="text-sm text-muted-foreground mt-1">Invite + pricing controls.</div>
+              </div>
 
-                      if (mode === "supabase") {
-                        void (async () => {
-                          const code = await generateInviteMutation.mutateAsync();
+              <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="rounded-xl border bg-background/40 p-4">
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                      <div className="font-semibold text-sm">Invite Code</div>
+                      <div className="text-xs text-muted-foreground mt-1">Share with staff to join.</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!dealerKey}
+                        onClick={() => {
+                          if (!dealerKey) return;
+
+                          if (mode === "supabase") {
+                            void (async () => {
+                              const code = await generateInviteMutation.mutateAsync();
+                              logAuditEvent({
+                                kind: "DEALER_INVITE_CODE_GENERATED",
+                                actorUserId: user?.id,
+                                actorEmail: user?.email,
+                                actorRole: user?.role,
+                                dealerId,
+                                entityType: "dealer_invite",
+                                entityId: dealerId,
+                                message: inviteCode ? "Regenerated invite code" : "Generated invite code",
+                              });
+                              try {
+                                await navigator.clipboard.writeText(code);
+                              } catch {
+                              }
+                            })();
+                            return;
+                          }
+
+                          const users = readLocalUsers();
+                          const dealerName =
+                            (users.find((u) => (u.id ?? "").toString() === dealerId)?.companyName ?? "").toString().trim() || undefined;
+                          const now = new Date().toISOString();
+                          const code = generateInviteCode();
+                          const next = { ...invites, [dealerKey]: { code, dealerName, createdAt: now } };
+                          writeInvites(next);
+
                           logAuditEvent({
                             kind: "DEALER_INVITE_CODE_GENERATED",
                             actorUserId: user?.id,
@@ -431,62 +456,106 @@ export function DealerAdminPage() {
                             entityId: dealerId,
                             message: inviteCode ? "Regenerated invite code" : "Generated invite code",
                           });
+
+                          window.location.reload();
+                        }}
+                      >
+                        {inviteCode ? "Regenerate" : "Generate"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!inviteCode}
+                        onClick={() => {
+                          void (async () => {
+                            if (!inviteCode) return;
+                            try {
+                              await navigator.clipboard.writeText(inviteCode);
+                            } catch {
+                            }
+                          })();
+                        }}
+                      >
+                        Copy
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 font-mono text-[15px] tracking-wider rounded-lg border bg-background px-4 py-3">
+                    {inviteCode || "Not generated yet"}
+                  </div>
+                  {invite?.createdAt ? (
+                    <div className="mt-2 text-xs text-muted-foreground">Updated {new Date(invite.createdAt).toLocaleString()}</div>
+                  ) : null}
+                </div>
+
+                <div className="rounded-xl border bg-background/40 p-4">
+                  <div className="font-semibold text-sm">Pricing</div>
+                  <div className="text-xs text-muted-foreground mt-1">Controls dealer price markup.</div>
+
+                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                    <div className="sm:col-span-2">
+                      <div className="text-xs text-muted-foreground mb-1">Dealership markup %</div>
+                      <Input
+                        value={markupPct}
+                        onChange={(e) => setMarkupPct(e.target.value)}
+                        placeholder="e.g. 25"
+                        inputMode="decimal"
+                        disabled={!dealerId || isSavingMarkup}
+                      />
+                      {(() => {
+                        const n = Number(markupPct);
+                        if (!Number.isFinite(n)) return null;
+                        const pct = Math.max(0, Math.min(200, n));
+                        const exampleCostCents = 50000;
+                        const exampleRetailCents = Math.round(exampleCostCents * (1 + pct / 100));
+                        return (
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            Example: {money(exampleCostCents)} → {money(exampleRetailCents)}
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <Button
+                      onClick={() => {
+                        void (async () => {
                           try {
-                            await navigator.clipboard.writeText(code);
-                          } catch {
+                            const n = Number(markupPct);
+                            await saveMarkupPct(n);
+                            setSavedAt(new Date().toLocaleString());
+                            setSaveError(null);
+                          } catch (err) {
+                            setSavedAt(null);
+                            const anyErr = err as any;
+                            const msg =
+                              err instanceof Error
+                                ? err.message
+                                : typeof anyErr?.message === "string"
+                                  ? anyErr.message
+                                  : typeof err === "string"
+                                    ? err
+                                    : (() => {
+                                        try {
+                                          return JSON.stringify(err);
+                                        } catch {
+                                          return "Failed to save markup";
+                                        }
+                                      })();
+                            setSaveError(msg || "Failed to save markup");
                           }
                         })();
-                        return;
-                      }
+                      }}
+                      disabled={!dealerId || isSavingMarkup}
+                      className="bg-yellow-400 text-black hover:bg-yellow-300"
+                    >
+                      Save
+                    </Button>
+                  </div>
 
-                      const users = readLocalUsers();
-                      const dealerName = (users.find((u) => (u.id ?? "").toString() === dealerId)?.companyName ?? "").toString().trim() || undefined;
-                      const now = new Date().toISOString();
-                      const code = generateInviteCode();
-                      const next = { ...invites, [dealerKey]: { code, dealerName, createdAt: now } };
-                      writeInvites(next);
-
-                      logAuditEvent({
-                        kind: "DEALER_INVITE_CODE_GENERATED",
-                        actorUserId: user?.id,
-                        actorEmail: user?.email,
-                        actorRole: user?.role,
-                        dealerId,
-                        entityType: "dealer_invite",
-                        entityId: dealerId,
-                        message: inviteCode ? "Regenerated invite code" : "Generated invite code",
-                      });
-
-                      window.location.reload();
-                    }}
-                  >
-                    {inviteCode ? "Regenerate" : "Generate"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={!inviteCode}
-                    onClick={() => {
-                      void (async () => {
-                        if (!inviteCode) return;
-                        try {
-                          await navigator.clipboard.writeText(inviteCode);
-                        } catch {
-                        }
-                      })();
-                    }}
-                  >
-                    Copy
-                  </Button>
+                  {savedAt ? <div className="mt-2 text-xs text-muted-foreground">Saved {savedAt}</div> : null}
+                  {saveError ? <div className="mt-2 text-xs text-destructive">{saveError}</div> : null}
                 </div>
-              </div>
-
-              <div className="p-6">
-                <div className="text-xs text-muted-foreground">Invite Code</div>
-                <div className="mt-2 font-mono text-lg tracking-wider rounded-lg border bg-background px-4 py-3">
-                  {inviteCode || "Not generated yet"}
-                </div>
-                {invite?.createdAt ? <div className="mt-2 text-xs text-muted-foreground">Updated {new Date(invite.createdAt).toLocaleString()}</div> : null}
               </div>
             </div>
 
@@ -496,17 +565,9 @@ export function DealerAdminPage() {
                   <div className="font-semibold">Employee / User Activity</div>
                   <div className="text-sm text-muted-foreground mt-1">Who created/sold/remitted/paid contracts.</div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" asChild>
-                    <Link to="/dealer-contracts">View contracts</Link>
-                  </Button>
-                  <Button size="sm" asChild className="bg-yellow-400 text-black hover:bg-yellow-300">
-                    <Link to="/dealer-team">Manage team</Link>
-                  </Button>
-                </div>
               </div>
 
-              <div className="hidden md:grid grid-cols-12 gap-3 px-6 py-3 border-b text-xs text-muted-foreground">
+              <div className="hidden md:grid grid-cols-12 gap-3 px-6 py-2.5 border-b text-[11px] text-muted-foreground">
                 <div className="col-span-4">Email</div>
                 <div className="col-span-2 text-right">Created</div>
                 <div className="col-span-2 text-right">Sold</div>
@@ -516,15 +577,15 @@ export function DealerAdminPage() {
 
               <div className="divide-y">
                 {actors.map((email) => (
-                  <div key={asText(email)} className="px-6 py-4">
+                  <div key={asText(email)} className="px-6 py-3">
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                       <div className="md:col-span-4">
-                        <div className="text-sm font-medium text-foreground break-all">{asText(email)}</div>
+                        <div className="text-[13px] font-medium text-foreground break-all">{asText(email)}</div>
                       </div>
-                      <div className="md:col-span-2 text-sm text-right text-muted-foreground">{attribution.createdBy.get(email) ?? 0}</div>
-                      <div className="md:col-span-2 text-sm text-right text-muted-foreground">{attribution.soldBy.get(email) ?? 0}</div>
-                      <div className="md:col-span-2 text-sm text-right text-muted-foreground">{attribution.remittedBy.get(email) ?? 0}</div>
-                      <div className="md:col-span-2 text-sm text-right text-muted-foreground">{attribution.paidBy.get(email) ?? 0}</div>
+                      <div className="md:col-span-2 text-[13px] text-right text-muted-foreground">{attribution.createdBy.get(email) ?? 0}</div>
+                      <div className="md:col-span-2 text-[13px] text-right text-muted-foreground">{attribution.soldBy.get(email) ?? 0}</div>
+                      <div className="md:col-span-2 text-[13px] text-right text-muted-foreground">{attribution.remittedBy.get(email) ?? 0}</div>
+                      <div className="md:col-span-2 text-[13px] text-right text-muted-foreground">{attribution.paidBy.get(email) ?? 0}</div>
                     </div>
                   </div>
                 ))}
@@ -538,89 +599,31 @@ export function DealerAdminPage() {
             </div>
           </div>
 
-          <div className="lg:col-span-4">
-            <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10 flex flex-col h-[380px]">
-              <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
-                <div className="font-semibold">Recent Activity</div>
-                <div className="text-sm text-muted-foreground mt-1">Key dealership events (invites, joins, sales, remittances).</div>
-              </div>
+          <div className="lg:col-span-3">
+            <div className="space-y-6 lg:sticky lg:top-6">
+              <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10 flex flex-col max-h-[300px]">
+                <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
+                  <div className="font-semibold">Recent Activity</div>
+                  <div className="text-sm text-muted-foreground mt-1">Invites, joins, sales, remittances.</div>
+                </div>
 
-              <div className="divide-y overflow-y-auto flex-1 min-h-0">
-                {recentAudit.map((e) => (
-                  <div key={e.id} className="px-6 py-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-sm font-medium text-foreground">{asText(e.kind)}</div>
-                        <div className="text-xs text-muted-foreground mt-1 break-all">{asText(e.message ?? "—")}</div>
-                        <div className="text-[11px] text-muted-foreground mt-1 break-all">{asText(e.actorEmail ?? "")}</div>
+                <div className="divide-y overflow-y-auto flex-1 min-h-0">
+                  {recentAudit.map((e) => (
+                    <div key={e.id} className="px-6 py-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="text-sm font-medium text-foreground">{asText(e.kind)}</div>
+                          <div className="text-xs text-muted-foreground mt-1 break-all">{asText(e.message ?? "—")}</div>
+                          <div className="text-[11px] text-muted-foreground mt-1 break-all">{asText(e.actorEmail ?? "")}</div>
+                        </div>
+                        <div className="text-xs text-muted-foreground whitespace-nowrap">{new Date(e.createdAt).toLocaleString()}</div>
                       </div>
-                      <div className="text-xs text-muted-foreground whitespace-nowrap">{new Date(e.createdAt).toLocaleString()}</div>
                     </div>
-                  </div>
-                ))}
-                {recentAudit.length === 0 ? <div className="px-6 py-6 text-sm text-muted-foreground">No activity yet.</div> : null}
-              </div>
-            </div>
-
-            <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
-              <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
-                <div>
-                  <div className="font-semibold">Pricing Settings</div>
-                  <div className="text-sm text-muted-foreground mt-1">Markup is applied to provider cost to compute dealer retail pricing.</div>
+                  ))}
+                  {recentAudit.length === 0 ? <div className="px-6 py-6 text-sm text-muted-foreground">No activity yet.</div> : null}
                 </div>
               </div>
 
-              <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-                <div>
-                  <div className="text-xs text-muted-foreground mb-1">Dealership markup %</div>
-                  <Input
-                    value={markupPct}
-                    onChange={(e) => setMarkupPct(e.target.value)}
-                    placeholder="e.g. 25"
-                    inputMode="decimal"
-                    disabled={!dealerId || isSavingMarkup}
-                  />
-                  {savedAt ? <div className="mt-2 text-xs text-muted-foreground">Saved {savedAt}</div> : null}
-                  {saveError ? <div className="mt-2 text-xs text-destructive">{saveError}</div> : null}
-                </div>
-
-                <div className="hidden md:block" />
-
-                <Button
-                  onClick={() => {
-                    void (async () => {
-                      try {
-                        const n = Number(markupPct);
-                        await saveMarkupPct(n);
-                        setSavedAt(new Date().toLocaleString());
-                        setSaveError(null);
-                      } catch (err) {
-                        setSavedAt(null);
-                        const anyErr = err as any;
-                        const msg =
-                          err instanceof Error
-                            ? err.message
-                            : typeof anyErr?.message === "string"
-                              ? anyErr.message
-                              : typeof err === "string"
-                                ? err
-                                : (() => {
-                                    try {
-                                      return JSON.stringify(err);
-                                    } catch {
-                                      return "Failed to save markup";
-                                    }
-                                  })();
-                        setSaveError(msg || "Failed to save markup");
-                      }
-                    })();
-                  }}
-                  disabled={!dealerId || isSavingMarkup}
-                  className="bg-yellow-400 text-black hover:bg-yellow-300"
-                >
-                  Save
-                </Button>
-              </div>
             </div>
           </div>
         </div>

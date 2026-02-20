@@ -5,8 +5,10 @@ export type Product = {
   providerId: string;
   name: string;
   productType: ProductType;
+  programCode?: string;
   coverageDetails?: string;
   exclusions?: string;
+  internalNotes?: string;
   termMonths?: number;
   termKm?: number;
   deductibleCents?: number;

@@ -4,9 +4,16 @@ export type VinDecoded = {
   vehicleMake?: string;
   vehicleModel?: string;
   vehicleTrim?: string;
-  vehicleBodyClass?: string;
+  vehicleDriveType?: string;
+  vehicleBrakeSystem?: string;
   vehicleEngine?: string;
+  vehicleBodyClass?: string;
+  vehicleBodyStyle?: string;
   vehicleTransmission?: string;
+  manufacturedIn?: string;
+  tires?: string;
+  warranty?: string;
+  msrp?: string;
 };
 
 function clean(vin: string) {
@@ -43,7 +50,8 @@ export async function decodeVin(vinRaw: string): Promise<VinDecoded> {
   const vehicleMake = pickFirst(row.Make);
   const vehicleModel = pickFirst(row.Model);
   const vehicleTrim = pickFirst(row.Trim, row.Series);
-  const vehicleBodyClass = pickFirst(row.BodyClass);
+  const vehicleBodyStyle = pickFirst(row.BodyClass);
+  const vehicleBodyClass = vehicleBodyStyle;
 
   const engine = pickFirst(
     row.EngineModel,
@@ -52,7 +60,19 @@ export async function decodeVin(vinRaw: string): Promise<VinDecoded> {
     row.DisplacementL ? `${row.DisplacementL}L` : undefined,
   );
 
-  const vehicleTransmission = pickFirst(row.TransmissionStyle, row.TransmissionSpeeds);
+  const vehicleTransmission = pickFirst(
+    row.TransmissionStyle,
+    row.TransmissionSpeeds ? `${row.TransmissionSpeeds}` : undefined,
+  );
+
+  const vehicleDriveType = pickFirst(row.DriveType, row.DriveTypePrimary);
+  const vehicleBrakeSystem = pickFirst(row.BrakeSystemType);
+
+  const manufacturedIn = pickFirst(row.PlantCountry);
+  const tires = pickFirst(row.TireSizeFront, row.TireSizeRear, row.TireTypeFront, row.TireTypeRear);
+
+  const msrp = pickFirst(row.MSRP, row.BasePrice);
+  const warranty = pickFirst(row.Warranty);
 
   return {
     vin,
@@ -60,8 +80,15 @@ export async function decodeVin(vinRaw: string): Promise<VinDecoded> {
     vehicleMake,
     vehicleModel,
     vehicleTrim,
-    vehicleBodyClass,
+    vehicleDriveType,
+    vehicleBrakeSystem,
     vehicleEngine: engine,
+    vehicleBodyClass,
+    vehicleBodyStyle,
     vehicleTransmission,
+    manufacturedIn,
+    tires,
+    warranty,
+    msrp,
   };
 }

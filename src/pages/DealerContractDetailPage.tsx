@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -12,10 +12,9 @@ import { getMarketplaceApi } from "../lib/marketplace/marketplace";
 import { getProductPricingApi } from "../lib/productPricing/productPricing";
 import { getProductAddonsApi } from "../lib/productAddons/productAddons";
 import { isPricingEligibleForVehicle } from "../lib/productPricing/eligibility";
+import { defaultPricingRow } from "../lib/productPricing/defaultRow";
 import {
   costFromProductOrPricing,
-  marginFromCostAndRetail,
-  marginPctFromCostAndRetail,
   retailFromCost,
 } from "../lib/dealerPricing";
 import { useDealerMarkupPct } from "../lib/dealerMarkup";
@@ -55,57 +54,11 @@ function dealershipUserIds(dealerId: string) {
   return ids;
 }
 
-type WizardStep = "CUSTOMER" | "VEHICLE" | "PLAN" | "PRICING" | "CONFIRM";
-
-function productTypeLabel(t: string | undefined) {
-  if (t === "EXTENDED_WARRANTY") return "Extended Warranty";
-  if (t === "TIRE_RIM") return "Tire & Rim";
-  if (t === "APPEARANCE") return "Appearance";
-  if (t === "GAP") return "GAP";
-  if (t === "OTHER") return "Other";
-  return "—";
-}
+type WizardStep = "PRICING" | "VEHICLE" | "CUSTOMER" | "CONFIRM";
 
 function money(cents?: number) {
   if (typeof cents !== "number") return "—";
   return `$${(cents / 100).toFixed(2)}`;
-}
-
-function dollarsToCents(v: string) {
-  const n = Number((v ?? "").toString().replace(/\$/g, "").trim());
-  if (!Number.isFinite(n)) return undefined;
-  return Math.round(n * 100);
-}
-
-function sanitizePriceRangeInput(raw: string) {
-  return (raw ?? "").replace(/[^0-9.\-\s$]/g, "");
-}
-
-function norm(s: string) {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-type MatchLevel = "TRIM_EXACT" | "TRIM_CONTAINS" | "MODEL" | "MAKE" | "NONE";
-
-function matchLevelForVehicle(input: {
-  vehicleTrim?: string;
-  vehicleModel?: string;
-  vehicleMake?: string;
-  providerText: string;
-}): MatchLevel {
-  const trim = norm(input.vehicleTrim ?? "");
-  const model = norm(input.vehicleModel ?? "");
-  const make = norm(input.vehicleMake ?? "");
-  const hay = norm(input.providerText);
-
-  if (trim && hay === trim) return "TRIM_EXACT";
-  if (trim && (hay.includes(trim) || trim.includes(hay))) return "TRIM_CONTAINS";
-  if (model && hay.includes(model)) return "MODEL";
-  if (make && hay.includes(make)) return "MAKE";
-  return "NONE";
 }
 
 export function DealerContractDetailPage() {
@@ -115,7 +68,6 @@ export function DealerContractDetailPage() {
 
   const mode = useMemo(() => getAppMode(), []);
   const isEmployee = user?.role === "DEALER_EMPLOYEE";
-  const canSeeCost = user?.role === "DEALER_ADMIN";
   const dealerId = (mode === "local" ? (user?.dealerId ?? user?.id ?? "") : (user?.dealerId ?? "")).trim();
   const { markupPct } = useDealerMarkupPct(dealerId);
 
@@ -131,11 +83,6 @@ export function DealerContractDetailPage() {
     queryKey: ["contract", contractId],
     enabled: !!contractId,
     queryFn: () => api.get(contractId),
-  });
-
-  const allContractsQuery = useQuery({
-    queryKey: ["contracts"],
-    queryFn: () => api.list(),
   });
 
   const marketplaceProductsQuery = useQuery({
@@ -176,7 +123,6 @@ export function DealerContractDetailPage() {
   if (!contractQuery.isLoading && unauthorized) {
     return (
       <PageShell
-        badge="Dealer Portal"
         title="Contract"
         subtitle="You can only access contracts created by your dealership."
         actions={
@@ -209,10 +155,9 @@ export function DealerContractDetailPage() {
   const [vehicleTransmission, setVehicleTransmission] = useState("");
   const [productId, setProductId] = useState("");
   const [pricingId, setPricingId] = useState("");
-  const [step, setStep] = useState<WizardStep>("VEHICLE");
+  const [step, setStep] = useState<WizardStep>("PRICING");
   const [selectedAddonIds, setSelectedAddonIds] = useState<Record<string, boolean>>({});
-  const [selectedAddonPriceMode, setSelectedAddonPriceMode] = useState<Record<string, "MIN" | "MAX" | "CUSTOM">>({});
-  const [selectedAddonCustomPrice, setSelectedAddonCustomPrice] = useState<Record<string, string>>({});
+  const didInitStepRef = useRef(false);
 
   useEffect(() => {
     if (!contract) return;
@@ -239,50 +184,34 @@ export function DealerContractDetailPage() {
     const snap = (contract as any).addonSnapshot as unknown;
     if (Array.isArray(snap)) {
       const next: Record<string, boolean> = {};
-      const nextMode: Record<string, "MIN" | "MAX" | "CUSTOM"> = {};
-      const nextCustom: Record<string, string> = {};
       for (const item of snap as any[]) {
         const id = (item?.id ?? "").toString().trim();
         if (id) next[id] = true;
-
-        const chosen = typeof item?.chosenPriceCents === "number" ? item.chosenPriceCents : undefined;
-        if (typeof chosen === "number") {
-          const min = typeof item?.minPriceCents === "number" ? item.minPriceCents : typeof item?.basePriceCents === "number" ? item.basePriceCents : undefined;
-          const max = typeof item?.maxPriceCents === "number" ? item.maxPriceCents : min;
-          if (typeof min === "number" && typeof max === "number" && chosen === min) nextMode[id] = "MIN";
-          else if (typeof min === "number" && typeof max === "number" && chosen === max) nextMode[id] = "MAX";
-          else {
-            nextMode[id] = "CUSTOM";
-            nextCustom[id] = (chosen / 100).toFixed(2);
-          }
-        }
       }
       setSelectedAddonIds(next);
-      setSelectedAddonPriceMode(nextMode);
-      setSelectedAddonCustomPrice(nextCustom);
     } else {
       setSelectedAddonIds({});
-      setSelectedAddonPriceMode({});
-      setSelectedAddonCustomPrice({});
     }
 
     const vinNormalized = (contract.vin ?? "").trim().replace(/[^a-z0-9]/gi, "").toUpperCase();
     const hasVin = vinNormalized.length === 17;
-    const hasPlan = Boolean((contract.productId ?? "").trim());
+
+    const hasSelectedPricing = Boolean((contract.productId ?? "").trim()) && Boolean((contract.productPricingId ?? "").trim());
 
     if (contract.status !== "DRAFT") {
       setStep("CONFIRM");
+      didInitStepRef.current = true;
       return;
     }
-    if (!hasVin) {
+
+    if (didInitStepRef.current) return;
+    if (!hasVin && !hasSelectedPricing) {
       setStep("VEHICLE");
-      return;
-    }
-    if (!hasPlan) {
-      setStep("PLAN");
+      didInitStepRef.current = true;
       return;
     }
     setStep("PRICING");
+    didInitStepRef.current = true;
   }, [contract]);
 
   const selectedAddonIdList = useMemo(() => Object.keys(selectedAddonIds).filter((id) => selectedAddonIds[id]), [selectedAddonIds]);
@@ -340,7 +269,6 @@ export function DealerContractDetailPage() {
 
   const onSaveVehicle = async () => {
     if (!contract) return;
-    if (!(await confirmProceed("Save vehicle details?"))) return;
     await updateMutation.mutateAsync({
       vin,
       vehicleYear,
@@ -363,7 +291,6 @@ export function DealerContractDetailPage() {
     if (!contract) return;
     const name = customerName.trim();
     if (!name) return alertMissing("Customer name is required.");
-    if (!(await confirmProceed("Save customer details?"))) return;
     await updateMutation.mutateAsync({
       customerName,
       customerEmail,
@@ -422,73 +349,6 @@ export function DealerContractDetailPage() {
     return Number.isFinite(n) ? n : undefined;
   })();
 
-  const eligibleProducts = useMemo(() => {
-    const items = marketplaceProducts
-      .map((p) => {
-        const eligibleByAge =
-          typeof p.eligibilityMaxVehicleAgeYears !== "number"
-            ? true
-            : typeof vehicleAgeYears === "number"
-              ? vehicleAgeYears <= p.eligibilityMaxVehicleAgeYears
-              : false;
-        const eligibleByMileage =
-          typeof p.eligibilityMaxMileageKm !== "number"
-            ? true
-            : typeof parsedMileage === "number"
-              ? parsedMileage <= p.eligibilityMaxMileageKm
-              : false;
-
-        const eligibleByVehicle = (() => {
-          const makeAllow = (p.eligibilityMakeAllowlist ?? []).map((x) => norm(x)).filter(Boolean);
-          const modelAllow = (p.eligibilityModelAllowlist ?? []).map((x) => norm(x)).filter(Boolean);
-          const trimAllow = (p.eligibilityTrimAllowlist ?? []).map((x) => norm(x)).filter(Boolean);
-
-          const vMake = norm(vehicleMake);
-          const vModel = norm(vehicleModel);
-          const vTrim = norm(vehicleTrim);
-
-          if (makeAllow.length > 0 && (!vMake || !makeAllow.includes(vMake))) return false;
-          if (modelAllow.length > 0 && (!vModel || !modelAllow.includes(vModel))) return false;
-
-          if (trimAllow.length > 0) {
-            if (!vTrim) return false;
-            const ok = trimAllow.some((t) => vTrim.includes(t) || t.includes(vTrim));
-            if (!ok) return false;
-          }
-
-          return true;
-        })();
-
-        const match = matchLevelForVehicle({
-          vehicleTrim,
-          vehicleModel,
-          vehicleMake,
-          providerText: `${p.name} ${p.coverageDetails ?? ""}`,
-        });
-
-        return {
-          product: p,
-          eligible: eligibleByAge && eligibleByMileage && eligibleByVehicle,
-          eligibleByAge,
-          eligibleByMileage,
-          eligibleByVehicle,
-          match,
-        };
-      })
-      .filter((x) => x.eligible)
-      .sort((a, b) => {
-        const weight = (m: MatchLevel) => {
-          if (m === "TRIM_EXACT") return 5;
-          if (m === "TRIM_CONTAINS") return 4;
-          if (m === "MODEL") return 3;
-          if (m === "MAKE") return 2;
-          return 1;
-        };
-        return weight(b.match) - weight(a.match);
-      });
-    return items;
-  }, [marketplaceProducts, parsedMileage, vehicleAgeYears, vehicleMake, vehicleModel, vehicleTrim]);
-
   const providerIdsForLookup = Array.from(
     new Set(
       marketplaceProducts
@@ -521,26 +381,6 @@ export function DealerContractDetailPage() {
     const display = (p?.displayName ?? "").trim();
     if (display) return display;
     return providerLabel(id);
-  };
-
-  const selectPlan = async (p: Product) => {
-    if (!contract) return;
-    if (!(await confirmProceed(`Select ${p.name} for this contract?`))) return;
-    setProductId(p.id);
-    setPricingId("");
-    await updateMutation.mutateAsync({
-      productId: p.id,
-      providerId: p.providerId,
-      productPricingId: null,
-      pricingTermMonths: null,
-      pricingTermKm: null,
-      pricingDeductibleCents: null,
-      pricingBasePriceCents: null,
-      pricingDealerCostCents: null,
-      addonSnapshot: [],
-      addonTotalRetailCents: 0,
-      addonTotalCostCents: 0,
-    });
   };
 
   const selectPricing = async (row: ProductPricing) => {
@@ -599,8 +439,20 @@ export function DealerContractDetailPage() {
 
   const activeAddons = useMemo(() => {
     const rows = (productAddonsQuery.data ?? []) as ProductAddon[];
-    return rows.filter((a) => a.active);
-  }, [productAddonsQuery.data]);
+    const actives = rows.filter((a) => a.active);
+
+    const pricingId = (selectedPricingId || contract?.productPricingId || "").trim();
+    if (!pricingId) return actives;
+
+    return actives.filter((a) => {
+      const appliesToAll = typeof (a as any).appliesToAllPricingRows === "boolean" ? Boolean((a as any).appliesToAllPricingRows) : true;
+      if (appliesToAll) return true;
+      const ids = Array.isArray((a as any).applicablePricingRowIds)
+        ? ((a as any).applicablePricingRowIds as unknown[]).filter((x) => typeof x === "string")
+        : [];
+      return ids.includes(pricingId);
+    });
+  }, [productAddonsQuery.data, selectedPricingId, contract?.productPricingId]);
 
   const selectedAddonSnapshots = useMemo(() => {
     const byId = new Map(activeAddons.map((a) => [a.id, a] as const));
@@ -610,33 +462,29 @@ export function DealerContractDetailPage() {
       .map((a) => {
         const min = typeof (a as any).minPriceCents === "number" ? (a as any).minPriceCents : a!.basePriceCents;
         const max = typeof (a as any).maxPriceCents === "number" ? (a as any).maxPriceCents : min;
-        const mode = selectedAddonPriceMode[a!.id] ?? "MIN";
-
-        const chosenPriceCents = (() => {
-          if (mode === "MAX") return max;
-          if (mode === "CUSTOM") {
-            const c = dollarsToCents(selectedAddonCustomPrice[a!.id] ?? "");
-            if (typeof c === "number" && c > 0) return c;
-            return min;
-          }
-          return min;
-        })();
+        const costCents = costFromProductOrPricing({ dealerCostCents: a!.dealerCostCents, basePriceCents: a!.basePriceCents });
+        const retailCents = retailFromCost(costCents, markupPct) ?? costCents;
+        const chosenPriceCents = typeof retailCents === "number" ? retailCents : 0;
 
         return {
           id: a!.id,
           name: a!.name,
           description: a!.description,
+          pricingType: (a as any).pricingType,
           basePriceCents: a!.basePriceCents,
           minPriceCents: min,
           maxPriceCents: max,
           chosenPriceCents,
         };
       });
-  }, [activeAddons, selectedAddonCustomPrice, selectedAddonIdList, selectedAddonPriceMode]);
+  }, [activeAddons, markupPct, selectedAddonIdList]);
 
   const addonTotals = useMemo(() => {
     const retail = selectedAddonSnapshots.reduce((sum, a) => sum + (typeof (a as any).chosenPriceCents === "number" ? (a as any).chosenPriceCents : 0), 0);
-    const cost = retail;
+    const cost = selectedAddonSnapshots.reduce((sum, a) => {
+      const base = typeof (a as any).basePriceCents === "number" ? (a as any).basePriceCents : 0;
+      return sum + base;
+    }, 0);
     return { retail, cost };
   }, [selectedAddonSnapshots]);
 
@@ -651,20 +499,14 @@ export function DealerContractDetailPage() {
       .map((a) => {
         const min = typeof (a as any).minPriceCents === "number" ? (a as any).minPriceCents : a!.basePriceCents;
         const max = typeof (a as any).maxPriceCents === "number" ? (a as any).maxPriceCents : min;
-        const mode = selectedAddonPriceMode[a!.id] ?? "MIN";
-        const chosen = (() => {
-          if (mode === "MAX") return max;
-          if (mode === "CUSTOM") {
-            const c = dollarsToCents(selectedAddonCustomPrice[a!.id] ?? "");
-            if (typeof c === "number" && c > 0) return c;
-            return min;
-          }
-          return min;
-        })();
+        const costCents = costFromProductOrPricing({ dealerCostCents: a!.dealerCostCents, basePriceCents: a!.basePriceCents });
+        const retailCents = retailFromCost(costCents, markupPct) ?? costCents;
+        const chosen = typeof retailCents === "number" ? retailCents : 0;
         return {
           id: a!.id,
           name: a!.name,
           description: a!.description,
+          pricingType: (a as any).pricingType,
           basePriceCents: a!.basePriceCents,
           minPriceCents: min,
           maxPriceCents: max,
@@ -673,7 +515,10 @@ export function DealerContractDetailPage() {
       });
 
     const retail = snap.reduce((sum, a) => sum + (typeof (a as any).chosenPriceCents === "number" ? (a as any).chosenPriceCents : 0), 0);
-    const cost = retail;
+    const cost = snap.reduce((sum, a) => {
+      const base = typeof (a as any).basePriceCents === "number" ? (a as any).basePriceCents : 0;
+      return sum + base;
+    }, 0);
 
     await updateMutation.mutateAsync({
       addonSnapshot: snap,
@@ -682,41 +527,73 @@ export function DealerContractDetailPage() {
     });
   };
 
-  const setAddonPricing = async (addonId: string, mode: "MIN" | "MAX" | "CUSTOM", customRaw?: string) => {
-    setSelectedAddonPriceMode((s) => ({ ...s, [addonId]: mode }));
-    if (typeof customRaw === "string") {
-      setSelectedAddonCustomPrice((s) => ({ ...s, [addonId]: sanitizePriceRangeInput(customRaw) }));
-    }
-    await persistAddonSelection(selectedAddonIds);
-  };
-
   const eligiblePricingOptions = useMemo(() => {
-    if (typeof parsedMileage !== "number") return [] as ProductPricing[];
-    return pricingOptions.filter((r) =>
-      isPricingEligibleForVehicle({ pricing: r, vehicleMileageKm: parsedMileage, vehicleClass }),
-    );
+    if (typeof parsedMileage !== "number") return pricingOptions;
+    return pricingOptions.filter((r) => isPricingEligibleForVehicle({ pricing: r, vehicleMileageKm: parsedMileage, vehicleClass }));
   }, [parsedMileage, pricingOptions, vehicleClass]);
+
+  useEffect(() => {
+    if (!canEdit) return;
+    if (!contract) return;
+    if (!selectedProductId) return;
+    if (selectedPricingId) return;
+    if (pricingOptionsQuery.isLoading || pricingOptionsQuery.isError) return;
+    if (eligiblePricingOptions.length === 0) return;
+
+    const row = defaultPricingRow(eligiblePricingOptions);
+    if (!row) return;
+
+    void (async () => {
+      const costCents = costFromProductOrPricing({ dealerCostCents: row.dealerCostCents, basePriceCents: row.basePriceCents });
+      if (typeof costCents !== "number") return;
+      const retailCents = retailFromCost(costCents, markupPct) ?? costCents;
+
+      setPricingId(row.id);
+      await updateMutation.mutateAsync({
+        productPricingId: row.id,
+        pricingTermMonths: row.termMonths,
+        pricingTermKm: row.termKm,
+        pricingVehicleMileageMinKm: typeof row.vehicleMileageMinKm === "number" ? row.vehicleMileageMinKm : null,
+        pricingVehicleMileageMaxKm:
+          row.vehicleMileageMaxKm === null ? null : typeof row.vehicleMileageMaxKm === "number" ? row.vehicleMileageMaxKm : null,
+        pricingVehicleClass: typeof row.vehicleClass === "string" ? row.vehicleClass : null,
+        pricingDeductibleCents: row.deductibleCents,
+        pricingBasePriceCents: retailCents,
+        pricingDealerCostCents: costCents,
+      });
+    })();
+  }, [
+    canEdit,
+    contract,
+    eligiblePricingOptions,
+    markupPct,
+    pricingOptionsQuery.isError,
+    pricingOptionsQuery.isLoading,
+    selectedPricingId,
+    selectedProductId,
+    updateMutation,
+  ]);
 
   const selectedPricing = useMemo(() => {
     const id = selectedPricingId;
     if (!id) return null;
-    return eligiblePricingOptions.find((r) => r.id === id) ?? null;
-  }, [eligiblePricingOptions, selectedPricingId]);
+    return pricingOptions.find((r) => r.id === id) ?? null;
+  }, [pricingOptions, selectedPricingId]);
 
   useEffect(() => {
     if (!selectedPricingId) return;
+    if (typeof parsedMileage !== "number") return;
     const stillOk = eligiblePricingOptions.some((r) => r.id === selectedPricingId);
     if (!stillOk) setPricingId("");
-  }, [eligiblePricingOptions, selectedPricingId]);
+  }, [eligiblePricingOptions, parsedMileage, selectedPricingId]);
 
   const vinNormalized = vin.trim().replace(/[^a-z0-9]/gi, "").toUpperCase();
   const vinError = canEdit && vinNormalized.length > 0 && vinNormalized.length !== 17 ? "VIN must be 17 characters." : null;
 
   const stepItems: Array<{ key: WizardStep; label: string; enabled: boolean }> = [
+    { key: "PRICING", label: "Pricing", enabled: true },
     { key: "VEHICLE", label: "Vehicle", enabled: true },
-    { key: "PLAN", label: "Plan", enabled: vinNormalized.length === 17 },
     { key: "CUSTOMER", label: "Customer", enabled: true },
-    { key: "PRICING", label: "Pricing", enabled: Boolean(selectedProductId) && vinNormalized.length === 17 },
     {
       key: "CONFIRM",
       label: "Confirm",
@@ -724,56 +601,13 @@ export function DealerContractDetailPage() {
     },
   ];
 
-  const suggestions = useMemo(() => {
-    if (!canEdit) return [];
-    const all = ((allContractsQuery.data ?? []) as Contract[]).filter((c) => c.id !== contractId);
-    const q = customerName.trim().toLowerCase();
-    if (!q) return [];
-
-    const seen = new Set<string>();
-    const items: Array<Pick<Contract, "customerName" | "customerEmail" | "customerPhone" | "customerAddress" | "customerCity" | "customerProvince" | "customerPostalCode">> = [];
-
-    for (const c of all) {
-      const name = (c.customerName ?? "").trim();
-      if (!name) continue;
-      if (!name.toLowerCase().includes(q)) continue;
-      const key = `${name.toLowerCase()}|${(c.customerEmail ?? "").toLowerCase()}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      items.push({
-        customerName: c.customerName,
-        customerEmail: c.customerEmail,
-        customerPhone: c.customerPhone,
-        customerAddress: c.customerAddress,
-        customerCity: c.customerCity,
-        customerProvince: c.customerProvince,
-        customerPostalCode: c.customerPostalCode,
-      });
-      if (items.length >= 5) break;
-    }
-    return items;
-  }, [allContractsQuery.data, canEdit, contractId, customerName]);
-
   return (
     <PageShell
-      badge="Dealer Portal"
       title={contract ? `Contract ${contract.contractNumber}` : "Contract"}
-      subtitle="Create a customer warranty contract in a step-by-step flow."
       actions={
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" asChild>
             <Link to="/dealer-contracts">Back</Link>
-          </Button>
-          <Button variant="outline" onClick={() => navigate(`/dealer-contracts/${contractId}/print/dealer`)} disabled={!contractId}>
-            Dealer Copy
-          </Button>
-          {isEmployee ? null : (
-            <Button variant="outline" onClick={() => navigate(`/dealer-contracts/${contractId}/print/provider`)} disabled={!contractId}>
-              Provider Copy
-            </Button>
-          )}
-          <Button variant="outline" onClick={() => navigate(`/dealer-contracts/${contractId}/print/customer`)} disabled={!contractId}>
-            Customer Copy
           </Button>
         </div>
       }
@@ -825,101 +659,113 @@ export function DealerContractDetailPage() {
             </div>
 
             {step === "CUSTOMER" ? (
-              <div className="rounded-2xl border bg-card p-6 shadow-card">
+              <div className="rounded-2xl border bg-card p-4 shadow-card">
                 <div className="font-semibold">Customer</div>
-                <div className="text-sm text-muted-foreground mt-1">Collect customer contact details (Draft only).</div>
+                <div className="text-sm text-muted-foreground mt-1">Customer contact + address (Draft only).</div>
 
-                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <Input
-                    value={canEdit ? customerName : contract.customerName}
-                    onChange={(e) => setCustomerName(sanitizeLettersOnly(e.target.value))}
-                    placeholder="Customer name"
-                    disabled={!canEdit}
-                  />
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-6 gap-2">
+                  <div className="md:col-span-3">
+                    <Input
+                      value={canEdit ? customerName : contract.customerName}
+                      onChange={(e) => setCustomerName(sanitizeLettersOnly(e.target.value))}
+                      placeholder="Full name"
+                      autoComplete="name"
+                      name="name"
+                      className="h-9 text-sm"
+                      disabled={!canEdit}
+                    />
+                  </div>
 
-                  <Input
-                    value={canEdit ? customerEmail : contract.customerEmail ?? ""}
-                    onChange={(e) => setCustomerEmail(e.target.value)}
-                    placeholder="Email"
-                    disabled={!canEdit}
-                  />
+                  <div className="md:col-span-3">
+                    <Input
+                      value={canEdit ? customerPhone : contract.customerPhone ?? ""}
+                      onChange={(e) => setCustomerPhone(sanitizeDigitsOnly(e.target.value))}
+                      placeholder="Phone"
+                      autoComplete="tel"
+                      name="tel"
+                      inputMode="tel"
+                      className="h-9 text-sm"
+                      disabled={!canEdit}
+                    />
+                  </div>
 
-                  <Input
-                    value={canEdit ? customerPhone : contract.customerPhone ?? ""}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    placeholder="Phone"
-                    disabled={!canEdit}
-                  />
+                  <div className="md:col-span-6">
+                    <Input
+                      value={canEdit ? customerEmail : contract.customerEmail ?? ""}
+                      onChange={(e) => setCustomerEmail(e.target.value)}
+                      placeholder="Email"
+                      autoComplete="email"
+                      name="email"
+                      inputMode="email"
+                      className="h-9 text-sm"
+                      disabled={!canEdit}
+                    />
+                  </div>
 
-                  <Input
-                    value={canEdit ? customerAddress : contract.customerAddress ?? ""}
-                    onChange={(e) => setCustomerAddress(e.target.value)}
-                    placeholder="Address"
-                    disabled={!canEdit}
-                  />
+                  <div className="md:col-span-6">
+                    <Input
+                      value={canEdit ? customerAddress : contract.customerAddress ?? ""}
+                      onChange={(e) => setCustomerAddress(e.target.value)}
+                      placeholder="Street address"
+                      autoComplete="street-address"
+                      name="street-address"
+                      className="h-9 text-sm"
+                      disabled={!canEdit}
+                    />
+                  </div>
 
-                  <Input
-                    value={canEdit ? customerCity : contract.customerCity ?? ""}
-                    onChange={(e) => setCustomerCity(sanitizeLettersOnly(e.target.value))}
-                    placeholder="City"
-                    disabled={!canEdit}
-                  />
+                  <div className="md:col-span-3">
+                    <Input
+                      value={canEdit ? customerCity : contract.customerCity ?? ""}
+                      onChange={(e) => setCustomerCity(sanitizeLettersOnly(e.target.value))}
+                      placeholder="City"
+                      autoComplete="address-level2"
+                      name="address-level2"
+                      className="h-9 text-sm"
+                      disabled={!canEdit}
+                    />
+                  </div>
 
-                  <Input
-                    value={canEdit ? customerProvince : contract.customerProvince ?? ""}
-                    onChange={(e) => setCustomerProvince(sanitizeLettersOnly(e.target.value))}
-                    placeholder="Province"
-                    disabled={!canEdit}
-                  />
+                  <div className="md:col-span-2">
+                    <Input
+                      value={canEdit ? customerProvince : contract.customerProvince ?? ""}
+                      onChange={(e) => setCustomerProvince(sanitizeLettersOnly(e.target.value))}
+                      placeholder="Province"
+                      autoComplete="address-level1"
+                      name="address-level1"
+                      className="h-9 text-sm"
+                      disabled={!canEdit}
+                    />
+                  </div>
 
-                  <Input
-                    value={canEdit ? customerPostalCode : contract.customerPostalCode ?? ""}
-                    onChange={(e) => setCustomerPostalCode(e.target.value)}
-                    placeholder="Postal code"
-                    disabled={!canEdit}
-                  />
+                  <div className="md:col-span-1">
+                    <Input
+                      value={canEdit ? customerPostalCode : contract.customerPostalCode ?? ""}
+                      onChange={(e) => setCustomerPostalCode(e.target.value.toUpperCase())}
+                      placeholder="Postal"
+                      autoComplete="postal-code"
+                      name="postal-code"
+                      className="h-9 text-sm"
+                      disabled={!canEdit}
+                    />
+                  </div>
                 </div>
 
-                {canEdit && suggestions.length > 0 ? (
-                  <div className="mt-4">
-                    <div className="text-xs text-muted-foreground">Suggestions</div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {suggestions.map((s) => (
-                        <button
-                          key={`${s.customerName}-${s.customerEmail ?? ""}`}
-                          type="button"
-                          onClick={() => {
-                            setCustomerName(s.customerName);
-                            setCustomerEmail(s.customerEmail ?? "");
-                            setCustomerPhone(s.customerPhone ?? "");
-                            setCustomerAddress(s.customerAddress ?? "");
-                            setCustomerCity(s.customerCity ?? "");
-                            setCustomerProvince(s.customerProvince ?? "");
-                            setCustomerPostalCode(s.customerPostalCode ?? "");
-                          }}
-                          className="text-xs px-3 py-1.5 rounded-lg border bg-background hover:bg-muted text-muted-foreground"
-                        >
-                          {s.customerName}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="mt-4 flex gap-2 flex-wrap">
+                <div className="mt-3 flex gap-2 flex-wrap">
                   <Button
+                    size="sm"
                     onClick={() => {
                       void (async () => {
                         await onSaveCustomer();
-                        setStep("VEHICLE");
+                        setStep("CONFIRM");
                       })();
                     }}
                     disabled={!canEdit || updateMutation.isPending}
                   >
-                    Save & Continue
+                    Confirm
                   </Button>
-                  <Button variant="outline" onClick={() => setStep("VEHICLE")}>
-                    Skip to vehicle
+                  <Button size="sm" variant="outline" onClick={() => setStep("VEHICLE")}>
+                    Back
                   </Button>
                 </div>
               </div>
@@ -1050,86 +896,17 @@ export function DealerContractDetailPage() {
                     onClick={() => {
                       void (async () => {
                         await onSaveVehicle();
-                        setStep("PLAN");
+                        setStep("CUSTOMER");
                       })();
                     }}
                     disabled={!canEdit || updateMutation.isPending}
                   >
-                    Save & Continue
+                    Next
                   </Button>
-                  <Button variant="outline" onClick={() => setStep("PLAN")}>
-                    Continue to plan
+                  <Button variant="outline" onClick={() => setStep("PRICING")}>
+                    Back
                   </Button>
                 </div>
-              </div>
-            ) : null}
-
-            {step === "PLAN" ? (
-              <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
-                <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap">
-                  <div>
-                    <div className="font-semibold">Select a Plan</div>
-                    <div className="text-sm text-muted-foreground mt-1">Retail pricing shown. Select to attach to this contract.</div>
-                  </div>
-                  <div className="text-sm text-muted-foreground">{eligibleProducts.length} eligible</div>
-                </div>
-
-                {eligibleProducts.length === 0 ? (
-                  <div className="px-6 py-10 text-sm text-muted-foreground">
-                    No eligible plans yet. Decode a VIN and enter mileage to apply provider eligibility rules.
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b">
-                          <th className="text-left px-6 py-3 text-xs text-muted-foreground">Provider</th>
-                          <th className="text-left px-6 py-3 text-xs text-muted-foreground">Product / Type</th>
-                          <th className="text-left px-6 py-3 text-xs text-muted-foreground">Term / KM</th>
-                          <th className="text-left px-6 py-3 text-xs text-muted-foreground">Deductible</th>
-                          <th className="text-left px-6 py-3 text-xs text-muted-foreground">From</th>
-                          <th className="text-right px-6 py-3 text-xs text-muted-foreground">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {eligibleProducts.map(({ product: p }) => (
-                          <tr key={p.id} className={p.id === selectedProductId ? "bg-muted/20" : ""}>
-                            <td className="px-6 py-4 text-muted-foreground">{providerDisplay(p.providerId)}</td>
-                            <td className="px-6 py-4">
-                              <div className="font-medium text-foreground">{p.name}</div>
-                              <div className="text-xs text-muted-foreground mt-1">{productTypeLabel(p.productType)}</div>
-                            </td>
-                            <td className="px-6 py-4 text-muted-foreground">
-                              See pricing
-                            </td>
-                            <td className="px-6 py-4 text-muted-foreground">See pricing</td>
-                            <td className="px-6 py-4 font-medium">
-                              {(() => {
-                                const cost = costFromProductOrPricing({ dealerCostCents: p.dealerCostCents, basePriceCents: p.basePriceCents });
-                                const retail = retailFromCost(cost, markupPct) ?? cost;
-                                return money(retail);
-                              })()}
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <Button
-                                size="sm"
-                                onClick={() => {
-                                  void (async () => {
-                                    await selectPlan(p);
-                                    setStep("PRICING");
-                                  })();
-                                }}
-                                disabled={!canEdit || updateMutation.isPending || p.id === selectedProductId}
-                              >
-                                {p.id === selectedProductId ? "Selected" : "Select"}
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
               </div>
             ) : null}
 
@@ -1205,51 +982,6 @@ export function DealerContractDetailPage() {
                 </div>
 
                 <div className="mt-4 rounded-xl border p-4">
-                  <div className="flex items-start justify-between gap-6">
-                    <div>
-                      <div className="text-xs text-muted-foreground">Retail price</div>
-                      {(() => {
-                        const cost = costFromProductOrPricing({
-                          dealerCostCents: selectedPricing?.dealerCostCents,
-                          basePriceCents: selectedPricing?.basePriceCents,
-                        });
-                        const retail = (retailFromCost(cost, markupPct) ?? cost) || 0;
-                        const margin = marginFromCostAndRetail(cost, retail);
-                        const marginPct = marginPctFromCostAndRetail(cost, retail);
-                        const addonRetail = addonTotals.retail;
-                        const totalRetail = retail + addonRetail;
-                        return (
-                          <>
-                            <div className="text-lg font-semibold mt-1">{money(totalRetail)}</div>
-                            {canSeeCost ? (
-                              <div className="text-xs text-muted-foreground mt-1">
-                                Cost {money(cost)}
-                                {typeof margin === "number" ? ` • Margin ${money(margin)}` : ""}
-                                {typeof marginPct === "number" ? ` (${marginPct.toFixed(1)}%)` : ""}
-                              </div>
-                            ) : (
-                              <div className="text-xs text-muted-foreground mt-1">Price is pulled from the selected pricing option.</div>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs text-muted-foreground">Total</div>
-                      {(() => {
-                        const cost = costFromProductOrPricing({
-                          dealerCostCents: selectedPricing?.dealerCostCents,
-                          basePriceCents: selectedPricing?.basePriceCents,
-                        });
-                        const retail = (retailFromCost(cost, markupPct) ?? cost) || 0;
-                        const totalRetail = retail + addonTotals.retail;
-                        return <div className="text-lg font-semibold mt-1">{money(totalRetail)}</div>;
-                      })()}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 rounded-xl border p-4">
                   <div className="text-xs text-muted-foreground">Add-ons</div>
                   {productAddonsQuery.isLoading ? <div className="mt-2 text-sm text-muted-foreground">Loading add-ons…</div> : null}
                   {productAddonsQuery.isError ? <div className="mt-2 text-sm text-destructive">Failed to load add-ons.</div> : null}
@@ -1258,65 +990,31 @@ export function DealerContractDetailPage() {
                   ) : null}
 
                   <div className="mt-3 space-y-2">
-                    {activeAddons.map((a) => (
-                      <label key={a.id} className="flex items-start gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(selectedAddonIds[a.id])}
-                          disabled={!canEdit || updateMutation.isPending}
-                          onChange={(e) => {
-                            const next = { ...selectedAddonIds, [a.id]: e.target.checked };
-                            setSelectedAddonIds(next);
-                            if (e.target.checked) {
-                              setSelectedAddonPriceMode((s) => ({ ...s, [a.id]: s[a.id] ?? "MIN" }));
-                            }
-                            void persistAddonSelection(next);
-                          }}
-                        />
-                        <span className="flex-1">
-                          <span className="font-medium text-foreground">{a.name}</span>
-                          <span className="text-muted-foreground">{` • ${(() => {
-                            const min = typeof (a as any).minPriceCents === "number" ? (a as any).minPriceCents : a.basePriceCents;
-                            const max = typeof (a as any).maxPriceCents === "number" ? (a as any).maxPriceCents : min;
-                            return min !== max ? `${money(min)} - ${money(max)}` : money(min);
-                          })()}`}</span>
-                          {a.description ? <span className="block text-xs text-muted-foreground mt-0.5">{a.description}</span> : null}
-
-                          {Boolean(selectedAddonIds[a.id]) ? (
-                            <div className="mt-2 flex items-center gap-2 flex-wrap">
-                              <select
-                                value={selectedAddonPriceMode[a.id] ?? "MIN"}
-                                className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
-                                disabled={!canEdit || updateMutation.isPending}
-                                onChange={(e) => {
-                                  const mode = (e.target.value as any) as "MIN" | "MAX" | "CUSTOM";
-                                  void setAddonPricing(a.id, mode);
-                                }}
-                              >
-                                <option value="MIN">Min</option>
-                                <option value="MAX">Max</option>
-                                <option value="CUSTOM">Custom</option>
-                              </select>
-
-                              {(selectedAddonPriceMode[a.id] ?? "MIN") === "CUSTOM" ? (
-                                <input
-                                  value={selectedAddonCustomPrice[a.id] ?? ""}
-                                  onChange={(e) => {
-                                    const v = sanitizePriceRangeInput(e.target.value).replace(/-/g, "");
-                                    setSelectedAddonCustomPrice((s) => ({ ...s, [a.id]: v }));
-                                  }}
-                                  onBlur={() => void setAddonPricing(a.id, "CUSTOM")}
-                                  placeholder="Custom price"
-                                  className="h-9 w-[140px] rounded-md border border-input bg-transparent px-2 text-sm"
-                                  inputMode="decimal"
-                                  disabled={!canEdit || updateMutation.isPending}
-                                />
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </span>
-                      </label>
-                    ))}
+                    {activeAddons.map((a) => {
+                      const costCents = costFromProductOrPricing({ dealerCostCents: a.dealerCostCents, basePriceCents: a.basePriceCents });
+                      const retailCents = retailFromCost(costCents, markupPct) ?? costCents;
+                      return (
+                        <label key={a.id} className="flex items-start justify-between gap-3 text-sm">
+                          <span className="flex items-start gap-2">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(selectedAddonIds[a.id])}
+                              disabled={!canEdit || updateMutation.isPending}
+                              onChange={(e) => {
+                                const next = { ...selectedAddonIds, [a.id]: e.target.checked };
+                                setSelectedAddonIds(next);
+                                void persistAddonSelection(next);
+                              }}
+                            />
+                            <span className="flex-1">
+                              <span className="font-medium text-foreground">{a.name}</span>
+                              {a.description ? <span className="block text-xs text-muted-foreground mt-0.5">{a.description}</span> : null}
+                            </span>
+                          </span>
+                          <span className="font-semibold text-foreground whitespace-nowrap">{money(retailCents)}</span>
+                        </label>
+                      );
+                    })}
                   </div>
 
                   {selectedAddonSnapshots.length > 0 ? (
@@ -1324,12 +1022,61 @@ export function DealerContractDetailPage() {
                   ) : null}
                 </div>
 
+                <div className="mt-4 rounded-xl border p-4">
+                  <div className="flex items-start justify-between gap-6">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Pricing</div>
+                      {(() => {
+                        const baseCost =
+                          costFromProductOrPricing({
+                            dealerCostCents: selectedPricing?.dealerCostCents,
+                            basePriceCents: selectedPricing?.basePriceCents,
+                          }) ?? 0;
+                        const baseRetail = (retailFromCost(baseCost, markupPct) ?? baseCost) || 0;
+                        const addonsRetail = addonTotals.retail;
+                        const totalRetail = baseRetail + addonsRetail;
+                        return (
+                          <>
+                            <div className="text-lg font-semibold mt-1">{money(totalRetail)}</div>
+                            <div className="text-xs text-muted-foreground mt-1">Price shown includes your dealership markup.</div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                    <div className="text-right">
+                      {(() => {
+                        const baseCost =
+                          costFromProductOrPricing({
+                            dealerCostCents: selectedPricing?.dealerCostCents,
+                            basePriceCents: selectedPricing?.basePriceCents,
+                          }) ?? 0;
+                        const baseRetail = (retailFromCost(baseCost, markupPct) ?? baseCost) || 0;
+                        const addonsRetail = addonTotals.retail;
+                        const totalRetail = baseRetail + addonsRetail;
+                        return (
+                          <>
+                            <div className="text-xs text-muted-foreground">Total</div>
+                            <div className="text-lg font-semibold mt-1">{money(totalRetail)}</div>
+                            <div className="mt-2 text-xs text-muted-foreground space-y-0.5">
+                              <div className="flex items-center justify-end gap-2">
+                                <span>Add-ons</span>
+                                <span className="tabular-nums">{money(addonsRetail)}</span>
+                              </div>
+                              <div className="flex items-center justify-end gap-2">
+                                <span>Plan</span>
+                                <span className="tabular-nums">{money(baseRetail)}</span>
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="mt-4 flex gap-2 flex-wrap">
-                  <Button onClick={() => setStep("CONFIRM")} disabled={!selectedProductId || !selectedPricingId}>
-                    Continue to confirmation
-                  </Button>
-                  <Button variant="outline" onClick={() => setStep("PLAN")}>
-                    Back to plan
+                  <Button onClick={() => setStep("VEHICLE")} disabled={!selectedProductId || !selectedPricingId}>
+                    Next
                   </Button>
                 </div>
               </div>
@@ -1393,6 +1140,27 @@ export function DealerContractDetailPage() {
                 ) : (
                   <div className="mt-4 text-sm text-muted-foreground">This contract has been submitted and is locked.</div>
                 )}
+
+                <div className="mt-4 flex gap-2 flex-wrap">
+                  <Button
+                    size="sm"
+                    className="bg-yellow-400 text-black hover:bg-yellow-300"
+                    onClick={() => navigate(`/dealer-contracts/${contractId}/print/customer`)}
+                    disabled={!contractId}
+                    title="Print or save the customer copy"
+                  >
+                    Customer copy
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => navigate(`/dealer-contracts/${contractId}/print/dealer`)}
+                    disabled={!contractId}
+                    title="Print or save the dealer copy"
+                  >
+                    Dealer copy
+                  </Button>
+                </div>
               </div>
             ) : null}
 

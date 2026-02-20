@@ -13,7 +13,7 @@ export function getSupabaseClient(): SupabaseClient | null {
 
   supabase = createClient(url, anonKey, {
     auth: {
-      detectSessionInUrl: false,
+      detectSessionInUrl: true,
     },
   });
 

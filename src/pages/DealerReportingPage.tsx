@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
@@ -13,7 +13,8 @@ import type { Contract, ContractStatus } from "../lib/contracts/types";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
 import { getProvidersApi } from "../lib/providers/providers";
 import type { ProviderPublic } from "../lib/providers/types";
-import type { Product, ProductType } from "../lib/products/types";
+import type { MarketplaceProduct } from "../lib/marketplace/api";
+import type { ProductType } from "../lib/products/types";
 import { useAuth } from "../providers/AuthProvider";
 
 function toIsoDateInput(iso: string | undefined) {
@@ -100,6 +101,18 @@ function batchMatchesDealer(b: Batch, dealerContractIds: Set<string>) {
 
 type StatusFilter = "ALL" | ContractStatus;
 
+function lastNDaysRange(n: number) {
+  const now = new Date();
+  const start = new Date(now.getTime() - n * 24 * 60 * 60 * 1000);
+  return { start, end: now };
+}
+
+function monthToDateRange() {
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  return { start, end: now };
+}
+
 export function DealerReportingPage() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/sign-in" replace />;
@@ -119,6 +132,33 @@ export function DealerReportingPage() {
   const [soldByEmail, setSoldByEmail] = useState("");
   const [providerId, setProviderId] = useState("");
   const [productType, setProductType] = useState<string>("");
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [activeTab, setActiveTab] = useState<"CONTRACTS" | "EMPLOYEE" | "PROFITABILITY">("CONTRACTS");
+  const profitabilityKey = useMemo(() => `warrantyhub.dealer_reporting.show_profitability.${user.id}`, [user.id]);
+  const [showProfitability, setShowProfitability] = useState(() => {
+    const raw = localStorage.getItem(profitabilityKey);
+    return raw === "1";
+  });
+
+  useEffect(() => {
+    localStorage.setItem(profitabilityKey, showProfitability ? "1" : "0");
+  }, [profitabilityKey, showProfitability]);
+
+  const applyLast30Days = () => {
+    const { start, end } = lastNDaysRange(30);
+    setStartDate(toIsoDateInput(start.toISOString()));
+    setEndDate(toIsoDateInput(end.toISOString()));
+  };
+
+  const clearFilters = () => {
+    setQuery("");
+    setStatus("ALL");
+    setSoldByEmail("");
+    setProviderId("");
+    setProductType("");
+    setShowAdvancedFilters(false);
+    applyLast30Days();
+  };
 
   const contractsQuery = useQuery({
     queryKey: ["contracts"],
@@ -135,7 +175,7 @@ export function DealerReportingPage() {
     queryFn: () => marketplaceApi.listPublishedProducts(),
   });
 
-  const products = (productsQuery.data ?? []) as Product[];
+  const products = (productsQuery.data ?? []) as MarketplaceProduct[];
   const productById = new Map(products.map((p) => [p.id, p] as const));
 
   const providerOptions = Array.from(new Set(products.map((p) => p.providerId).filter(Boolean))).sort();
@@ -248,6 +288,10 @@ export function DealerReportingPage() {
       .sort((a, b) => b.count - a.count);
   }, [filtered]);
 
+  const employeeOptions = useMemo(() => {
+    return Array.from(new Set(bySeller.map((x) => x.email))).sort();
+  }, [bySeller]);
+
   const audit = useMemo(() => listAuditEvents({ dealerId, limit: 500 }), [dealerId]);
 
   const exportContractsCsv = () => {
@@ -263,8 +307,7 @@ export function DealerReportingPage() {
       "product",
       "product_type",
       "retail_cents",
-      "cost_cents",
-      "margin_cents",
+      ...(showProfitability ? (["provider_amount_cents", "profit_cents"] as const) : ([] as const)),
       "created_at",
       "updated_at",
     ];
@@ -291,8 +334,7 @@ export function DealerReportingPage() {
           csvEscape(p?.name ?? ""),
           csvEscape(p?.productType ? productTypeLabel(p.productType) : ""),
           String(retail),
-          String(cost),
-          String(margin),
+          ...(showProfitability ? ([String(cost), String(margin)] as const) : ([] as const)),
           csvEscape(c.createdAt ?? ""),
           csvEscape(c.updatedAt ?? ""),
         ].join(",");
@@ -326,222 +368,375 @@ export function DealerReportingPage() {
   const isLoading = contractsQuery.isLoading || batchesQuery.isLoading || productsQuery.isLoading || providersQuery.isLoading;
   const isError = contractsQuery.isError || batchesQuery.isError || productsQuery.isError || providersQuery.isError;
 
+  const effectiveShowProfitability = showProfitability || activeTab === "PROFITABILITY";
+
   return (
     <PageShell
-      badge="Dealer Admin"
       title="Reporting"
-      subtitle="Dealership performance, contract totals, and staff activity."
+      subtitle="Track dealership performance by date range."
       actions={
-        <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" asChild>
-            <Link to="/dealer-admin">Back to Dealer Admin</Link>
-          </Button>
-          <Button variant="outline" onClick={exportAuditCsv}>
-            Export Activity CSV
-          </Button>
-          <Button onClick={exportContractsCsv}>Export Contracts CSV</Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm"
+            onClick={() => setShowProfitability((v) => !v)}
+            aria-pressed={effectiveShowProfitability}
+            title="Show provider amount and profit columns"
+          >
+            <span className="text-sm text-muted-foreground">Show profitability</span>
+            <span
+              className={
+                "relative inline-flex h-5 w-10 items-center rounded-full transition-colors " +
+                (effectiveShowProfitability ? "bg-primary" : "bg-muted")
+              }
+              aria-hidden
+            >
+              <span
+                className={
+                  "inline-block h-4 w-4 transform rounded-full bg-background shadow transition-transform " +
+                  (effectiveShowProfitability ? "translate-x-5" : "translate-x-1")
+                }
+              />
+            </span>
+          </button>
+
+          <details className="relative">
+            <summary className="list-none">
+              <Button type="button" size="sm" className="whitespace-nowrap">
+                Export (CSV)
+              </Button>
+            </summary>
+            <div className="absolute right-0 mt-2 w-56 rounded-xl border bg-card shadow-card p-2 z-20">
+              <button
+                type="button"
+                className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-muted/40"
+                onClick={() => exportContractsCsv()}
+              >
+                Export Contracts CSV
+              </button>
+              <button
+                type="button"
+                className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-muted/40"
+                onClick={() => exportAuditCsv()}
+              >
+                Export Activity CSV
+              </button>
+            </div>
+          </details>
         </div>
       }
     >
-      <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
-        <div className="px-6 py-4 border-b">
-          <div className="font-semibold">Filters</div>
-          <div className="text-sm text-muted-foreground mt-1">Use date range and optional filters to generate totals and exports.</div>
+      {contracts.length === 0 && !isLoading ? (
+        <div className="rounded-2xl border bg-card shadow-card p-6">
+          <div className="font-semibold">No contracts yet</div>
+          <div className="text-sm text-muted-foreground mt-1">Create a contract to start seeing totals and exports.</div>
+          <div className="mt-4 flex gap-2 flex-wrap">
+            <Button asChild>
+              <Link to="/dealer-marketplace">Find products</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/dealer-contracts">Go to contracts</Link>
+            </Button>
+          </div>
         </div>
+      ) : null}
 
-        <div className="px-6 py-5 grid grid-cols-1 lg:grid-cols-12 gap-3">
-          <div className="lg:col-span-4">
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Warranty ID, contract #, customer, VIN"
-            />
+      <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
+        <div className="p-4 border-b">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+              <span className="text-sm text-muted-foreground">–</span>
+              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="text-xs text-muted-foreground">Presets</div>
+              <select
+                className="h-10 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
+                value=""
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) return;
+                  if (v === "LAST_7") {
+                    const { start, end } = lastNDaysRange(7);
+                    setStatus("ALL");
+                    setStartDate(toIsoDateInput(start.toISOString()));
+                    setEndDate(toIsoDateInput(end.toISOString()));
+                  }
+                  if (v === "LAST_30") {
+                    setStatus("ALL");
+                    applyLast30Days();
+                  }
+                  if (v === "MTD") {
+                    const { start, end } = monthToDateRange();
+                    setStatus("ALL");
+                    setStartDate(toIsoDateInput(start.toISOString()));
+                    setEndDate(toIsoDateInput(end.toISOString()));
+                  }
+                  if (v === "PAID_30") {
+                    const { start, end } = lastNDaysRange(30);
+                    setStatus("PAID");
+                    setStartDate(toIsoDateInput(start.toISOString()));
+                    setEndDate(toIsoDateInput(end.toISOString()));
+                  }
+                  if (v === "SOLD_7") {
+                    const { start, end } = lastNDaysRange(7);
+                    setStatus("SOLD");
+                    setStartDate(toIsoDateInput(start.toISOString()));
+                    setEndDate(toIsoDateInput(end.toISOString()));
+                  }
+                  e.target.value = "";
+                }}
+              >
+                <option value="">Last 30 days</option>
+                <option value="LAST_7">Last 7 days</option>
+                <option value="LAST_30">Last 30 days</option>
+                <option value="MTD">Month to date</option>
+                <option value="PAID_30">Paid last 30 days</option>
+                <option value="SOLD_7">Sold last 7 days</option>
+              </select>
+            </div>
           </div>
 
-          <div className="lg:col-span-2">
-            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-          </div>
+          <div className="mt-3 flex items-center gap-2 flex-wrap">
+            <div className="w-full md:w-[360px]">
+              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by warranty #, customer, VIN, status" />
+            </div>
 
-          <div className="lg:col-span-2">
-            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-          </div>
-
-          <div className="lg:col-span-2">
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value as StatusFilter)}
-              className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
+              className="h-10 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
             >
-              <option value="ALL">All statuses</option>
+              <option value="ALL">All status</option>
               <option value="DRAFT">Draft</option>
               <option value="SOLD">Sold</option>
               <option value="REMITTED">Remitted</option>
               <option value="PAID">Paid</option>
             </select>
-          </div>
 
-          <div className="lg:col-span-2">
-            <Input value={soldByEmail} onChange={(e) => setSoldByEmail(e.target.value)} placeholder="Sold by email" />
-          </div>
-
-          <div className="lg:col-span-4">
             <select
-              value={providerId}
-              onChange={(e) => setProviderId(e.target.value)}
-              className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
+              value={soldByEmail}
+              onChange={(e) => setSoldByEmail(e.target.value)}
+              className="h-10 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
             >
-              <option value="">All providers</option>
-              {providerOptions.map((pid) => (
-                <option key={pid} value={pid}>
-                  {providerDisplayName(providerById.get(pid), pid)}
+              <option value="">All employees</option>
+              {employeeOptions.map((em) => (
+                <option key={em} value={em}>
+                  {em}
                 </option>
               ))}
             </select>
+
+            <Button size="sm" variant="outline" onClick={clearFilters}>
+              Clear filters
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setShowAdvancedFilters((v) => !v)}>
+              {showAdvancedFilters ? "Hide" : "More"}
+            </Button>
           </div>
 
-          <div className="lg:col-span-4">
-            <select
-              value={productType}
-              onChange={(e) => setProductType(e.target.value)}
-              className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
-            >
-              <option value="">All product types</option>
-              {productTypeOptions.map((t) => (
-                <option key={t} value={t}>
-                  {productTypeLabel(t)}
-                </option>
-              ))}
-            </select>
-          </div>
+          {showAdvancedFilters ? (
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
+              <select
+                value={providerId}
+                onChange={(e) => setProviderId(e.target.value)}
+                className="h-10 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
+              >
+                <option value="">All providers</option>
+                {providerOptions.map((pid) => (
+                  <option key={pid} value={pid}>
+                    {providerDisplayName(providerById.get(pid), pid)}
+                  </option>
+                ))}
+              </select>
 
-          <div className="lg:col-span-4 rounded-lg border bg-background px-4 py-3">
-            <div className="text-xs text-muted-foreground">Outstanding (unpaid remittances)</div>
-            <div className="text-lg font-semibold mt-1">{money(outstandingCents)}</div>
-          </div>
-        </div>
-      </div>
+              <select
+                value={productType}
+                onChange={(e) => setProductType(e.target.value)}
+                className="h-10 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
+              >
+                <option value="">All product types</option>
+                {productTypeOptions.map((t) => (
+                  <option key={t} value={t}>
+                    {productTypeLabel(t)}
+                  </option>
+                ))}
+              </select>
 
-      <div className="mt-8 grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="rounded-xl border bg-card shadow-card p-5">
-          <div className="text-xs text-muted-foreground">Contracts in view</div>
-          <div className="text-2xl font-bold mt-1">{totals.count}</div>
-          <div className="text-xs text-muted-foreground mt-2">Sold {totals.soldCount} • Remitted {totals.remittedCount} • Paid {totals.paidCount}</div>
-        </div>
-        <div className="rounded-xl border bg-card shadow-card p-5">
-          <div className="text-xs text-muted-foreground">Retail</div>
-          <div className="text-2xl font-bold mt-1">{money(totals.retail)}</div>
-        </div>
-        <div className="rounded-xl border bg-card shadow-card p-5">
-          <div className="text-xs text-muted-foreground">Cost</div>
-          <div className="text-2xl font-bold mt-1">{money(totals.cost)}</div>
-        </div>
-        <div className="rounded-xl border bg-card shadow-card p-5">
-          <div className="text-xs text-muted-foreground">Margin</div>
-          <div className="text-2xl font-bold mt-1">{money(totals.margin)}</div>
-        </div>
-      </div>
-
-      <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden">
-        <div className="px-6 py-4 border-b">
-          <div className="font-semibold">By Employee</div>
-          <div className="text-sm text-muted-foreground mt-1">Based on sold/created attribution inside the filtered view.</div>
-        </div>
-
-        <div className="hidden md:grid grid-cols-12 gap-3 px-6 py-3 border-b text-xs text-muted-foreground">
-          <div className="col-span-6">Email</div>
-          <div className="col-span-2 text-right">Count</div>
-          <div className="col-span-2 text-right">Retail</div>
-          <div className="col-span-2 text-right">Margin</div>
-        </div>
-
-        <div className="divide-y">
-          {bySeller.map((r) => (
-            <div key={r.email} className="px-6 py-3">
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                <div className="md:col-span-6 text-sm text-foreground break-all">{r.email}</div>
-                <div className="md:col-span-2 text-sm text-right text-foreground">{r.count}</div>
-                <div className="md:col-span-2 text-sm text-right text-foreground">{money(r.retail)}</div>
-                <div className="md:col-span-2 text-sm text-right text-foreground">{money(r.margin)}</div>
+              <div className="h-10 rounded-md border bg-background px-3 text-sm flex items-center justify-between">
+                <span className="text-muted-foreground">Outstanding</span>
+                <span className="font-medium">{money(outstandingCents)}</span>
               </div>
             </div>
-          ))}
-          {bySeller.length === 0 ? <div className="px-6 py-8 text-sm text-muted-foreground">No employee attribution in this view.</div> : null}
-        </div>
-      </div>
-
-      <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden">
-        <div className="px-6 py-4 border-b">
-          <div className="font-semibold">Contracts</div>
-          <div className="text-sm text-muted-foreground mt-1">Showing the filtered view (dealer-scoped).</div>
-        </div>
-
-        <div className="hidden lg:grid grid-cols-12 gap-3 px-6 py-3 border-b text-xs text-muted-foreground">
-          <div className="col-span-2">Warranty ID</div>
-          <div className="col-span-2">Contract #</div>
-          <div className="col-span-2">Customer</div>
-          <div className="col-span-1">Status</div>
-          <div className="col-span-2">Sold By</div>
-          <div className="col-span-1 text-right">Retail</div>
-          <div className="col-span-1 text-right">Cost</div>
-          <div className="col-span-1 text-right">Margin</div>
-        </div>
-
-        <div className="divide-y">
-          {filtered.slice(0, 200).map((c) => {
-            const retail = (c.pricingBasePriceCents ?? 0) + (c.addonTotalRetailCents ?? 0);
-            const cost = (c.pricingDealerCostCents ?? 0) + (c.addonTotalCostCents ?? 0);
-            const margin = retail - cost;
-            return (
-              <div key={c.id} className="px-6 py-4">
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center">
-                  <div className="lg:col-span-2 text-sm font-medium text-foreground break-all">{c.warrantyId}</div>
-                  <div className="lg:col-span-2 text-sm text-foreground">{c.contractNumber}</div>
-                  <div className="lg:col-span-2 text-sm text-foreground break-all">{c.customerName}</div>
-                  <div className="lg:col-span-1 text-sm text-foreground">{c.status}</div>
-                  <div className="lg:col-span-2 text-sm text-foreground break-all">{c.soldByEmail ?? c.createdByEmail ?? ""}</div>
-                  <div className="lg:col-span-1 text-sm text-right text-foreground">{money(retail)}</div>
-                  <div className="lg:col-span-1 text-sm text-right text-foreground">{money(cost)}</div>
-                  <div className="lg:col-span-1 text-sm text-right text-foreground">{money(margin)}</div>
-                </div>
-                <div className="mt-1 text-xs text-muted-foreground">{effectiveContractDate(c) ? new Date(effectiveContractDate(c)).toLocaleString() : ""}</div>
-              </div>
-            );
-          })}
-
-          {isLoading ? <div className="px-6 py-8 text-sm text-muted-foreground">Loading…</div> : null}
-          {isError ? <div className="px-6 py-8 text-sm text-destructive">Failed to load reporting data.</div> : null}
-          {!isLoading && !isError && filtered.length === 0 ? <div className="px-6 py-10 text-sm text-muted-foreground">No contracts match these filters.</div> : null}
-          {!isLoading && !isError && filtered.length > 200 ? (
-            <div className="px-6 py-6 text-sm text-muted-foreground">Showing first 200 rows. Use CSV export for full data.</div>
           ) : null}
         </div>
-      </div>
 
-      <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden">
-        <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <div className="font-semibold">Activity</div>
-            <div className="text-sm text-muted-foreground mt-1">Recent dealership audit events.</div>
+        <div className="p-4 border-b">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-xl border bg-background p-4">
+              <div className="text-xs text-muted-foreground">Contracts</div>
+              <div className="text-xl font-semibold mt-1">{totals.count}</div>
+              <div className="text-xs text-muted-foreground mt-2">Sold {totals.soldCount} • Remitted {totals.remittedCount} • Paid {totals.paidCount}</div>
+            </div>
+            <div className="rounded-xl border bg-background p-4">
+              <div className="text-xs text-muted-foreground">Retail</div>
+              <div className="text-xl font-semibold mt-1">{money(totals.retail)}</div>
+            </div>
+            {effectiveShowProfitability ? (
+              <>
+                <div className="rounded-xl border bg-background p-4">
+                  <div className="text-xs text-muted-foreground">Provider</div>
+                  <div className="text-xl font-semibold mt-1">{money(totals.cost)}</div>
+                </div>
+                <div className="rounded-xl border bg-background p-4">
+                  <div className="text-xs text-muted-foreground">Profit</div>
+                  <div className="text-xl font-semibold mt-1">{money(totals.margin)}</div>
+                </div>
+              </>
+            ) : null}
           </div>
-          <Button variant="outline" onClick={exportAuditCsv}>
-            Export CSV
-          </Button>
         </div>
 
-        <div className="divide-y">
-          {audit.slice(0, 50).map((e) => (
-            <div key={e.id} className="px-6 py-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-sm font-medium text-foreground">{e.kind}</div>
-                  <div className="text-xs text-muted-foreground mt-1 break-all">{e.message ?? "—"}</div>
-                  <div className="text-[11px] text-muted-foreground mt-1 break-all">{e.actorEmail ?? ""}</div>
-                </div>
-                <div className="text-xs text-muted-foreground whitespace-nowrap">{new Date(e.createdAt).toLocaleString()}</div>
-              </div>
+        <div className="p-4">
+          <div className="flex items-center gap-2 rounded-lg border bg-background p-1 w-fit">
+            <button
+              type="button"
+              onClick={() => setActiveTab("CONTRACTS")}
+              className={
+                "px-3 py-2 text-sm rounded-md transition-colors " +
+                (activeTab === "CONTRACTS" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/40")
+              }
+            >
+              Contracts
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("EMPLOYEE")}
+              className={
+                "px-3 py-2 text-sm rounded-md transition-colors " +
+                (activeTab === "EMPLOYEE" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/40")
+              }
+            >
+              By employee
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("PROFITABILITY")}
+              className={
+                "px-3 py-2 text-sm rounded-md transition-colors " +
+                (activeTab === "PROFITABILITY" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/40")
+              }
+            >
+              Profitability
+            </button>
+          </div>
+
+          {activeTab === "EMPLOYEE" ? (
+            <div className="mt-4 overflow-auto rounded-xl border bg-background">
+              <table className="w-full text-sm">
+                <thead className="text-xs text-muted-foreground">
+                  <tr className="border-b">
+                    <th className="px-4 py-3 text-left font-medium">Employee</th>
+                    <th className="px-4 py-3 text-right font-medium">Count</th>
+                    <th className="px-4 py-3 text-right font-medium">Retail</th>
+                    <th className="px-4 py-3 text-right font-medium">{effectiveShowProfitability ? "Profit" : ""}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {bySeller.map((r) => (
+                    <tr key={r.email} className="hover:bg-muted/20">
+                      <td className="px-4 py-3 break-all">{r.email}</td>
+                      <td className="px-4 py-3 text-right">{r.count}</td>
+                      <td className="px-4 py-3 text-right">{money(r.retail)}</td>
+                      <td className="px-4 py-3 text-right">{effectiveShowProfitability ? money(r.margin) : ""}</td>
+                    </tr>
+                  ))}
+                  {bySeller.length === 0 ? (
+                    <tr>
+                      <td className="px-4 py-8 text-sm text-muted-foreground" colSpan={4}>
+                        No employee attribution in this view.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
             </div>
-          ))}
-          {audit.length === 0 ? <div className="px-6 py-8 text-sm text-muted-foreground">No activity yet.</div> : null}
+          ) : null}
+
+          {activeTab !== "EMPLOYEE" ? (
+            <div className="mt-4 overflow-auto rounded-xl border bg-background">
+              <table className="w-full text-sm">
+                <thead className="text-xs text-muted-foreground">
+                  <tr className="border-b">
+                    <th className="px-4 py-3 text-left font-medium">Contract #</th>
+                    <th className="px-4 py-3 text-left font-medium">Customer</th>
+                    <th className="px-4 py-3 text-left font-medium">Status</th>
+                    <th className="px-4 py-3 text-left font-medium">Sold by</th>
+                    <th className="px-4 py-3 text-left font-medium">Date</th>
+                    <th className="px-4 py-3 text-right font-medium">Retail</th>
+                    {effectiveShowProfitability ? <th className="px-4 py-3 text-right font-medium">Profit</th> : null}
+                    <th className="px-4 py-3 text-right font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {filtered.slice(0, 200).map((c) => {
+                    const retail = (c.pricingBasePriceCents ?? 0) + (c.addonTotalRetailCents ?? 0);
+                    const cost = (c.pricingDealerCostCents ?? 0) + (c.addonTotalCostCents ?? 0);
+                    const margin = retail - cost;
+                    return (
+                      <tr key={c.id} className="hover:bg-muted/20">
+                        <td className="px-4 py-3 font-medium">{c.contractNumber || c.warrantyId || "—"}</td>
+                        <td className="px-4 py-3">{c.customerName || "—"}</td>
+                        <td className="px-4 py-3">{c.status}</td>
+                        <td className="px-4 py-3 text-muted-foreground break-all">{c.soldByEmail ?? c.createdByEmail ?? ""}</td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {effectiveContractDate(c) ? new Date(effectiveContractDate(c)).toLocaleDateString() : ""}
+                        </td>
+                        <td className="px-4 py-3 text-right">{money(retail)}</td>
+                        {effectiveShowProfitability ? <td className="px-4 py-3 text-right">{money(margin)}</td> : null}
+                        <td className="px-4 py-3 text-right">
+                          <Button size="sm" variant="outline" asChild>
+                            <Link to={`/dealer-contracts/${c.id}`}>Open</Link>
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {isLoading ? (
+                    <tr>
+                      <td className="px-4 py-8 text-sm text-muted-foreground" colSpan={effectiveShowProfitability ? 8 : 7}>
+                        Loading…
+                      </td>
+                    </tr>
+                  ) : null}
+                  {isError ? (
+                    <tr>
+                      <td className="px-4 py-8 text-sm text-destructive" colSpan={effectiveShowProfitability ? 8 : 7}>
+                        Failed to load reporting data.
+                      </td>
+                    </tr>
+                  ) : null}
+                  {!isLoading && !isError && filtered.length === 0 ? (
+                    <tr>
+                      <td className="px-4 py-10 text-sm text-muted-foreground" colSpan={effectiveShowProfitability ? 8 : 7}>
+                        No results for these filters.
+                      </td>
+                    </tr>
+                  ) : null}
+                  {!isLoading && !isError && filtered.length > 200 ? (
+                    <tr>
+                      <td className="px-4 py-6 text-sm text-muted-foreground" colSpan={effectiveShowProfitability ? 8 : 7}>
+                        Showing first 200 rows. Use CSV export for full data.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </div>
       </div>
     </PageShell>

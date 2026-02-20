@@ -1,5 +1,5 @@
 import type { ProductAddonsApi, ListProductAddonsOptions } from "./api";
-import type { CreateProductAddonInput, ProductAddon } from "./types";
+import type { AddonPricingType, CreateProductAddonInput, ProductAddon } from "./types";
 
 const STORAGE_KEY = "warrantyhub.local.product_addons";
 const DEV_BYPASS_KEY = "warrantyhub.dev.bypass_user";
@@ -65,6 +65,15 @@ function read(): ProductAddon[] {
         const productId = a.productId ?? "";
         const name = (a.name ?? "").toString();
         const active = typeof (a as any).active === "boolean" ? Boolean((a as any).active) : true;
+        const pricingTypeRaw = typeof (a as any).pricingType === "string" ? String((a as any).pricingType) : "";
+        const pricingType: AddonPricingType | undefined =
+          pricingTypeRaw === "PER_TERM" || pricingTypeRaw === "PER_CLAIM" || pricingTypeRaw === "FIXED" ? (pricingTypeRaw as AddonPricingType) : "FIXED";
+
+        const appliesToAllPricingRows =
+          typeof (a as any).appliesToAllPricingRows === "boolean" ? Boolean((a as any).appliesToAllPricingRows) : undefined;
+        const applicablePricingRowIds = Array.isArray((a as any).applicablePricingRowIds)
+          ? ((a as any).applicablePricingRowIds as unknown[]).filter((x) => typeof x === "string")
+          : undefined;
 
         return {
           id,
@@ -72,6 +81,9 @@ function read(): ProductAddon[] {
           productId,
           name,
           description: typeof a.description === "string" ? a.description : undefined,
+          pricingType,
+          appliesToAllPricingRows,
+          applicablePricingRowIds,
           basePriceCents: typeof a.basePriceCents === "number" ? a.basePriceCents : 0,
           minPriceCents: typeof (a as any).minPriceCents === "number" ? (a as any).minPriceCents : undefined,
           maxPriceCents: typeof (a as any).maxPriceCents === "number" ? (a as any).maxPriceCents : undefined,
@@ -132,6 +144,11 @@ export const localProductAddonsApi: ProductAddonsApi = {
       productId: input.productId,
       name: input.name,
       description: input.description,
+      pricingType: input.pricingType ?? "FIXED",
+      appliesToAllPricingRows: typeof (input as any).appliesToAllPricingRows === "boolean" ? Boolean((input as any).appliesToAllPricingRows) : true,
+      applicablePricingRowIds: Array.isArray((input as any).applicablePricingRowIds)
+        ? ((input as any).applicablePricingRowIds as unknown[]).filter((x) => typeof x === "string")
+        : undefined,
       basePriceCents: input.basePriceCents,
       minPriceCents: typeof input.minPriceCents === "number" ? input.minPriceCents : undefined,
       maxPriceCents: typeof input.maxPriceCents === "number" ? input.maxPriceCents : undefined,

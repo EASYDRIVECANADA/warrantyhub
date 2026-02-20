@@ -243,6 +243,14 @@ export const supabaseContractsApi: ContractsApi = {
     return created;
   },
 
+  async delete(id: string) {
+    const supabase = getSupabaseClient();
+    if (!supabase) throw new Error("Supabase is not configured");
+
+    const { error } = await supabase.from("contracts").delete().eq("id", id);
+    if (error) throw error;
+  },
+
   async update(id: string, patch: Parameters<ContractsApi["update"]>[1]) {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error("Supabase is not configured");

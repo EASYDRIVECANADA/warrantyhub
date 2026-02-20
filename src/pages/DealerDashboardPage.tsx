@@ -12,7 +12,7 @@ import { getContractsApi } from "../lib/contracts/contracts";
 import type { Contract } from "../lib/contracts/types";
 import { getAppMode } from "../lib/runtime";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
-import type { Product } from "../lib/products/types";
+import type { MarketplaceProduct } from "../lib/marketplace/api";
 import { getProvidersApi } from "../lib/providers/providers";
 import type { ProviderPublic } from "../lib/providers/types";
 import { useAuth } from "../providers/AuthProvider";
@@ -73,14 +73,6 @@ type SummaryCard = {
 };
 
 type TrendPoint = { label: string; value: number };
-
-function iconForSummary(kind: SummaryCard["icon"]) {
-  if (kind === "contracts") return FileText;
-  if (kind === "calendar") return Calendar;
-  if (kind === "marketplace") return Store;
-  if (kind === "team") return Users;
-  return DollarSign;
-}
 
 function accentForSummary(kind: SummaryCard["icon"]) {
   if (kind === "contracts") {
@@ -182,7 +174,7 @@ export function DealerDashboardPage() {
 
   const contracts = (contractsQuery.data ?? []) as Contract[];
   const batches = (batchesQuery.data ?? []) as Batch[];
-  const products = (productsQuery.data ?? []) as Product[];
+  const products = (productsQuery.data ?? []) as MarketplaceProduct[];
   const productById = new Map(products.map((p) => [p.id, p] as const));
 
   const uid = (user?.id ?? "").trim();
@@ -239,7 +231,7 @@ export function DealerDashboardPage() {
   };
 
   const contractsSold = myContracts.filter((c) => c.status !== "DRAFT");
-  const activeWarranties = myContracts.filter((c) => c.status === "SOLD" || c.status === "REMITTED" || c.status === "PAID");
+  const activeContracts = myContracts.filter((c) => c.status === "SOLD" || c.status === "REMITTED" || c.status === "PAID");
 
   const submittedCents = myRemittances
     .filter((r) => r.status === "CLOSED")
@@ -361,68 +353,14 @@ export function DealerDashboardPage() {
       )
     : [];
 
-  const kpiCards: SummaryCard[] = [
-    {
-      title: "Contracts sold",
-      value: `${contractsSold.length}`,
-      subtitle: "All time",
-      icon: "contracts",
-      href: "/dealer-contracts?tab=sold",
-    },
-    {
-      title: "Active warranties",
-      value: `${activeWarranties.length}`,
-      subtitle: "Sold / Remitted / Paid",
-      icon: "calendar",
-      href: "/dealer-contracts",
-    },
-    ...(isEmployee
-      ? []
-      : [
-          {
-            title: "Pending remittances",
-            value: `${counts.remittancesPending}`,
-            subtitle: formatMoney(pendingCents),
-            icon: "money" as const,
-            href: "/dealer-remittances",
-          },
-          {
-            title: "Submitted remittances",
-            value: `${counts.remittancesSubmitted}`,
-            subtitle: formatMoney(submittedCents),
-            icon: "money" as const,
-            href: "/dealer-remittances",
-          },
-        ]),
-  ];
-
-  const quickActions: SummaryCard[] = [
-    {
-      title: "Find Products",
-      value: "Browse",
-      subtitle: "Published products",
-      icon: "marketplace",
-      href: "/dealer-marketplace",
-    },
-    {
-      title: "Contracts",
-      value: "View",
-      subtitle: "Draft, sold, remitted",
-      icon: "contracts",
-      href: "/dealer-contracts",
-    },
-    ...(isEmployee
-      ? []
-      : [
-          {
-            title: "Remittances",
-            value: "Manage",
-            subtitle: "Pending / submitted",
-            icon: "money" as const,
-            href: "/dealer-remittances",
-          },
-        ]),
-  ];
+  const employeeCount = useMemo(() => {
+    const ids = new Set<string>();
+    for (const c of visibleContracts) {
+      const by = (c.createdByUserId ?? "").trim();
+      if (by) ids.add(by);
+    }
+    return ids.size;
+  }, [visibleContracts]);
 
   const recentContracts = myContracts.slice(0, 6);
 
@@ -430,7 +368,7 @@ export function DealerDashboardPage() {
     <PageShell
       badge="Dealer Portal"
       title="Dealer Dashboard"
-      subtitle="Business metrics and insights for your dealership."
+      subtitle="Overview of your dealership activity."
       actions={
         <div className="w-full sm:w-[380px]">
           <div className="relative">
@@ -443,43 +381,177 @@ export function DealerDashboardPage() {
       <div className="relative">
         <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-yellow-400/10 blur-2xl" />
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-8">
-            <div className={`grid grid-cols-1 sm:grid-cols-2 ${isEmployee ? "lg:grid-cols-2" : "xl:grid-cols-4"} gap-6`}>
-              {kpiCards.map((c) => {
-                const Icon = iconForSummary(c.icon);
-                const a = accentForSummary(c.icon);
-                const body = (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="lg:col-span-9">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 auto-rows-fr">
+              <Link
+                to="/dealer-contracts"
+                className={
+                  "rounded-2xl border bg-card shadow-card p-6 ring-1 transition-all hover:-translate-y-0.5 hover:shadow-md overflow-hidden flex flex-col " +
+                  accentForSummary("contracts").ring
+                }
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div className="text-sm text-muted-foreground">Contracts</div>
                   <div
                     className={
-                      "rounded-2xl border bg-card shadow-card p-6 ring-1 transition-all hover:-translate-y-0.5 hover:shadow-md h-full overflow-hidden flex flex-col " +
-                      a.ring
+                      "shrink-0 h-12 w-12 rounded-2xl border ring-1 ring-white/30 flex items-center justify-center " +
+                      accentForSummary("contracts").iconWrap
                     }
                   >
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="text-sm text-muted-foreground">{c.title}</div>
-                      <div
-                        className={
-                          "shrink-0 h-12 w-12 rounded-2xl border ring-1 ring-white/30 flex items-center justify-center " +
-                          a.iconWrap
-                        }
-                      >
-                        <Icon className="w-6 h-6" />
-                      </div>
-                    </div>
-                    <div className="text-3xl font-bold text-foreground mt-3 leading-none break-all">{c.value}</div>
-                    {c.subtitle ? <div className="text-xs text-muted-foreground mt-3 leading-relaxed">{c.subtitle}</div> : null}
+                    <FileText className="w-6 h-6" />
                   </div>
-                );
+                </div>
+                <div className="text-3xl font-bold text-foreground mt-3 leading-none break-all">{visibleContracts.length}</div>
+                <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>Draft</span>
+                    <span className="text-foreground/80">{counts.draft}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span>Sold</span>
+                    <span className="text-foreground/80">{counts.sold}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span>Remitted</span>
+                    <span className="text-foreground/80">{counts.remitted}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span>Paid</span>
+                    <span className="text-foreground/80">{counts.paid}</span>
+                  </div>
+                </div>
+              </Link>
 
-                return c.href ? (
-                  <Link key={c.title} to={c.href} className="block">
-                    {body}
+              <Link
+                to="/dealer-contracts"
+                className={
+                  "rounded-2xl border bg-card shadow-card p-6 ring-1 transition-all hover:-translate-y-0.5 hover:shadow-md overflow-hidden flex flex-col " +
+                  accentForSummary("calendar").ring
+                }
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div className="text-sm text-muted-foreground">Active</div>
+                  <div
+                    className={
+                      "shrink-0 h-12 w-12 rounded-2xl border ring-1 ring-white/30 flex items-center justify-center " +
+                      accentForSummary("calendar").iconWrap
+                    }
+                  >
+                    <Calendar className="w-6 h-6" />
+                  </div>
+                </div>
+                <div className="text-3xl font-bold text-foreground mt-3 leading-none break-all">{activeContracts.length}</div>
+                <div className="text-xs text-muted-foreground mt-3 leading-relaxed">Sold / Remitted / Paid</div>
+              </Link>
+
+              {!isEmployee ? (
+                <Link
+                  to="/dealer-remittances"
+                  className={
+                    "rounded-2xl border bg-card shadow-card p-6 ring-1 transition-all hover:-translate-y-0.5 hover:shadow-md overflow-hidden flex flex-col " +
+                    accentForSummary("money").ring
+                  }
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="text-sm text-muted-foreground">Outstanding</div>
+                    <div
+                      className={
+                        "shrink-0 h-12 w-12 rounded-2xl border ring-1 ring-white/30 flex items-center justify-center " +
+                        accentForSummary("money").iconWrap
+                      }
+                    >
+                      <DollarSign className="w-6 h-6" />
+                    </div>
+                  </div>
+                  <div className="text-3xl font-bold text-foreground mt-3 leading-none break-all">{formatMoney(pendingCents)}</div>
+                  <div className="mt-4 space-y-2 text-xs text-muted-foreground">
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Submitted</span>
+                      <span className="text-foreground/80">{formatMoney(submittedCents)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Unsubmitted</span>
+                      <span className="text-foreground/80">{formatMoney(pendingCents)}</span>
+                    </div>
+                  </div>
+                </Link>
+              ) : (
+                <div
+                  className={
+                    "rounded-2xl border bg-card shadow-card p-6 ring-1 overflow-hidden flex flex-col " +
+                    accentForSummary("money").ring
+                  }
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="text-sm text-muted-foreground">Outstanding</div>
+                    <div
+                      className={
+                        "shrink-0 h-12 w-12 rounded-2xl border ring-1 ring-white/30 flex items-center justify-center " +
+                        accentForSummary("money").iconWrap
+                      }
+                    >
+                      <DollarSign className="w-6 h-6" />
+                    </div>
+                  </div>
+                  <div className="text-3xl font-bold text-foreground mt-3 leading-none break-all">—</div>
+                  <div className="text-xs text-muted-foreground mt-3 leading-relaxed">Available to Dealer Admin.</div>
+                </div>
+              )}
+
+              <Link
+                to={isEmployee ? "/dealer-contracts" : "/dealer-team"}
+                className={
+                  "rounded-2xl border bg-card shadow-card p-6 ring-1 transition-all hover:-translate-y-0.5 hover:shadow-md overflow-hidden flex flex-col " +
+                  accentForSummary("team").ring
+                }
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div className="text-sm text-muted-foreground">Employees</div>
+                  <div
+                    className={
+                      "shrink-0 h-12 w-12 rounded-2xl border ring-1 ring-white/30 flex items-center justify-center " +
+                      accentForSummary("team").iconWrap
+                    }
+                  >
+                    <Users className="w-6 h-6" />
+                  </div>
+                </div>
+                <div className="text-3xl font-bold text-foreground mt-3 leading-none break-all">{employeeCount || 1}</div>
+                <div className="text-xs text-muted-foreground mt-3 leading-relaxed">
+                  {isEmployee ? "Your activity" : "Manage dealership staff"}
+                </div>
+              </Link>
+
+            </div>
+
+            <div className="mt-6 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
+              <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
+                <div className="font-semibold">Quick Actions</div>
+                <div className="text-sm text-muted-foreground mt-1">Shortcuts to common tasks.</div>
+              </div>
+              <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <Button asChild className="bg-yellow-400 text-black hover:bg-yellow-300 justify-start">
+                  <Link to="/dealer-marketplace">
+                    <Store className="h-4 w-4" />
+                    <span>Find Products</span>
                   </Link>
-                ) : (
-                  <div key={c.title}>{body}</div>
-                );
-              })}
+                </Button>
+                <Button variant="outline" asChild className="justify-start">
+                  <Link to="/dealer-contracts">
+                    <FileText className="h-4 w-4" />
+                    <span>Contracts</span>
+                  </Link>
+                </Button>
+                {!isEmployee ? (
+                  <Button variant="outline" asChild className="justify-start">
+                    <Link to="/dealer-remittances">
+                      <DollarSign className="h-4 w-4" />
+                      <span>Remittances</span>
+                    </Link>
+                  </Button>
+                ) : null}
+              </div>
             </div>
 
             {!isEmployee ? (
@@ -490,13 +562,13 @@ export function DealerDashboardPage() {
               </div>
 
               <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="rounded-xl border p-4 bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10">
+                <div className="rounded-2xl border p-4 bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10">
                   <div className="font-semibold">Sales trends</div>
                   <div className="text-sm text-muted-foreground mt-1">Contracts sold per month (last 6 months).</div>
                   <SmallBarChart points={salesTrend} />
                 </div>
 
-                <div className="rounded-xl border p-4 bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10">
+                <div className="rounded-2xl border p-4 bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10">
                   <div className="font-semibold">Provider mix</div>
                   <div className="text-sm text-muted-foreground mt-1">Share of contracts sold by provider.</div>
                   <div className="mt-4 space-y-3">
@@ -519,7 +591,7 @@ export function DealerDashboardPage() {
                   </div>
                 </div>
 
-                <div className="rounded-xl border p-4 md:col-span-2 bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10">
+                <div className="rounded-2xl border p-4 md:col-span-2 bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10">
                   <div className="font-semibold">Product performance</div>
                   <div className="text-sm text-muted-foreground mt-1">Top products by contracts sold.</div>
                   <div className="mt-4 rounded-lg border overflow-hidden">
@@ -544,50 +616,13 @@ export function DealerDashboardPage() {
             </div>
             ) : null}
 
-            <div className={`mt-8 grid grid-cols-1 sm:grid-cols-2 ${isEmployee ? "lg:grid-cols-2" : "lg:grid-cols-3"} gap-6`}>
-              {quickActions.map((c) => {
-                const Icon = iconForSummary(c.icon);
-                const a = accentForSummary(c.icon);
-                const body = (
-                  <div
-                    className={
-                      "rounded-2xl border bg-card shadow-card p-6 ring-1 transition-all hover:-translate-y-0.5 hover:shadow-md h-full overflow-hidden flex flex-col " +
-                      a.ring
-                    }
-                  >
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="text-sm text-muted-foreground">{c.title}</div>
-                      <div
-                        className={
-                          "shrink-0 h-12 w-12 rounded-2xl border ring-1 ring-white/30 flex items-center justify-center " +
-                          a.iconWrap
-                        }
-                      >
-                        <Icon className="w-6 h-6" />
-                      </div>
-                    </div>
-                    <div className="text-3xl font-bold text-foreground mt-3 leading-none break-all">{c.value}</div>
-                    {c.subtitle ? <div className="text-xs text-muted-foreground mt-3 leading-relaxed">{c.subtitle}</div> : null}
-                  </div>
-                );
-
-                return c.href ? (
-                  <Link key={c.title} to={c.href} className="block">
-                    {body}
-                  </Link>
-                ) : (
-                  <div key={c.title}>{body}</div>
-                );
-              })}
-            </div>
-
             <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
               <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
                 <div>
                   <div className="font-semibold text-lg">Contracts Overview</div>
                   <div className="text-sm text-muted-foreground mt-1">Draft → Sold → Remitted → Paid</div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <Button variant="outline" size="sm" asChild>
                     <Link to="/dealer-contracts">View all</Link>
                   </Button>
@@ -606,19 +641,28 @@ export function DealerDashboardPage() {
 
               <div className="divide-y">
                 {recentContracts.map((c) => (
-                  <div key={c.id} className="px-6 py-4">
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                  <div key={c.id} className="px-6 py-4 hover:bg-muted/30 transition-colors">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3 md:items-center">
                       <div className="md:col-span-3">
-                        <div className="text-sm font-medium">{asText(c.warrantyId)}</div>
-                        <div className="text-xs text-muted-foreground mt-1">{asText(c.status)}</div>
+                        <div className="flex items-center justify-between gap-3">
+                          <Link to={`/dealer-contracts/${c.id}`} className="text-sm font-medium hover:underline">
+                            {asText(c.warrantyId)}
+                          </Link>
+                          <div className="md:hidden text-xs text-muted-foreground">{asText(c.status)}</div>
+                        </div>
+                        <div className="hidden md:block text-xs text-muted-foreground mt-1">{asText(c.status)}</div>
                       </div>
-                      <div className="md:col-span-3 text-sm">{asText(c.contractNumber)}</div>
-                      <div className="md:col-span-4 text-sm">{asText(c.customerName)}</div>
-                      <div className="md:col-span-2 flex md:justify-end gap-2">
-                        <Button size="sm" asChild>
+                      <div className="md:col-span-3 text-sm">
+                        <Link to={`/dealer-contracts/${c.id}`} className="hover:underline">
+                          {asText(c.contractNumber)}
+                        </Link>
+                      </div>
+                      <div className="md:col-span-4 text-sm text-muted-foreground md:text-foreground">{asText(c.customerName)}</div>
+                      <div className="md:col-span-2 flex flex-col sm:flex-row md:justify-end gap-2">
+                        <Button size="sm" asChild className="w-full sm:w-auto">
                           <Link to={`/dealer-contracts/${c.id}`}>View</Link>
                         </Button>
-                        <Button size="sm" variant="outline" asChild>
+                        <Button size="sm" variant="outline" asChild className="w-full sm:w-auto">
                           <Link to={`/dealer-contracts/${c.id}/print/dealer`}>Print</Link>
                         </Button>
                       </div>
@@ -695,19 +739,42 @@ export function DealerDashboardPage() {
             ) : null}
           </div>
 
-          <div className="lg:col-span-4">
-            <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-yellow-500/10">
+          <div className="lg:col-span-3">
+            <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-yellow-500/10 lg:sticky lg:top-6">
               <div className="px-6 py-4 border-b bg-gradient-to-r from-yellow-500/10 to-blue-600/10">
                 <div className="font-semibold">Recent Activity</div>
-                <div className="text-sm text-muted-foreground mt-1">Latest updates for transparency.</div>
+                <div className="text-sm text-muted-foreground mt-1">Recent updates across your work.</div>
               </div>
               <div className="divide-y">
-                {activity.slice(0, 8).map((a) => (
-                  <div key={`${a.kind}-${a.id}`} className="px-6 py-4">
-                    <div className="text-sm font-medium">{a.label}</div>
-                    <div className="text-xs text-muted-foreground mt-1">{new Date(a.createdAt).toLocaleString()}</div>
+                {activity.slice(0, 8).map((a) => {
+                  const href = a.kind === "contract" ? `/dealer-contracts/${a.id}` : "/dealer-remittances";
+                  const Icon = a.kind === "contract" ? FileText : DollarSign;
+                  return (
+                    <Link
+                      key={`${a.kind}-${a.id}`}
+                      to={href}
+                      className="block px-6 py-4 hover:bg-muted/30 transition-colors"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 h-9 w-9 rounded-xl border bg-muted/40 flex items-center justify-center">
+                          <Icon className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium truncate">{a.label}</div>
+                          <div className="text-xs text-muted-foreground mt-1">{new Date(a.createdAt).toLocaleString()}</div>
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+
+                {activity.length > 0 ? (
+                  <div className="px-6 py-4">
+                    <Button variant="outline" size="sm" asChild className="w-full justify-center">
+                      <Link to="/dealer-contracts">View all activity</Link>
+                    </Button>
                   </div>
-                ))}
+                ) : null}
 
                 {activity.length === 0 ? <div className="px-6 py-10 text-sm text-muted-foreground">No activity yet.</div> : null}
               </div>

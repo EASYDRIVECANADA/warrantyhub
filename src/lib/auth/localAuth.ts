@@ -212,6 +212,14 @@ export const localAuthApi: AuthApi = {
     return toAuthUser(record);
   },
 
+  async requestPasswordReset() {
+    throw new Error("Forgot password requires Supabase configuration");
+  },
+
+  async updatePassword() {
+    throw new Error("Password reset requires Supabase configuration");
+  },
+
   async signOut() {
     writeSession(null);
     notify();

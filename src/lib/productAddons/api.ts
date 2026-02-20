@@ -9,7 +9,21 @@ export type ProductAddonsApi = {
   create(input: CreateProductAddonInput): Promise<ProductAddon>;
   update(
     id: string,
-    patch: Partial<Pick<ProductAddon, "name" | "description" | "basePriceCents" | "minPriceCents" | "maxPriceCents" | "dealerCostCents" | "active">>,
+    patch: Partial<
+      Pick<
+        ProductAddon,
+        | "name"
+        | "description"
+        | "pricingType"
+        | "appliesToAllPricingRows"
+        | "applicablePricingRowIds"
+        | "basePriceCents"
+        | "minPriceCents"
+        | "maxPriceCents"
+        | "dealerCostCents"
+        | "active"
+      >
+    >,
   ): Promise<ProductAddon>;
   remove(id: string): Promise<void>;
 };

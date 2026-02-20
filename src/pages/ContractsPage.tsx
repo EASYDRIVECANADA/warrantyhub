@@ -6,7 +6,7 @@ import { Input } from "../components/ui/input";
 import { getContractsApi } from "../lib/contracts/contracts";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
 import { alertMissing, confirmProceed, sanitizeLettersOnly } from "../lib/utils";
-import type { Product } from "../lib/products/types";
+import type { MarketplaceProduct } from "../lib/marketplace/api";
 import { useAuth } from "../providers/AuthProvider";
 
 function money(cents?: number) {
@@ -35,8 +35,8 @@ export function ContractsPage({ title }: { title: string }) {
     enabled: isAdmin,
   });
 
-  const products = (productsQuery.data ?? []) as Product[];
-  const productById = new Map(products.map((p) => [p.id, p] as const));
+  const products = (productsQuery.data ?? []) as MarketplaceProduct[];
+  void products;
 
   const createMutation = useMutation({
     mutationFn: () => api.create({ contractNumber, customerName }),
@@ -98,14 +98,12 @@ export function ContractsPage({ title }: { title: string }) {
         </div>
         <div className="divide-y">
           {(listQuery.data ?? []).map((c) => {
-            const pid = (c.productId ?? "").trim();
-            const p = pid ? productById.get(pid) : undefined;
             return (
               <div key={c.id} className="grid grid-cols-12 gap-2 px-4 py-3 text-sm">
                 <div className={isAdmin ? "col-span-3 font-medium" : "col-span-4 font-medium"}>{c.contractNumber}</div>
                 <div className={isAdmin ? "col-span-3" : "col-span-5"}>{c.customerName}</div>
-                {isAdmin ? <div className="col-span-2 text-muted-foreground">{money(p?.dealerCostCents)}</div> : null}
-                {isAdmin ? <div className="col-span-2 text-muted-foreground">{money(p?.basePriceCents)}</div> : null}
+                {isAdmin ? <div className="col-span-2 text-muted-foreground">{money(c.pricingDealerCostCents ?? undefined)}</div> : null}
+                {isAdmin ? <div className="col-span-2 text-muted-foreground">{money(c.pricingBasePriceCents ?? undefined)}</div> : null}
                 <div className={isAdmin ? "col-span-2 text-right text-muted-foreground" : "col-span-3 text-right text-muted-foreground"}>
                   {new Date(c.createdAt).toLocaleDateString()}
                 </div>
