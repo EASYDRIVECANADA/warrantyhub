@@ -151,13 +151,15 @@ export function RootLayout() {
     if (!allowed) return <Navigate to="/request-access" replace />;
   }
 
-  const showDealerAdminShell = Boolean(user) && user?.role === "DEALER_ADMIN";
-
-  const hideTopNavbar =
+  const isAuthLikeRoute =
     location.pathname === "/sign-in" ||
     location.pathname === "/register-dealership" ||
     location.pathname === "/forgot-password" ||
     location.pathname === "/reset-password";
+
+  const showDealerAdminShell = Boolean(user) && user?.role === "DEALER_ADMIN" && !isAuthLikeRoute;
+
+  const hideTopNavbar = isAuthLikeRoute;
 
   const dealerAdminNavItems = [
     { to: "/dealer-admin", label: "Dashboard", icon: LayoutGrid, active: location.pathname === "/dealer-admin" },

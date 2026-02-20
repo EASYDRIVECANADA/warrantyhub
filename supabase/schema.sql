@@ -12,8 +12,12 @@ create table if not exists public.profiles (
 
 do $$
 begin
-  alter table public.profiles
-    drop constraint if exists profiles_role_check;
+  begin
+    alter table public.profiles
+      drop constraint profiles_role_check;
+  exception
+    when undefined_object then null;
+  end;
 
   alter table public.profiles
     add constraint profiles_role_check
@@ -982,6 +986,9 @@ alter table public.remittances
 alter table public.remittances
   add column if not exists dealer_id uuid references public.dealers(id) on delete set null;
 
+alter table public.remittances
+  add column if not exists provider_id uuid references public.profiles(id) on delete set null;
+
 alter table public.remittances enable row level security;
 
 drop policy if exists "remittances_all_authenticated" on public.remittances;
@@ -1048,6 +1055,9 @@ alter table public.batches
 
 alter table public.batches
   add column if not exists dealer_id uuid references public.dealers(id) on delete set null;
+
+alter table public.batches
+  add column if not exists provider_id uuid references public.profiles(id) on delete set null;
 
 alter table public.batches enable row level security;
 
@@ -1199,6 +1209,24 @@ create table if not exists public.product_pricing (
 
 alter table public.product_pricing
   add column if not exists is_default boolean not null default false;
+
+alter table public.product_pricing
+  add column if not exists term_months integer;
+
+alter table public.product_pricing
+  add column if not exists term_km integer;
+
+alter table public.product_pricing
+  add column if not exists vehicle_mileage_min_km integer;
+
+alter table public.product_pricing
+  add column if not exists vehicle_mileage_max_km integer;
+
+alter table public.product_pricing
+  add column if not exists vehicle_class text;
+
+alter table public.product_pricing
+  add column if not exists claim_limit_cents integer;
 
 create unique index if not exists product_pricing_one_default_per_product
   on public.product_pricing (product_id)

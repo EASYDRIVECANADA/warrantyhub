@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { getAuthApi } from "../lib/auth/auth";
+import { getSupabaseClient } from "../lib/supabase/client";
 
 const LOCAL_AUTH_NOTICE_KEY = "warrantyhub.local.auth_notice";
 
@@ -16,10 +17,56 @@ export function ResetPasswordPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRecoveryReady, setIsRecoveryReady] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function initRecovery() {
+      const supabase = getSupabaseClient();
+      if (!supabase) {
+        if (isMounted) setIsRecoveryReady(false);
+        return;
+      }
+
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get("code");
+        if (code) {
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          if (exchangeError) {
+            if (isMounted) setError(exchangeError.message);
+          }
+        }
+      } catch (e) {
+        if (isMounted) setError(e instanceof Error ? e.message : "Failed to process reset link");
+      }
+
+      try {
+        const { data, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+        if (isMounted) setIsRecoveryReady(!!data.session);
+      } catch (e) {
+        if (isMounted) {
+          setError(e instanceof Error ? e.message : "Failed to verify reset session");
+          setIsRecoveryReady(false);
+        }
+      }
+    }
+
+    void initRecovery();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (isRecoveryReady === false) {
+      return setError("Please open this page using the reset link from your email.");
+    }
 
     const p = password.trim();
     if (!p) return setError("Password is required");
@@ -30,6 +77,15 @@ export function ResetPasswordPage() {
     try {
       await api.updatePassword(p);
       setSuccess(true);
+
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        try {
+          await supabase.auth.signOut();
+        } catch {
+        }
+      }
+
       localStorage.setItem(LOCAL_AUTH_NOTICE_KEY, "Password updated. Please sign in.");
       navigate("/sign-in", { replace: true });
     } catch (err) {
@@ -97,6 +153,12 @@ export function ResetPasswordPage() {
                 ) : null}
 
                 {success ? <div className="text-sm text-muted-foreground">Password updated. Redirecting…</div> : null}
+
+                {isRecoveryReady === false && !error ? (
+                  <div className="text-sm text-muted-foreground">
+                    Open this page using the password reset link sent to your email.
+                  </div>
+                ) : null}
 
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   Update password
