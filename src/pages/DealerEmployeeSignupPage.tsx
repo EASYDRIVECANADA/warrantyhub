@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
+import { Shield } from "lucide-react";
+
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import type { Role } from "../lib/auth/types";
@@ -15,6 +17,8 @@ const DEALER_INVITES_KEY = "warrantyhub.local.dealer_employee_invites";
 const LOCAL_USERS_KEY = "warrantyhub.local.users";
 const LOCAL_DEALER_MEMBERSHIPS_KEY = "warrantyhub.local.dealer_memberships";
 const LOCAL_DEALER_TEAM_MEMBERS_KEY = "warrantyhub.local.dealer_team_members";
+
+const whiteLogoUrl = new URL("../../images/warrantyhubwhite.png", import.meta.url).href;
 
 type DealerInvite = {
   dealerId: string;
@@ -266,76 +270,130 @@ export function DealerEmployeeSignupPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 pt-28 pb-16">
-        <div className="max-w-md mx-auto">
-          <div className="rounded-lg border bg-card text-card-foreground shadow-sm">
-            <div className="flex flex-col space-y-1.5 p-6">
-              <h1 className="text-2xl font-semibold leading-none tracking-tight font-display">Dealer Employee Signup</h1>
+      <div className="min-h-screen grid grid-cols-1 lg:grid-cols-2">
+        <div className="relative hidden lg:flex bg-primary text-white">
+          <div
+            className="absolute inset-0 opacity-20"
+            style={{
+              backgroundImage: "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.35) 1px, transparent 0)",
+              backgroundSize: "44px 44px",
+            }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-white/0 via-white/0 to-black/15" />
+
+          <div className="relative z-10 w-full p-12 flex flex-col">
+            <div className="flex items-center gap-3">
+              <Link to="/find-insurance" className="inline-flex">
+                <img src={whiteLogoUrl} alt="Bridge Warranty" className="h-16 w-auto object-contain" />
+              </Link>
+            </div>
+
+            <div className="mt-10">
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold">
+                <Shield className="w-4 h-4 text-yellow-300" />
+                Invited to Join a Dealership?
+              </span>
+            </div>
+
+            <h1 className="mt-8 font-display text-4xl font-bold leading-tight">
+              Join Your Team
+              <span className="block text-yellow-300">In Seconds</span>
+            </h1>
+
+            <p className="mt-4 text-white/85 max-w-md text-sm">
+              Use your invite code to create your employee account and get access to your dealership workspace.
+            </p>
+
+            <div className="mt-8 space-y-3 text-sm">
+              {["Enter your invite code", "Create your login", "Access your dealership dashboard"].map((t) => (
+                <div key={t} className="flex items-start gap-3">
+                  <div className="mt-0.5 h-5 w-5 rounded-full bg-yellow-300/20 border border-yellow-300/30 flex items-center justify-center">
+                    <div className="h-2 w-2 rounded-full bg-yellow-300" />
+                  </div>
+                  <div className="text-white/90">{t}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-auto text-xs text-white/70 pt-10">Need an invite? Ask your dealership admin.</div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-center px-6 py-12 lg:py-0 bg-slate-50">
+          <div className="w-full max-w-lg">
+            <div className="flex flex-col space-y-1.5">
+              <h1 className="text-3xl font-semibold leading-none tracking-tight font-display">Dealer Employee Signup</h1>
               <p className="text-sm text-muted-foreground">Create an account to join your dealership team before launch.</p>
             </div>
 
-            <div className="p-6 pt-0">
+            <div className="mt-8">
               <form className="space-y-4" onSubmit={onSubmit}>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium" htmlFor="inviteCode">
-                    Invite code
-                  </label>
-                  <Input
-                    id="inviteCode"
-                    value={inviteCode}
-                    onChange={(e) => setInviteCode(e.target.value)}
-                    placeholder="ABCD-1234"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium" htmlFor="email">
-                    Email
-                  </label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@dealership.com"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium" htmlFor="password">
-                    Password
-                  </label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Password"
-                    required
-                  />
-                </div>
-
-                {error ? (
-                  isEmailConfirmationNotice ? (
-                    <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-                      {error}
+                <div className="rounded-xl border bg-white p-6 shadow-card">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium" htmlFor="inviteCode">
+                        Invite code
+                      </label>
+                      <Input
+                        id="inviteCode"
+                        value={inviteCode}
+                        onChange={(e) => setInviteCode(e.target.value)}
+                        placeholder="ABCD-1234"
+                        required
+                      />
                     </div>
-                  ) : (
-                    <div className="text-sm text-destructive">{error}</div>
-                  )
-                ) : null}
 
-                <Button type="submit" className="w-full bg-yellow-300 text-slate-900 hover:bg-yellow-200" disabled={isLoading}>
-                  Create Account
-                </Button>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium" htmlFor="email">
+                        Email
+                      </label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="you@dealership.com"
+                        required
+                      />
+                    </div>
 
-                <div className="text-sm text-muted-foreground">
-                  Already have an account?{" "}
-                  <Link to="/sign-in" className="text-primary underline underline-offset-4">
-                    Sign In
-                  </Link>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium" htmlFor="password">
+                        Password
+                      </label>
+                      <Input
+                        id="password"
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Password"
+                        required
+                      />
+                    </div>
+
+                    {error ? (
+                      isEmailConfirmationNotice ? (
+                        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">{error}</div>
+                      ) : (
+                        <div className="text-sm text-destructive">{error}</div>
+                      )
+                    ) : null}
+
+                    <Button
+                      type="submit"
+                      className="w-full bg-yellow-300 text-slate-900 hover:bg-yellow-200"
+                      disabled={isLoading}
+                    >
+                      Create Account
+                    </Button>
+
+                    <div className="text-sm text-muted-foreground">
+                      Already have an account?{" "}
+                      <Link to="/sign-in" className="text-primary underline underline-offset-4">
+                        Sign In
+                      </Link>
+                    </div>
+                  </div>
                 </div>
               </form>
             </div>
