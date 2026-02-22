@@ -324,6 +324,7 @@ export function DealerMarketplacePage() {
       .map(([pid, rows]) => ({
         providerId: pid,
         providerName: providerDisplayName(providerById.get(pid), pid),
+        providerLogoUrl: providerById.get(pid)?.logoUrl,
         products: sortProducts(rows),
       }))
       .sort((a, b) => a.providerName.localeCompare(b.providerName));
@@ -571,7 +572,14 @@ export function DealerMarketplacePage() {
                     }
                   >
                     <div className={"px-5 py-4 border-b bg-gradient-to-r sticky top-0 z-10 " + a.header}>
-                      <div className="font-semibold truncate">{g.providerName}</div>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="h-8 w-8 rounded-lg border bg-white/70 overflow-hidden flex items-center justify-center shrink-0">
+                          {g.providerLogoUrl ? (
+                            <img src={g.providerLogoUrl} alt="" className="h-full w-full object-contain" />
+                          ) : null}
+                        </div>
+                        <div className="font-semibold truncate">{g.providerName}</div>
+                      </div>
                       <div className="text-xs text-muted-foreground mt-1">
                         {g.products.length} product{g.products.length === 1 ? "" : "s"}
                       </div>

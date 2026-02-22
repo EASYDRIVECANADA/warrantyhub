@@ -1,92 +1,95 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { PageShell } from "../components/PageShell";
-import { getDocumentsApi } from "../lib/documents/documents";
-import type { ProductDocument } from "../lib/documents/types";
-import { getProductsApi } from "../lib/products/products";
-import type { Product } from "../lib/products/types";
+import { getProvidersApi } from "../lib/providers/providers";
 import { alertMissing } from "../lib/utils";
+import { getAppMode } from "../lib/runtime";
+import { getSupabaseClient } from "../lib/supabase/client";
 
-function isAllowedUpload(file: File) {
-  if (file.type === "application/pdf") return true;
+function isAllowedLogoUpload(file: File) {
   if (file.type.startsWith("image/")) return true;
   const name = file.name.toLowerCase();
-  if (name.endsWith(".pdf")) return true;
   if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".webp")) return true;
   return false;
 }
 
-function fileTypeLabel(doc: ProductDocument) {
-  const mime = doc.mimeType?.toLowerCase();
-  if (mime === "application/pdf") return "PDF";
-  if (mime?.startsWith("image/")) return (mime.split("/")[1] ?? "Image").toUpperCase();
-
-  const name = doc.fileName.toLowerCase();
-  const ext = name.includes(".") ? name.split(".").pop() : undefined;
-  if (!ext) return "—";
-  return ext.toUpperCase();
+function sanitizeFilename(name: string) {
+  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
-function formatDate(iso: string) {
-  try {
-    return new Date(iso).toLocaleDateString();
-  } catch {
-    return iso;
-  }
+async function fileToDataUrl(file: File): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.readAsDataURL(file);
+  });
 }
 
 export function ProviderDocumentsPage() {
-  const api = useMemo(() => getDocumentsApi(), []);
-  const productsApi = useMemo(() => getProductsApi(), []);
+  const providersApi = useMemo(() => getProvidersApi(), []);
+  const mode = useMemo(() => getAppMode(), []);
   const qc = useQueryClient();
 
-  const [title, setTitle] = useState("");
-  const [productId, setProductId] = useState<string>("");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
-  const productsQuery = useQuery({
-    queryKey: ["provider-products"],
-    queryFn: () => productsApi.list(),
-  });
-
-  const documentsQuery = useQuery({
-    queryKey: ["provider-documents"],
-    queryFn: () => api.list(),
+  const myProfileQuery = useQuery({
+    queryKey: ["my-provider-profile"],
+    queryFn: () => providersApi.getMyProfile(),
   });
 
   const uploadMutation = useMutation({
-    mutationFn: (input: { title: string; productId?: string | null; file: File }) =>
-      api.upload({ title: input.title, productId: input.productId, file: input.file }),
+    mutationFn: async (input: { file: File }) => {
+      if (mode === "local") {
+        const url = await fileToDataUrl(input.file);
+        await providersApi.updateMyProfile({ logoUrl: url });
+        return;
+      }
+
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error("Supabase is not configured");
+
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw new Error(sessionError.message);
+      const userId = sessionData.session?.user?.id;
+      if (!userId) throw new Error("Not authenticated");
+
+      const objectName = `provider-logos/${userId}/${crypto.randomUUID()}-${sanitizeFilename(input.file.name)}`;
+      const uploadRes = await supabase.storage.from("product-documents").upload(objectName, input.file, {
+        upsert: true,
+        contentType: input.file.type || undefined,
+      });
+      if (uploadRes.error) throw new Error(uploadRes.error.message);
+
+      const publicUrl = supabase.storage.from("product-documents").getPublicUrl(objectName).data.publicUrl;
+      await providersApi.updateMyProfile({ logoUrl: publicUrl });
+    },
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ["provider-documents"] });
+      await qc.invalidateQueries({ queryKey: ["my-provider-profile"] });
     },
   });
 
-  const products = (productsQuery.data ?? []) as Product[];
-  const documents = (documentsQuery.data ?? []) as ProductDocument[];
-
   const busy = uploadMutation.isPending;
+
+  useEffect(() => {
+    const profileLogo = (myProfileQuery.data as any)?.logoUrl as string | undefined;
+    if (previewUrl) return;
+    if (profileLogo) setPreviewUrl(profileLogo);
+  }, [myProfileQuery.data, previewUrl]);
 
   const onUpload = async () => {
     setError(null);
-    const t = title.trim();
-    if (!t) return alertMissing("Title is required.");
     if (!file) return alertMissing("Choose a file to upload.");
-    if (!isAllowedUpload(file)) return alertMissing("Only PDF and image files are allowed.");
+    if (!isAllowedLogoUpload(file)) return alertMissing("Only image files are allowed (PNG, JPG, WEBP).");
 
     try {
-      await uploadMutation.mutateAsync({
-        title: t,
-        productId: productId.trim() ? productId : null,
-        file,
-      });
-      setTitle("");
-      setProductId("");
+      await uploadMutation.mutateAsync({ file });
       setFile(null);
       const input = document.getElementById("provider-doc-file") as HTMLInputElement | null;
       if (input) input.value = "";
@@ -95,21 +98,22 @@ export function ProviderDocumentsPage() {
     }
   };
 
-  const onDownload = async (doc: ProductDocument) => {
+  const onRemove = async () => {
     setError(null);
     try {
-      const url = await api.getDownloadUrl(doc);
-      window.open(url, "_blank", "noopener,noreferrer");
+      await providersApi.updateMyProfile({ logoUrl: null });
+      await qc.invalidateQueries({ queryKey: ["my-provider-profile"] });
+      setPreviewUrl(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to get download link");
+      setError(e instanceof Error ? e.message : "Failed to remove logo");
     }
   };
 
   return (
     <PageShell
       badge="Provider Portal"
-      title="Documents"
-      subtitle="Upload brochures, disclosures, and product PDFs."
+      title="Logo"
+      subtitle="Upload your company logo. Dealers will see it when browsing your products."
       actions={
         <Button variant="outline" asChild>
           <Link to="/provider-dashboard">Back to dashboard</Link>
@@ -121,113 +125,57 @@ export function ProviderDocumentsPage() {
       <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden">
         <div className="px-6 py-4 border-b flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <div className="font-semibold">Upload Document</div>
-            <div className="text-sm text-muted-foreground mt-1">Optionally link documents to a product.</div>
+            <div className="font-semibold">Upload Logo</div>
+            <div className="text-sm text-muted-foreground mt-1">Recommended: square image, PNG with transparent background.</div>
           </div>
-          <Button onClick={() => void onUpload()} disabled={busy}>
-            Upload
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => void onRemove()} disabled={busy || (!previewUrl && !(myProfileQuery.data as any)?.logoUrl)}>
+              Remove
+            </Button>
+            <Button onClick={() => void onUpload()} disabled={busy}>
+              Upload
+            </Button>
+          </div>
         </div>
 
         <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-5 space-y-3">
-            <Input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Document title (e.g. Platinum Coverage Brochure)"
+            <Input value={(myProfileQuery.data as any)?.companyName ?? ""} disabled placeholder="Company name" />
+            <input
+              id="provider-doc-file"
+              type="file"
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                setFile(f);
+                if (!f) return;
+                if (!isAllowedLogoUpload(f)) return;
+                const url = URL.createObjectURL(f);
+                setPreviewUrl(url);
+              }}
+              className="block w-full text-sm text-muted-foreground"
+              accept="image/*"
               disabled={busy}
             />
+            <div className="text-xs text-muted-foreground">Max 2–3MB recommended.</div>
+          </div>
 
-              <select
-                value={productId}
-                onChange={(e) => setProductId(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
-                disabled={busy}
-              >
-                <option value="">Not linked to a product</option>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-
-              <input
-                id="provider-doc-file"
-                type="file"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                className="block w-full text-sm text-muted-foreground"
-                accept="application/pdf,image/*"
-                disabled={busy}
-              />
-            </div>
-
-            <div className="lg:col-span-7 rounded-xl border p-4">
-              <div className="font-semibold">Tips</div>
-              <div className="text-sm text-muted-foreground mt-1">Recommended compliance documents:</div>
-              <div className="mt-3 text-sm text-muted-foreground space-y-1">
-                <div>- Brochure / coverage summary (PDF)</div>
-                <div>- Exclusions & limitations (PDF)</div>
-                <div>- Claims instructions (PDF)</div>
-                <div>- Any required disclosures for your region (PDF)</div>
+          <div className="lg:col-span-7 rounded-xl border p-4">
+            <div className="font-semibold">Preview</div>
+            <div className="mt-3 flex items-center gap-4">
+              <div className="h-16 w-16 rounded-xl border bg-white overflow-hidden flex items-center justify-center">
+                {previewUrl ? (
+                  <img src={previewUrl} alt="Provider logo" className="h-full w-full object-contain" />
+                ) : (
+                  <div className="text-xs text-muted-foreground">No logo</div>
+                )}
               </div>
-              <div className="mt-4 text-sm text-muted-foreground">
-                Dealers will see documents that are linked to your products.
+              <div className="text-sm text-muted-foreground">
+                Your logo will appear in the dealer marketplace next to your provider name.
               </div>
             </div>
           </div>
         </div>
-
-      <div className="mt-10 rounded-2xl border bg-card shadow-card overflow-hidden">
-          <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap">
-            <div>
-              <div className="font-semibold">Your Documents</div>
-              <div className="text-sm text-muted-foreground mt-1">Uploads and linked product files.</div>
-            </div>
-            <div className="text-sm text-muted-foreground">{documents.length} total</div>
-          </div>
-
-          <div className="hidden md:grid grid-cols-12 gap-3 px-6 py-3 border-b text-xs text-muted-foreground">
-            <div className="col-span-4">Title</div>
-            <div className="col-span-3">Product</div>
-            <div className="col-span-2">File type</div>
-            <div className="col-span-2">Upload date</div>
-            <div className="col-span-1 text-right">Action</div>
-          </div>
-
-          <div className="divide-y">
-            {documents.map((d) => (
-              <div key={d.id} className="px-6 py-4">
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                  <div className="md:col-span-4">
-                    <div className="text-sm font-medium text-foreground">{d.title}</div>
-                    <div className="text-xs text-muted-foreground mt-1 truncate">{d.fileName}</div>
-                  </div>
-                  <div className="md:col-span-3 text-sm text-muted-foreground">
-                    {d.productId ? products.find((p) => p.id === d.productId)?.name ?? "Linked product" : "—"}
-                  </div>
-                  <div className="md:col-span-2 text-sm text-muted-foreground">{fileTypeLabel(d)}</div>
-                  <div className="md:col-span-2 text-xs text-muted-foreground">{formatDate(d.createdAt)}</div>
-                  <div className="md:col-span-1 flex md:justify-end">
-                    <Button size="sm" variant="outline" onClick={() => void onDownload(d)} disabled={busy}>
-                      View
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {documentsQuery.isLoading ? <div className="px-6 py-6 text-sm text-muted-foreground">Loading…</div> : null}
-            {documentsQuery.isError ? (
-              <div className="px-6 py-6 text-sm text-destructive">Failed to load documents.</div>
-            ) : null}
-            {!documentsQuery.isLoading && !documentsQuery.isError && documents.length === 0 ? (
-              <div className="px-6 py-10 text-sm text-muted-foreground">
-                No documents yet. Upload your first brochure or disclosure above.
-              </div>
-            ) : null}
-          </div>
-        </div>
+      </div>
     </PageShell>
   );
 }

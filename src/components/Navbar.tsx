@@ -96,7 +96,7 @@ export function Navbar() {
                 {user?.role === "PROVIDER" ? <NavLink to="/provider-contracts" label="Contracts" /> : null}
                 {user?.role === "PROVIDER" ? <NavLink to="/provider-remittances" label="Remittances" /> : null}
                 {user?.role === "PROVIDER" ? <NavLink to="/provider-products" label="Products" /> : null}
-                {user?.role === "PROVIDER" ? <NavLink to="/provider-documents" label="Documents" /> : null}
+                {user?.role === "PROVIDER" ? <NavLink to="/provider-documents" label="Logo" /> : null}
 
                 {user?.role === "ADMIN" ? <NavLink to="/admin-remittances" label="Remittances" /> : null}
                 {user?.role === "ADMIN" ? <NavLink to="/admin-support" label="Support Inbox" /> : null}

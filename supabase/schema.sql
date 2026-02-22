@@ -41,6 +41,9 @@ alter table public.profiles
 alter table public.profiles
   add column if not exists provider_company_id uuid;
 
+alter table public.profiles
+  add column if not exists provider_logo_url text;
+
 alter table public.profiles enable row level security;
 
 create or replace function public.current_role()

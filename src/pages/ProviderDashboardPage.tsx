@@ -249,7 +249,7 @@ export function ProviderDashboardPage() {
             <Link to="/provider-products">Products</Link>
           </Button>
           <Button variant="outline" asChild>
-            <Link to="/provider-documents">Documents</Link>
+            <Link to="/provider-documents">Logo</Link>
           </Button>
         </div>
       }
@@ -408,7 +408,7 @@ export function ProviderDashboardPage() {
                 1. Create at least one product (coverage, terms, pricing, eligibility) and publish it when ready.
               </div>
               <div>
-                2. Upload documents (brochures, disclosures) so dealers can review your terms.
+                2. Upload your company logo so dealers can identify your organization.
               </div>
               <div>
                 3. Keep your profile up to date so dealers can identify your organization.
@@ -441,13 +441,13 @@ export function ProviderDashboardPage() {
               ) : null}
 
               <div className="rounded-xl border p-4">
-                <div className="font-semibold">Add your documents</div>
+                <div className="font-semibold">Add your logo</div>
                 <div className="text-sm text-muted-foreground mt-1">
-                  Upload brochures and disclosures so dealers can understand coverage and exclusions.
+                  Upload a logo so dealers recognize your brand when browsing products.
                 </div>
                 <div className="mt-3">
                   <Button size="sm" variant="outline" asChild>
-                    <Link to="/provider-documents">Upload document</Link>
+                    <Link to="/provider-documents">Upload logo</Link>
                   </Button>
                 </div>
               </div>

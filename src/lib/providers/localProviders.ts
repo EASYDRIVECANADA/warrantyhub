@@ -9,6 +9,7 @@ type StoredProfile = {
   id: string;
   displayName?: string;
   companyName?: string;
+  logoUrl?: string;
 };
 
 type LocalUserRecord = {
@@ -80,7 +81,7 @@ function writeProfiles(items: StoredProfile[]) {
 }
 
 function toPublic(p: StoredProfile): ProviderPublic {
-  return { id: p.id, displayName: p.displayName, companyName: p.companyName };
+  return { id: p.id, displayName: p.displayName, companyName: p.companyName, logoUrl: p.logoUrl };
 }
 
 export const localProvidersApi: ProvidersApi = {
@@ -125,6 +126,14 @@ export const localProvidersApi: ProvidersApi = {
       id: uid,
       displayName: typeof patch.displayName === "string" ? patch.displayName : idx >= 0 ? items[idx]!.displayName : undefined,
       companyName: typeof patch.companyName === "string" ? patch.companyName : idx >= 0 ? items[idx]!.companyName : undefined,
+      logoUrl:
+        typeof patch.logoUrl === "string"
+          ? patch.logoUrl
+          : patch.logoUrl === null
+            ? undefined
+            : idx >= 0
+              ? items[idx]!.logoUrl
+              : undefined,
     };
 
     const updated = [...items];
