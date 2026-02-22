@@ -162,6 +162,19 @@ export function RootLayout() {
 
   const hideTopNavbar = isAuthLikeRoute;
 
+  const isAppRoute =
+    location.pathname.startsWith("/dealer-") ||
+    location.pathname.startsWith("/provider-") ||
+    location.pathname.startsWith("/admin-") ||
+    location.pathname.startsWith("/company-dashboard") ||
+    location.pathname.startsWith("/platform") ||
+    location.pathname.startsWith("/audit-logs") ||
+    location.pathname.startsWith("/support") ||
+    location.pathname === "/request-access" ||
+    location.pathname === "/profile";
+
+  const hidePublicNavbarWhileLoading = isAppRoute && isLoading && !user;
+
   const dealerAdminNavItems = [
     { to: "/dealer-admin", label: "Dashboard", icon: LayoutGrid, active: location.pathname === "/dealer-admin" },
     {
@@ -403,7 +416,7 @@ export function RootLayout() {
         </div>
       ) : (
         <>
-          {hideTopNavbar ? null : <Navbar />}
+          {hideTopNavbar || hidePublicNavbarWhileLoading ? null : <Navbar />}
           <main className={hideTopNavbar ? "" : "pt-16"}>
             {isLoading && !user ? <div style={{ padding: 24, color: "#6b7280" }}>Loading…</div> : null}
             <RouteErrorBoundary key={location.pathname}>

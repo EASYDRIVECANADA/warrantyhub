@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { Button } from "../components/ui/button";
@@ -72,6 +73,8 @@ function pricingOptionLabel(r: ProductPricing) {
 }
 
 export function DealerComparisonPage() {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const api = useMemo(() => getMarketplaceApi(), []);
   const providersApi = useMemo(() => getProvidersApi(), []);
   const productPricingApi = useMemo(() => getProductPricingApi(), []);
@@ -80,9 +83,9 @@ export function DealerComparisonPage() {
 
   const dealerId = (mode === "local" ? (user?.dealerId ?? user?.id ?? "") : user?.dealerId ?? "").trim();
   const { markupPct } = useDealerMarkupPct(dealerId);
-  const [vin, setVin] = useState("");
+  const [vin, setVin] = useState(() => (searchParams.get("vin") ?? ""));
   const [decoded, setDecoded] = useState<VinDecoded | null>(null);
-  const [mileageKm, setMileageKm] = useState("");
+  const [mileageKm, setMileageKm] = useState(() => (searchParams.get("mileageKm") ?? ""));
   const [vehicleClass] = useState("");
   const [decodeError, setDecodeError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -115,11 +118,29 @@ export function DealerComparisonPage() {
       setVin(d.vin);
       setDecodeError(null);
       setSelectedIds([]);
+
+      const next = new URLSearchParams(searchParams);
+      next.set("vin", d.vin);
+      setSearchParams(next, { replace: true });
     },
     onError: (err) => {
       setDecodeError(err instanceof Error ? err.message : "VIN decode failed");
     },
   });
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    const v = vin.trim();
+    const m = mileageKm.trim();
+
+    if (v) next.set("vin", v);
+    else next.delete("vin");
+
+    if (m) next.set("mileageKm", m);
+    else next.delete("mileageKm");
+
+    setSearchParams(next, { replace: true });
+  }, [mileageKm, searchParams, setSearchParams, vin]);
 
   const parsedVehicleYear = Number(decoded?.vehicleYear);
   const vehicleAgeYears = Number.isFinite(parsedVehicleYear) ? new Date().getFullYear() - parsedVehicleYear : undefined;
@@ -326,7 +347,11 @@ export function DealerComparisonPage() {
           variant="outline"
           type="button"
           onClick={() => {
-            window.location.assign("/dealer-marketplace");
+            const params = new URLSearchParams();
+            if (vin.trim()) params.set("vin", vin.trim());
+            if (mileageKm.trim()) params.set("mileageKm", mileageKm.trim());
+            const qs = params.toString();
+            navigate(`/dealer-marketplace${qs ? `?${qs}` : ""}`);
           }}
         >
           Back to Find Products

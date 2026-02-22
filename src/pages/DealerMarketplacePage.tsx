@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useMutation } from "@tanstack/react-query";
 
@@ -83,9 +83,11 @@ export function DealerMarketplacePage() {
   const { user } = useAuth();
   const mode = useMemo(() => getAppMode(), []);
 
-  const [vin, setVin] = useState("");
-  const [mileageKm, setMileageKm] = useState("");
-  const [vehicleClass, setVehicleClass] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [vin, setVin] = useState(() => (searchParams.get("vin") ?? ""));
+  const [mileageKm, setMileageKm] = useState(() => (searchParams.get("mileageKm") ?? ""));
+  const [vehicleClass, setVehicleClass] = useState(() => (searchParams.get("vehicleClass") ?? ""));
   const [decoded, setDecoded] = useState<Awaited<ReturnType<typeof decodeVin>> | null>(null);
   const [decodeError, setDecodeError] = useState<string | null>(null);
 
@@ -122,12 +124,34 @@ export function DealerMarketplacePage() {
       setDecoded(d);
       setVin(d.vin);
       setDecodeError(null);
+
+      const next = new URLSearchParams(searchParams);
+      next.set("vin", d.vin);
+      setSearchParams(next, { replace: true });
     },
     onError: (err) => {
       setDecoded(null);
       setDecodeError(err instanceof Error ? err.message : "VIN decode failed");
     },
   });
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    const v = vin.trim();
+    const m = mileageKm.trim();
+    const c = vehicleClass.trim();
+
+    if (v) next.set("vin", v);
+    else next.delete("vin");
+
+    if (m) next.set("mileageKm", m);
+    else next.delete("mileageKm");
+
+    if (c) next.set("vehicleClass", c);
+    else next.delete("vehicleClass");
+
+    setSearchParams(next, { replace: true });
+  }, [mileageKm, searchParams, setSearchParams, vehicleClass, vin]);
 
   const resetVinSearch = () => {
     setVin("");
@@ -145,6 +169,12 @@ export function DealerMarketplacePage() {
     setMinTermMonths("");
     setMinTermKm("");
     setMaxDeductible("");
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("vin");
+    next.delete("mileageKm");
+    next.delete("vehicleClass");
+    setSearchParams(next, { replace: true });
   };
 
   const productsQuery = useQuery({
@@ -339,12 +369,21 @@ export function DealerMarketplacePage() {
     return `/dealer-marketplace/products/${productId}${qs ? `?${qs}` : ""}`;
   };
 
+  const compareHref = (() => {
+    const params = new URLSearchParams();
+    if (vin.trim()) params.set("vin", vin.trim());
+    if (mileageKm.trim()) params.set("mileageKm", mileageKm.trim());
+    if (vehicleClass.trim()) params.set("vehicleClass", vehicleClass.trim());
+    const qs = params.toString();
+    return `/dealer-marketplace/compare${qs ? `?${qs}` : ""}`;
+  })();
+
   return (
     <PageShell
       title="Find Products"
       actions={
         <Button variant="outline" asChild>
-          <Link to="/dealer-marketplace/compare">Compare Plans</Link>
+          <Link to={compareHref}>Compare Plans</Link>
         </Button>
       }
     >
