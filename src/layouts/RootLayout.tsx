@@ -141,9 +141,18 @@ export function RootLayout() {
   }, [location.pathname, navigate, user]);
 
   useEffect(() => {
-    if (!user) return;
-    if (prevRoleRef.current === null) prevRoleRef.current = user.role;
-  }, [user]);
+    const id = window.setInterval(() => {
+      const target = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      const current = `${location.pathname}${location.search}${location.hash}`;
+      if (target !== current) {
+        navigate(target, { replace: true });
+      }
+    }, 200);
+
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [location.hash, location.pathname, location.search, navigate]);
 
   if (!isLoading && user?.role === "UNASSIGNED") {
     const path = location.pathname;

@@ -23,18 +23,6 @@ if (existingFavicon) {
   document.head.appendChild(link);
 }
 
-const origPushState = window.history.pushState;
-window.history.pushState = function (...args: Parameters<History["pushState"]>) {
-  origPushState.apply(window.history, args as any);
-  window.dispatchEvent(new PopStateEvent("popstate"));
-} as any;
-
-const origReplaceState = window.history.replaceState;
-window.history.replaceState = function (...args: Parameters<History["replaceState"]>) {
-  origReplaceState.apply(window.history, args as any);
-  window.dispatchEvent(new PopStateEvent("popstate"));
-} as any;
-
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
