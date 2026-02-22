@@ -83,7 +83,7 @@ export function DealerMarketplacePage() {
   const { user } = useAuth();
   const mode = useMemo(() => getAppMode(), []);
 
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
 
   const [vin, setVin] = useState(() => (searchParams.get("vin") ?? ""));
   const [mileageKm, setMileageKm] = useState(() => (searchParams.get("mileageKm") ?? ""));
@@ -124,36 +124,12 @@ export function DealerMarketplacePage() {
       setDecoded(d);
       setVin(d.vin);
       setDecodeError(null);
-
-      const next = new URLSearchParams(searchParams);
-      next.set("vin", d.vin);
-      setSearchParams(next, { replace: true });
     },
     onError: (err) => {
       setDecoded(null);
       setDecodeError(err instanceof Error ? err.message : "VIN decode failed");
     },
   });
-
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    const v = vin.trim();
-    const m = mileageKm.trim();
-    const c = vehicleClass.trim();
-
-    if (v) next.set("vin", v);
-    else next.delete("vin");
-
-    if (m) next.set("mileageKm", m);
-    else next.delete("mileageKm");
-
-    if (c) next.set("vehicleClass", c);
-    else next.delete("vehicleClass");
-
-    if (next.toString() !== searchParams.toString()) {
-      setSearchParams(next, { replace: true });
-    }
-  }, [mileageKm, searchParams, setSearchParams, vehicleClass, vin]);
 
   useEffect(() => {
     if (decoded) return;
@@ -178,12 +154,6 @@ export function DealerMarketplacePage() {
     setMinTermMonths("");
     setMinTermKm("");
     setMaxDeductible("");
-
-    const next = new URLSearchParams(searchParams);
-    next.delete("vin");
-    next.delete("mileageKm");
-    next.delete("vehicleClass");
-    setSearchParams(next, { replace: true });
   };
 
   const productsQuery = useQuery({

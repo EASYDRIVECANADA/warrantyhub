@@ -73,7 +73,7 @@ function pricingOptionLabel(r: ProductPricing) {
 }
 
 export function DealerComparisonPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const api = useMemo(() => getMarketplaceApi(), []);
   const providersApi = useMemo(() => getProvidersApi(), []);
   const productPricingApi = useMemo(() => getProductPricingApi(), []);
@@ -117,31 +117,11 @@ export function DealerComparisonPage() {
       setVin(d.vin);
       setDecodeError(null);
       setSelectedIds([]);
-
-      const next = new URLSearchParams(searchParams);
-      next.set("vin", d.vin);
-      setSearchParams(next, { replace: true });
     },
     onError: (err) => {
       setDecodeError(err instanceof Error ? err.message : "VIN decode failed");
     },
   });
-
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    const v = vin.trim();
-    const m = mileageKm.trim();
-
-    if (v) next.set("vin", v);
-    else next.delete("vin");
-
-    if (m) next.set("mileageKm", m);
-    else next.delete("mileageKm");
-
-    if (next.toString() !== searchParams.toString()) {
-      setSearchParams(next, { replace: true });
-    }
-  }, [mileageKm, searchParams, setSearchParams, vin]);
 
   useEffect(() => {
     if (decoded) return;

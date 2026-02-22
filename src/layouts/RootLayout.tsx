@@ -140,20 +140,6 @@ export function RootLayout() {
     navigate(dashboardPath, { replace: true });
   }, [location.pathname, navigate, user]);
 
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      const target = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-      const current = `${location.pathname}${location.search}${location.hash}`;
-      if (target !== current) {
-        navigate(target, { replace: true });
-      }
-    }, 200);
-
-    return () => {
-      window.clearInterval(id);
-    };
-  }, [location.hash, location.pathname, location.search, navigate]);
-
   if (!isLoading && user?.role === "UNASSIGNED") {
     const path = location.pathname;
     const allowed = path === "/request-access" || path === "/profile" || path === "/dealer-employee-signup";
