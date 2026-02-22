@@ -139,8 +139,17 @@ export function DealerComparisonPage() {
     if (m) next.set("mileageKm", m);
     else next.delete("mileageKm");
 
-    setSearchParams(next, { replace: true });
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
+    }
   }, [mileageKm, searchParams, setSearchParams, vin]);
+
+  useEffect(() => {
+    if (decoded) return;
+    if (!vin.trim()) return;
+    if (decodeMutation.isPending) return;
+    void decodeMutation.mutateAsync(vin.trim());
+  }, [decoded, decodeMutation, vin]);
 
   const parsedVehicleYear = Number(decoded?.vehicleYear);
   const vehicleAgeYears = Number.isFinite(parsedVehicleYear) ? new Date().getFullYear() - parsedVehicleYear : undefined;

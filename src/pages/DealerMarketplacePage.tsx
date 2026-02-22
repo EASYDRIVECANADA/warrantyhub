@@ -150,8 +150,17 @@ export function DealerMarketplacePage() {
     if (c) next.set("vehicleClass", c);
     else next.delete("vehicleClass");
 
-    setSearchParams(next, { replace: true });
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
+    }
   }, [mileageKm, searchParams, setSearchParams, vehicleClass, vin]);
+
+  useEffect(() => {
+    if (decoded) return;
+    if (!vin.trim()) return;
+    if (decodeMutation.isPending) return;
+    void decodeMutation.mutateAsync(vin.trim());
+  }, [decoded, decodeMutation, vin]);
 
   const resetVinSearch = () => {
     setVin("");
