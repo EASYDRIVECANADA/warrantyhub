@@ -351,19 +351,18 @@ export function DealerComparisonPage() {
     <PageShell
       title="Compare Plans"
       actions={
-        <Button variant="outline" asChild>
-          <Link
-            to={(() => {
-              const params = new URLSearchParams();
-              if (vin.trim()) params.set("vin", vin.trim());
-              if (mileageKm.trim()) params.set("mileageKm", mileageKm.trim());
-              const qs = params.toString();
-              return `/dealer-marketplace${qs ? `?${qs}` : ""}`;
-            })()}
-          >
-            Back to Find Products
-          </Link>
-        </Button>
+        <Link
+          className="inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+          to={(() => {
+            const params = new URLSearchParams();
+            if (vin.trim()) params.set("vin", vin.trim());
+            if (mileageKm.trim()) params.set("mileageKm", mileageKm.trim());
+            const qs = params.toString();
+            return `/dealer-marketplace${qs ? `?${qs}` : ""}`;
+          })()}
+        >
+          Back to Find Products
+        </Link>
       }
     >
       <div className="relative">

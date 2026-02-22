@@ -2,7 +2,7 @@ import { Component, useEffect, useRef, useState } from "react";
 import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { Navbar } from "../components/Navbar";
-import { Button } from "../components/ui/button";
+import { Button, buttonVariants } from "../components/ui/button";
 import { SupportWidget } from "../components/SupportWidget";
 import { BRAND } from "../lib/brand";
 import type { Role } from "../lib/auth/types";
@@ -225,56 +225,46 @@ export function RootLayout() {
               <div className={`px-2 py-3 flex-1 ${isDealerAdminSidebarCollapsed ? "" : ""}`}>
                 <div className="space-y-1">
                   {dealerAdminNavItems.map((item) => (
-                    <Button
+                    <Link
                       key={item.to}
-                      variant="ghost"
-                      className={
-                        `w-full ${isDealerAdminSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium ` +
-                        (item.active
+                      to={item.to}
+                      onClick={() => setIsDealerAdminMobileNavOpen(false)}
+                      className={cn(
+                        buttonVariants({ variant: "ghost" }),
+                        `w-full ${isDealerAdminSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium`,
+                        item.active
                           ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
-                          : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10")
-                      }
-                      asChild
+                          : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10",
+                      )}
                     >
-                      <Link
-                        to={item.to}
-                        onClick={() => setIsDealerAdminMobileNavOpen(false)}
-                        className={isDealerAdminSidebarCollapsed ? "justify-center" : "justify-start"}
-                      >
-                        <span className="flex items-center gap-2" title={isDealerAdminSidebarCollapsed ? item.label : undefined}>
-                          <item.icon className="h-4 w-4" />
-                          {!isDealerAdminSidebarCollapsed ? <span>{item.label}</span> : null}
-                        </span>
-                      </Link>
-                    </Button>
+                      <span className="flex items-center gap-2" title={isDealerAdminSidebarCollapsed ? item.label : undefined}>
+                        <item.icon className="h-4 w-4" />
+                        {!isDealerAdminSidebarCollapsed ? <span>{item.label}</span> : null}
+                      </span>
+                    </Link>
                   ))}
                 </div>
 
                 <div className="pt-3 mt-3 border-t" />
                 <div className="space-y-1">
                   {dealerAdminSecondaryItems.map((item) => (
-                    <Button
+                    <Link
                       key={item.to}
-                      variant="ghost"
-                      className={
-                        `w-full ${isDealerAdminSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium ` +
-                        (item.active
+                      to={item.to}
+                      onClick={() => setIsDealerAdminMobileNavOpen(false)}
+                      className={cn(
+                        buttonVariants({ variant: "ghost" }),
+                        `w-full ${isDealerAdminSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium`,
+                        item.active
                           ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
-                          : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10")
-                      }
-                      asChild
+                          : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10",
+                      )}
                     >
-                      <Link
-                        to={item.to}
-                        onClick={() => setIsDealerAdminMobileNavOpen(false)}
-                        className={isDealerAdminSidebarCollapsed ? "justify-center" : "justify-start"}
-                      >
-                        <span className="flex items-center gap-2" title={isDealerAdminSidebarCollapsed ? item.label : undefined}>
-                          <item.icon className="h-4 w-4" />
-                          {!isDealerAdminSidebarCollapsed ? <span>{item.label}</span> : null}
-                        </span>
-                      </Link>
-                    </Button>
+                      <span className="flex items-center gap-2" title={isDealerAdminSidebarCollapsed ? item.label : undefined}>
+                        <item.icon className="h-4 w-4" />
+                        {!isDealerAdminSidebarCollapsed ? <span>{item.label}</span> : null}
+                      </span>
+                    </Link>
                   ))}
 
                   <Button
@@ -349,48 +339,46 @@ export function RootLayout() {
                   <div className="p-3 flex-1">
                     <div className="space-y-1">
                       {dealerAdminNavItems.map((item) => (
-                        <Button
+                        <Link
                           key={item.to}
-                          variant="ghost"
-                          className={
-                            `w-full justify-start h-9 text-[13px] font-medium ` +
-                            (item.active
+                          to={item.to}
+                          onClick={() => setIsDealerAdminMobileNavOpen(false)}
+                          className={cn(
+                            buttonVariants({ variant: "ghost" }),
+                            "w-full justify-start h-9 text-[13px] font-medium",
+                            item.active
                               ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
-                              : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10")
-                          }
-                          asChild
+                              : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10",
+                          )}
                         >
-                          <Link to={item.to} onClick={() => setIsDealerAdminMobileNavOpen(false)}>
-                            <span className="flex items-center gap-2">
-                              <item.icon className="h-4 w-4" />
-                              <span>{item.label}</span>
-                            </span>
-                          </Link>
-                        </Button>
+                          <span className="flex items-center gap-2">
+                            <item.icon className="h-4 w-4" />
+                            <span>{item.label}</span>
+                          </span>
+                        </Link>
                       ))}
                     </div>
 
                     <div className="pt-3 mt-3 border-t" />
                     <div className="space-y-1">
                       {dealerAdminSecondaryItems.map((item) => (
-                        <Button
+                        <Link
                           key={item.to}
-                          variant="ghost"
-                          className={
-                            `w-full justify-start h-9 text-[13px] font-medium ` +
-                            (item.active
+                          to={item.to}
+                          onClick={() => setIsDealerAdminMobileNavOpen(false)}
+                          className={cn(
+                            buttonVariants({ variant: "ghost" }),
+                            "w-full justify-start h-9 text-[13px] font-medium",
+                            item.active
                               ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
-                              : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10")
-                          }
-                          asChild
+                              : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10",
+                          )}
                         >
-                          <Link to={item.to} onClick={() => setIsDealerAdminMobileNavOpen(false)}>
-                            <span className="flex items-center gap-2">
-                              <item.icon className="h-4 w-4" />
-                              <span>{item.label}</span>
-                            </span>
-                          </Link>
-                        </Button>
+                          <span className="flex items-center gap-2">
+                            <item.icon className="h-4 w-4" />
+                            <span>{item.label}</span>
+                          </span>
+                        </Link>
                       ))}
 
                       <Button
