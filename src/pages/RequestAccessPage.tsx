@@ -350,12 +350,12 @@ export function RequestAccessPage() {
     })();
   }, [autoRequested, loadingMyRequest, myRequest, signupIntent, user]);
 
-  const isPendingView = !loadingMyRequest && myRequest?.status === "PENDING";
+  const isPendingView = myRequest?.status === "PENDING" || loadingMyRequest;
   const isApprovedView = !loadingMyRequest && myRequest?.status === "APPROVED";
   const isRejectedView = !loadingMyRequest && myRequest?.status === "REJECTED";
 
-  const submittedAtLabel = myRequest?.createdAt ? new Date(myRequest.createdAt).toLocaleString() : "";
-  const requestTypeLabel = myRequest?.requestType === "PROVIDER" ? "Provider" : "Dealer";
+  const submittedAtLabel = myRequest?.createdAt ? new Date(myRequest.createdAt).toLocaleString() : loadingMyRequest ? "Loading…" : "";
+  const requestTypeLabel = myRequest?.requestType === "PROVIDER" ? "Provider" : loadingMyRequest ? "Loading…" : "Dealer";
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -391,7 +391,7 @@ export function RequestAccessPage() {
           </div>
         ) : null}
 
-          {loadingMyRequest ? (
+          {loadingMyRequest && !isPendingView ? (
             <div className="mt-6 rounded-lg border bg-card p-4 text-sm">Loading request status…</div>
           ) : null}
 
@@ -464,7 +464,7 @@ export function RequestAccessPage() {
                   <div className="px-5 py-4 text-sm">
                     <div className="flex items-center justify-between gap-3 py-2 border-b">
                       <div className="text-muted-foreground">Company</div>
-                      <div className="font-medium text-right break-words text-slate-900">{myRequest?.company}</div>
+                      <div className="font-medium text-right break-words text-slate-900">{myRequest?.company ?? (loadingMyRequest ? "Loading…" : "")}</div>
                     </div>
                     <div className="flex items-center justify-between gap-3 py-2 border-b">
                       <div className="text-muted-foreground">Request type</div>
