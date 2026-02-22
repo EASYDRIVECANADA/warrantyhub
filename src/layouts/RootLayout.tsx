@@ -223,7 +223,13 @@ export function RootLayout() {
                     <Link
                       key={item.to}
                       to={item.to}
-                      onClick={() => setIsDealerAdminMobileNavOpen(false)}
+                      onClick={(e) => {
+                        setIsDealerAdminMobileNavOpen(false);
+                        if (location.pathname.startsWith("/dealer-marketplace/compare")) {
+                          e.preventDefault();
+                          window.location.assign(item.to);
+                        }
+                      }}
                       className={cn(
                         buttonVariants({ variant: "ghost" }),
                         `w-full ${isDealerAdminSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium`,
@@ -246,7 +252,13 @@ export function RootLayout() {
                     <Link
                       key={item.to}
                       to={item.to}
-                      onClick={() => setIsDealerAdminMobileNavOpen(false)}
+                      onClick={(e) => {
+                        setIsDealerAdminMobileNavOpen(false);
+                        if (location.pathname.startsWith("/dealer-marketplace/compare")) {
+                          e.preventDefault();
+                          window.location.assign(item.to);
+                        }
+                      }}
                       className={cn(
                         buttonVariants({ variant: "ghost" }),
                         `w-full ${isDealerAdminSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium`,
@@ -337,7 +349,13 @@ export function RootLayout() {
                         <Link
                           key={item.to}
                           to={item.to}
-                          onClick={() => setIsDealerAdminMobileNavOpen(false)}
+                          onClick={(e) => {
+                            setIsDealerAdminMobileNavOpen(false);
+                            if (location.pathname.startsWith("/dealer-marketplace/compare")) {
+                              e.preventDefault();
+                              window.location.assign(item.to);
+                            }
+                          }}
                           className={cn(
                             buttonVariants({ variant: "ghost" }),
                             "w-full justify-start h-9 text-[13px] font-medium",
@@ -360,7 +378,13 @@ export function RootLayout() {
                         <Link
                           key={item.to}
                           to={item.to}
-                          onClick={() => setIsDealerAdminMobileNavOpen(false)}
+                          onClick={(e) => {
+                            setIsDealerAdminMobileNavOpen(false);
+                            if (location.pathname.startsWith("/dealer-marketplace/compare")) {
+                              e.preventDefault();
+                              window.location.assign(item.to);
+                            }
+                          }}
                           className={cn(
                             buttonVariants({ variant: "ghost" }),
                             "w-full justify-start h-9 text-[13px] font-medium",

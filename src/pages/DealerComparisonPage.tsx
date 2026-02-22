@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { Button } from "../components/ui/button";
@@ -331,18 +331,19 @@ export function DealerComparisonPage() {
     <PageShell
       title="Compare Plans"
       actions={
-        <Link
-          className="inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
-          to={(() => {
+        <Button
+          variant="outline"
+          type="button"
+          onClick={() => {
             const params = new URLSearchParams();
             if (vin.trim()) params.set("vin", vin.trim());
             if (mileageKm.trim()) params.set("mileageKm", mileageKm.trim());
             const qs = params.toString();
-            return `/dealer-marketplace${qs ? `?${qs}` : ""}`;
-          })()}
+            window.location.assign(`/dealer-marketplace${qs ? `?${qs}` : ""}`);
+          }}
         >
           Back to Find Products
-        </Link>
+        </Button>
       }
     >
       <div className="relative">
