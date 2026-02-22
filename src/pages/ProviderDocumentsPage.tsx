@@ -9,6 +9,7 @@ import { getProvidersApi } from "../lib/providers/providers";
 import { alertMissing } from "../lib/utils";
 import { getAppMode } from "../lib/runtime";
 import { getSupabaseClient } from "../lib/supabase/client";
+import { saveLocalProviderLogo } from "../lib/providers/localProviders";
 
 function isAllowedLogoUpload(file: File) {
   if (file.type.startsWith("image/")) return true;
@@ -19,15 +20,6 @@ function isAllowedLogoUpload(file: File) {
 
 function sanitizeFilename(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_");
-}
-
-async function fileToDataUrl(file: File): Promise<string> {
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.readAsDataURL(file);
-  });
 }
 
 export function ProviderDocumentsPage() {
@@ -47,8 +39,11 @@ export function ProviderDocumentsPage() {
   const uploadMutation = useMutation({
     mutationFn: async (input: { file: File }) => {
       if (mode === "local") {
-        const url = await fileToDataUrl(input.file);
-        await providersApi.updateMyProfile({ logoUrl: url });
+        const profile = await providersApi.getMyProfile();
+        const pid = (profile?.id ?? "").trim();
+        if (!pid) throw new Error("Not authenticated");
+        const logoKeyUrl = await saveLocalProviderLogo({ providerId: pid, file: input.file });
+        await providersApi.updateMyProfile({ logoUrl: logoKeyUrl });
         return;
       }
 

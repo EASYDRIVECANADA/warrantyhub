@@ -224,7 +224,7 @@ export function RootLayout() {
                       type="button"
                       onClick={() => {
                         setIsDealerAdminMobileNavOpen(false);
-                        window.location.assign(item.to);
+                        navigate(item.to);
                       }}
                     >
                       <span className="flex items-center gap-2" title={isDealerAdminSidebarCollapsed ? item.label : undefined}>
@@ -250,7 +250,7 @@ export function RootLayout() {
                       type="button"
                       onClick={() => {
                         setIsDealerAdminMobileNavOpen(false);
-                        window.location.assign(item.to);
+                        navigate(item.to);
                       }}
                     >
                       <span className="flex items-center gap-2" title={isDealerAdminSidebarCollapsed ? item.label : undefined}>
@@ -344,7 +344,7 @@ export function RootLayout() {
                           type="button"
                           onClick={() => {
                             setIsDealerAdminMobileNavOpen(false);
-                            window.location.assign(item.to);
+                            navigate(item.to);
                           }}
                         >
                           <span className="flex items-center gap-2">
@@ -370,7 +370,7 @@ export function RootLayout() {
                           type="button"
                           onClick={() => {
                             setIsDealerAdminMobileNavOpen(false);
-                            window.location.assign(item.to);
+                            navigate(item.to);
                           }}
                         >
                           <span className="flex items-center gap-2">

@@ -8,7 +8,7 @@ import { PageShell } from "../components/PageShell";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
 import { getProductPricingApi } from "../lib/productPricing/productPricing";
 import { getProductAddonsApi } from "../lib/productAddons/productAddons";
-import { defaultPricingRow } from "../lib/productPricing/defaultRow";
+import { bestPricingRowForVehicleMileage, defaultPricingRow } from "../lib/productPricing/defaultRow";
 import { isPricingEligibleForVehicle } from "../lib/productPricing/eligibility";
 import type { ProductPricing } from "../lib/productPricing/types";
 import type { Product, ProductType } from "../lib/products/types";
@@ -92,6 +92,8 @@ export function DealerMarketplaceProductDetailPage() {
 
   const provider = ((providersQuery.data ?? []) as ProviderPublic[])[0];
 
+  const providerName = product ? providerDisplayName(provider, product.providerId) : "";
+
   const pricingQuery = useQuery({
     queryKey: ["marketplace-product-pricing", productId],
     enabled: !!productId,
@@ -113,7 +115,7 @@ export function DealerMarketplaceProductDetailPage() {
   const eligiblePrimaryRow = useMemo(() => {
     if (typeof mileageKm !== "number") return null;
     const eligible = pricingRows.filter((r) => isPricingEligibleForVehicle({ pricing: r, vehicleMileageKm: mileageKm, vehicleClass }));
-    return defaultPricingRow(eligible);
+    return bestPricingRowForVehicleMileage(eligible);
   }, [mileageKm, pricingRows, vehicleClass]);
 
   const primaryRow = eligiblePrimaryRow ?? defaultRow;
@@ -172,7 +174,17 @@ export function DealerMarketplaceProductDetailPage() {
   return (
     <PageShell
       title={product ? product.name : "Product"}
-      subtitle={product ? `${providerDisplayName(provider, product.providerId)} • ${productTypeLabel(product.productType)}` : ""}
+      subtitleAsChild
+      subtitle={
+        product ? (
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="h-16 w-16 md:h-20 md:w-20 rounded-2xl border bg-white/70 overflow-hidden flex items-center justify-center">
+              {provider?.logoUrl ? <img src={provider.logoUrl} alt="" className="h-full w-full object-contain" /> : null}
+            </div>
+            <div className="text-sm text-muted-foreground">{providerName} • {productTypeLabel(product.productType)}</div>
+          </div>
+        ) : null
+      }
       actions={
         <div className="flex gap-2 flex-wrap">
           <Button

@@ -13,7 +13,7 @@ import type { MarketplaceProduct } from "../lib/marketplace/api";
 import { getProductPricingApi } from "../lib/productPricing/productPricing";
 import type { ProductPricing } from "../lib/productPricing/types";
 import { isPricingEligibleForVehicleWithConstraints } from "../lib/productPricing/eligibility";
-import { defaultPricingRow } from "../lib/productPricing/defaultRow";
+import { bestPricingRowForVehicleMileage } from "../lib/productPricing/defaultRow";
 import type { Product, ProductType } from "../lib/products/types";
 import { getProvidersApi } from "../lib/providers/providers";
 import type { ProviderPublic } from "../lib/providers/types";
@@ -270,7 +270,7 @@ export function DealerMarketplacePage() {
               maxDeductibleCents: maxDeductibleCents ?? null,
             }),
           );
-          const primary = defaultPricingRow(eligibleRows);
+          const primary = bestPricingRowForVehicleMileage(eligibleRows);
           return [pid, primary] as const;
         }),
       );
