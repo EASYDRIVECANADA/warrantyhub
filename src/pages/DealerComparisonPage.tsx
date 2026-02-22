@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { Button } from "../components/ui/button";
@@ -73,7 +73,6 @@ function pricingOptionLabel(r: ProductPricing) {
 }
 
 export function DealerComparisonPage() {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const api = useMemo(() => getMarketplaceApi(), []);
   const providersApi = useMemo(() => getProvidersApi(), []);
@@ -352,18 +351,18 @@ export function DealerComparisonPage() {
     <PageShell
       title="Compare Plans"
       actions={
-        <Button
-          variant="outline"
-          type="button"
-          onClick={() => {
-            const params = new URLSearchParams();
-            if (vin.trim()) params.set("vin", vin.trim());
-            if (mileageKm.trim()) params.set("mileageKm", mileageKm.trim());
-            const qs = params.toString();
-            navigate(`/dealer-marketplace${qs ? `?${qs}` : ""}`);
-          }}
-        >
-          Back to Find Products
+        <Button variant="outline" asChild>
+          <Link
+            to={(() => {
+              const params = new URLSearchParams();
+              if (vin.trim()) params.set("vin", vin.trim());
+              if (mileageKm.trim()) params.set("mileageKm", mileageKm.trim());
+              const qs = params.toString();
+              return `/dealer-marketplace${qs ? `?${qs}` : ""}`;
+            })()}
+          >
+            Back to Find Products
+          </Link>
         </Button>
       }
     >

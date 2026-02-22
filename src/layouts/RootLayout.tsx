@@ -234,16 +234,18 @@ export function RootLayout() {
                           ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
                           : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10")
                       }
-                      type="button"
-                      onClick={() => {
-                        setIsDealerAdminMobileNavOpen(false);
-                        navigate(item.to);
-                      }}
+                      asChild
                     >
-                      <span className="flex items-center gap-2" title={isDealerAdminSidebarCollapsed ? item.label : undefined}>
-                        <item.icon className="h-4 w-4" />
-                        {!isDealerAdminSidebarCollapsed ? <span>{item.label}</span> : null}
-                      </span>
+                      <Link
+                        to={item.to}
+                        onClick={() => setIsDealerAdminMobileNavOpen(false)}
+                        className={isDealerAdminSidebarCollapsed ? "justify-center" : "justify-start"}
+                      >
+                        <span className="flex items-center gap-2" title={isDealerAdminSidebarCollapsed ? item.label : undefined}>
+                          <item.icon className="h-4 w-4" />
+                          {!isDealerAdminSidebarCollapsed ? <span>{item.label}</span> : null}
+                        </span>
+                      </Link>
                     </Button>
                   ))}
                 </div>
@@ -260,16 +262,18 @@ export function RootLayout() {
                           ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
                           : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10")
                       }
-                      type="button"
-                      onClick={() => {
-                        setIsDealerAdminMobileNavOpen(false);
-                        navigate(item.to);
-                      }}
+                      asChild
                     >
-                      <span className="flex items-center gap-2" title={isDealerAdminSidebarCollapsed ? item.label : undefined}>
-                        <item.icon className="h-4 w-4" />
-                        {!isDealerAdminSidebarCollapsed ? <span>{item.label}</span> : null}
-                      </span>
+                      <Link
+                        to={item.to}
+                        onClick={() => setIsDealerAdminMobileNavOpen(false)}
+                        className={isDealerAdminSidebarCollapsed ? "justify-center" : "justify-start"}
+                      >
+                        <span className="flex items-center gap-2" title={isDealerAdminSidebarCollapsed ? item.label : undefined}>
+                          <item.icon className="h-4 w-4" />
+                          {!isDealerAdminSidebarCollapsed ? <span>{item.label}</span> : null}
+                        </span>
+                      </Link>
                     </Button>
                   ))}
 
@@ -354,16 +358,14 @@ export function RootLayout() {
                               ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
                               : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10")
                           }
-                          type="button"
-                          onClick={() => {
-                            setIsDealerAdminMobileNavOpen(false);
-                            navigate(item.to);
-                          }}
+                          asChild
                         >
-                          <span className="flex items-center gap-2">
-                            <item.icon className="h-4 w-4" />
-                            <span>{item.label}</span>
-                          </span>
+                          <Link to={item.to} onClick={() => setIsDealerAdminMobileNavOpen(false)}>
+                            <span className="flex items-center gap-2">
+                              <item.icon className="h-4 w-4" />
+                              <span>{item.label}</span>
+                            </span>
+                          </Link>
                         </Button>
                       ))}
                     </div>
@@ -380,16 +382,14 @@ export function RootLayout() {
                               ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
                               : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10")
                           }
-                          type="button"
-                          onClick={() => {
-                            setIsDealerAdminMobileNavOpen(false);
-                            navigate(item.to);
-                          }}
+                          asChild
                         >
-                          <span className="flex items-center gap-2">
-                            <item.icon className="h-4 w-4" />
-                            <span>{item.label}</span>
-                          </span>
+                          <Link to={item.to} onClick={() => setIsDealerAdminMobileNavOpen(false)}>
+                            <span className="flex items-center gap-2">
+                              <item.icon className="h-4 w-4" />
+                              <span>{item.label}</span>
+                            </span>
+                          </Link>
                         </Button>
                       ))}
 
