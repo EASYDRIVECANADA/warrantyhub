@@ -179,8 +179,7 @@ type PendingAddon = {
   key: string;
   name: string;
   description: string;
-  retailPrice: string;
-  providerCost: string;
+  price: string;
   pricingType: "FIXED" | "PER_TERM" | "PER_CLAIM";
 };
 
@@ -339,8 +338,7 @@ export function ProviderProductsPage() {
     name: string;
     description: string;
     pricingType: "FIXED" | "PER_TERM" | "PER_CLAIM";
-    retailPrice: string;
-    providerCost: string;
+    price: string;
     appliesToAllPricingRows: boolean;
     applicablePricingRowIds: string[];
     active: boolean;
@@ -348,8 +346,7 @@ export function ProviderProductsPage() {
     name: "",
     description: "",
     pricingType: "FIXED",
-    retailPrice: "",
-    providerCost: "",
+    price: "",
     appliesToAllPricingRows: true,
     applicablePricingRowIds: [],
     active: true,
@@ -361,8 +358,7 @@ export function ProviderProductsPage() {
       name: "",
       description: "",
       pricingType: "FIXED",
-      retailPrice: "",
-      providerCost: "",
+      price: "",
       appliesToAllPricingRows: true,
       applicablePricingRowIds: [],
       active: true,
@@ -380,11 +376,8 @@ export function ProviderProductsPage() {
 
       const pricingType = addonEditor.pricingType;
 
-      const retail = dollarsToCents(addonEditor.retailPrice);
-      if (typeof retail !== "number" || retail <= 0) throw new Error("Add-on retail price is required");
-
-      const cost = dollarsToCents(addonEditor.providerCost);
-      if (typeof cost !== "number" || cost <= 0) throw new Error("Add-on provider cost is required");
+      const price = dollarsToCents(addonEditor.price);
+      if (typeof price !== "number" || price <= 0) throw new Error("Add-on price is required");
 
       if (addonEditor.id) {
         return addonsApi.update(addonEditor.id, {
@@ -393,10 +386,10 @@ export function ProviderProductsPage() {
           pricingType,
           appliesToAllPricingRows: addonEditor.appliesToAllPricingRows,
           applicablePricingRowIds: addonEditor.appliesToAllPricingRows ? [] : addonEditor.applicablePricingRowIds,
-          basePriceCents: retail,
+          basePriceCents: price,
           minPriceCents: undefined,
           maxPriceCents: undefined,
-          dealerCostCents: cost,
+          dealerCostCents: price,
           active: addonEditor.active,
         });
       }
@@ -408,10 +401,10 @@ export function ProviderProductsPage() {
         pricingType,
         appliesToAllPricingRows: addonEditor.appliesToAllPricingRows,
         applicablePricingRowIds: addonEditor.appliesToAllPricingRows ? [] : addonEditor.applicablePricingRowIds,
-        basePriceCents: retail,
+        basePriceCents: price,
         minPriceCents: undefined,
         maxPriceCents: undefined,
-        dealerCostCents: cost,
+        dealerCostCents: price,
         active: true,
       });
     },
@@ -420,8 +413,7 @@ export function ProviderProductsPage() {
         name: "",
         description: "",
         pricingType: "FIXED",
-        retailPrice: "",
-        providerCost: "",
+        price: "",
         appliesToAllPricingRows: true,
         applicablePricingRowIds: [],
         active: true,
@@ -439,8 +431,7 @@ export function ProviderProductsPage() {
         name: "",
         description: "",
         pricingType: "FIXED",
-        retailPrice: "",
-        providerCost: "",
+        price: "",
         appliesToAllPricingRows: true,
         applicablePricingRowIds: [],
         active: true,
@@ -949,20 +940,18 @@ export function ProviderProductsPage() {
           const name = a.name.trim();
           if (!name) continue;
 
-          const retail = dollarsToCents(a.retailPrice);
-          const cost = dollarsToCents(a.providerCost);
-          if (typeof retail !== "number" || retail <= 0) continue;
-          if (typeof cost !== "number" || cost <= 0) continue;
+          const price = dollarsToCents(a.price);
+          if (typeof price !== "number" || price <= 0) continue;
 
           await addonsApi.create({
             productId,
             name,
             description: a.description.trim() || undefined,
             pricingType: a.pricingType,
-            basePriceCents: retail,
+            basePriceCents: price,
             minPriceCents: undefined,
             maxPriceCents: undefined,
-            dealerCostCents: cost,
+            dealerCostCents: price,
             active: true,
           });
         }
@@ -1324,14 +1313,12 @@ export function ProviderProductsPage() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => {
-                                  const costCents = typeof a.dealerCostCents === "number" ? a.dealerCostCents : a.basePriceCents;
                                   setAddonEditor({
                                     id: a.id,
                                     name: a.name,
                                     description: a.description ?? "",
                                     pricingType: ((a as any).pricingType ?? "FIXED") as any,
-                                    retailPrice: centsToDollars(a.basePriceCents),
-                                    providerCost: centsToDollars(costCents),
+                                    price: centsToDollars(typeof a.dealerCostCents === "number" ? a.dealerCostCents : a.basePriceCents),
                                     appliesToAllPricingRows: typeof (a as any).appliesToAllPricingRows === "boolean" ? Boolean((a as any).appliesToAllPricingRows) : true,
                                     applicablePricingRowIds: Array.isArray((a as any).applicablePricingRowIds)
                                       ? ((a as any).applicablePricingRowIds as unknown[]).filter((x) => typeof x === "string")
@@ -1416,20 +1403,11 @@ export function ProviderProductsPage() {
                             </select>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               <Input
-                                value={row.retailPrice}
+                                value={row.price}
                                 onChange={(e) =>
-                                  setPendingAddons((s) => s.map((x) => (x.key === row.key ? { ...x, retailPrice: sanitizeMoney(e.target.value) } : x)))
+                                  setPendingAddons((s) => s.map((x) => (x.key === row.key ? { ...x, price: sanitizeMoney(e.target.value) } : x)))
                                 }
-                                placeholder="Retail price"
-                                inputMode="decimal"
-                                disabled={busy}
-                              />
-                              <Input
-                                value={row.providerCost}
-                                onChange={(e) =>
-                                  setPendingAddons((s) => s.map((x) => (x.key === row.key ? { ...x, providerCost: sanitizeMoney(e.target.value) } : x)))
-                                }
-                                placeholder="Provider cost"
+                                placeholder="Price"
                                 inputMode="decimal"
                                 disabled={busy}
                               />
@@ -1450,8 +1428,7 @@ export function ProviderProductsPage() {
                               name: "",
                               description: "",
                               pricingType: "FIXED",
-                              retailPrice: "",
-                              providerCost: "",
+                              price: "",
                             },
                           ])
                         }
@@ -1488,22 +1465,13 @@ export function ProviderProductsPage() {
                         <option value="PER_CLAIM">Per claim (1x for now)</option>
                       </select>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <Input
-                          value={addonEditor.retailPrice}
-                          onChange={(e) => setAddonEditor((s) => ({ ...s, retailPrice: sanitizeMoney(e.target.value) }))}
-                          placeholder="Retail price"
-                          inputMode="decimal"
-                          disabled={busy}
-                        />
-                        <Input
-                          value={addonEditor.providerCost}
-                          onChange={(e) => setAddonEditor((s) => ({ ...s, providerCost: sanitizeMoney(e.target.value) }))}
-                          placeholder="Provider cost"
-                          inputMode="decimal"
-                          disabled={busy}
-                        />
-                      </div>
+                      <Input
+                        value={addonEditor.price}
+                        onChange={(e) => setAddonEditor((s) => ({ ...s, price: sanitizeMoney(e.target.value) }))}
+                        placeholder="Price"
+                        inputMode="decimal"
+                        disabled={busy}
+                      />
 
                       <div className="flex gap-2">
                         <Button
@@ -1529,8 +1497,7 @@ export function ProviderProductsPage() {
                               name: "",
                               description: "",
                               pricingType: "FIXED",
-                              retailPrice: "",
-                              providerCost: "",
+                              price: "",
                               appliesToAllPricingRows: true,
                               applicablePricingRowIds: [],
                               active: true,
