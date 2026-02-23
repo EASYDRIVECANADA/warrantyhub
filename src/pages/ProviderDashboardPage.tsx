@@ -424,7 +424,15 @@ export function ProviderDashboardPage() {
               </div>
 
               {myProfileQuery.isLoading ? <div className="text-sm text-muted-foreground">Loading…</div> : null}
-              {myProfileQuery.isError ? <div className="text-sm text-destructive">Failed to load provider profile.</div> : null}
+              {myProfileQuery.isError ? (
+                <div className="text-sm text-destructive">
+                  {(() => {
+                    const e = myProfileQuery.error as any;
+                    const msg = typeof e?.message === "string" ? e.message : "Failed to load provider profile.";
+                    return msg;
+                  })()}
+                </div>
+              ) : null}
             </div>
           </div>
 

@@ -12,6 +12,54 @@ type ProfilesRow = {
   provider_terms_text?: string | null;
 };
 
+function missingColumnFromSchemaCacheError(e: unknown): string | null {
+  const msg = typeof (e as any)?.message === "string" ? String((e as any).message) : "";
+  if (!msg) return null;
+  const m = msg.match(/Could not find the '([^']+)' column/i);
+  return m && typeof m[1] === "string" && m[1].trim() ? m[1].trim() : null;
+}
+
+async function selectProfilesWithFallback(
+  supabase: any,
+  select: string,
+  build: (q: any) => any,
+): Promise<{ data: any; error: any }>{
+  const attempt = await build(supabase.from("profiles").select(select));
+  if (!attempt?.error) return attempt;
+  const col = missingColumnFromSchemaCacheError(attempt.error);
+  if (!col) return attempt;
+  const cleaned = select
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s && s !== col)
+    .join(", ");
+  const retry = await build(supabase.from("profiles").select(cleaned));
+  return retry;
+}
+
+async function updateProfilesWithFallback(
+  supabase: any,
+  uid: string,
+  updateRow: Record<string, unknown>,
+  select: string,
+): Promise<{ data: any; error: any }>{
+  const attempt = await supabase.from("profiles").update(updateRow).eq("id", uid).select(select).single();
+  if (!attempt?.error) return attempt;
+  const col = missingColumnFromSchemaCacheError(attempt.error);
+  if (!col) return attempt;
+
+  const retryUpdate = { ...updateRow };
+  if (col in retryUpdate) delete (retryUpdate as any)[col];
+
+  const cleaned = select
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s && s !== col)
+    .join(", ");
+  const retry = await supabase.from("profiles").update(retryUpdate).eq("id", uid).select(cleaned).single();
+  return retry;
+}
+
 function toProviderPublic(r: ProfilesRow): ProviderPublic {
   return {
     id: r.id,
@@ -42,11 +90,11 @@ export const supabaseProvidersApi: ProvidersApi = {
     const wanted = Array.from(new Set(ids.map((x) => x.trim()).filter(Boolean)));
     if (wanted.length === 0) return [];
 
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id, role, display_name, company_name, provider_logo_url, provider_terms_text")
-      .in("id", wanted)
-      .eq("role", "PROVIDER");
+    const { data, error } = await selectProfilesWithFallback(
+      supabase,
+      "id, role, display_name, company_name, provider_logo_url, provider_terms_text",
+      (q) => q.in("id", wanted).eq("role", "PROVIDER"),
+    );
 
     if (error) throw error;
     return (data as ProfilesRow[]).map(toProviderPublic);
@@ -58,11 +106,11 @@ export const supabaseProvidersApi: ProvidersApi = {
 
     const uid = await currentUserId();
 
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id, role, display_name, company_name, provider_logo_url, provider_terms_text")
-      .eq("id", uid)
-      .maybeSingle();
+    const { data, error } = await selectProfilesWithFallback(
+      supabase,
+      "id, role, display_name, company_name, provider_logo_url, provider_terms_text",
+      (q) => q.eq("id", uid).maybeSingle(),
+    );
 
     if (error) throw error;
     if (!data) return null;
@@ -83,12 +131,12 @@ export const supabaseProvidersApi: ProvidersApi = {
     if (typeof patch.termsText === "string") updateRow.provider_terms_text = patch.termsText.trim() || null;
     if (patch.termsText === null) updateRow.provider_terms_text = null;
 
-    const { data, error } = await supabase
-      .from("profiles")
-      .update(updateRow)
-      .eq("id", uid)
-      .select("id, role, display_name, company_name, provider_logo_url, provider_terms_text")
-      .single();
+    const { data, error } = await updateProfilesWithFallback(
+      supabase,
+      uid,
+      updateRow,
+      "id, role, display_name, company_name, provider_logo_url, provider_terms_text",
+    );
 
     if (error) throw error;
     return toProviderPublic(data as ProfilesRow);
