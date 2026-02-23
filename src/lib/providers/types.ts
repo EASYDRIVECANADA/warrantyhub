@@ -3,10 +3,12 @@ export type ProviderPublic = {
   displayName?: string;
   companyName?: string;
   logoUrl?: string;
+  termsText?: string;
 };
 
 export type UpdateMyProviderProfileInput = {
   displayName?: string;
   companyName?: string;
   logoUrl?: string | null;
+  termsText?: string | null;
 };

@@ -44,6 +44,9 @@ alter table public.profiles
 alter table public.profiles
   add column if not exists provider_logo_url text;
 
+alter table public.profiles
+  add column if not exists provider_terms_text text;
+
 alter table public.profiles enable row level security;
 
 create or replace function public.current_role()
@@ -1194,6 +1197,8 @@ create table if not exists public.product_pricing (
   vehicle_mileage_max_km integer,
   vehicle_class text,
   claim_limit_cents integer,
+  claim_limit_type text,
+  claim_limit_amount_cents integer,
   deductible_cents integer not null,
   base_price_cents integer not null,
   dealer_cost_cents integer,
@@ -1206,7 +1211,9 @@ create table if not exists public.product_pricing (
     vehicle_mileage_max_km,
     vehicle_class,
     deductible_cents,
-    claim_limit_cents
+    claim_limit_cents,
+    claim_limit_type,
+    claim_limit_amount_cents
   )
 );
 
@@ -1231,6 +1238,12 @@ alter table public.product_pricing
 alter table public.product_pricing
   add column if not exists claim_limit_cents integer;
 
+alter table public.product_pricing
+  add column if not exists claim_limit_type text;
+
+alter table public.product_pricing
+  add column if not exists claim_limit_amount_cents integer;
+
 create unique index if not exists product_pricing_one_default_per_product
   on public.product_pricing (product_id)
   where is_default;
@@ -1244,7 +1257,9 @@ create unique index if not exists product_pricing_unique_row_coalesced
     coalesce(vehicle_mileage_max_km, -1),
     coalesce(vehicle_class, ''),
     deductible_cents,
-    coalesce(claim_limit_cents, -1)
+    coalesce(claim_limit_cents, -1),
+    coalesce(claim_limit_type, ''),
+    coalesce(claim_limit_amount_cents, -1)
   );
 
 do $$
@@ -1296,7 +1311,41 @@ exception
   when duplicate_object then null;
 end $$;
 
+do $$claim_limit_type_check
+    check (
+      claim_limit_type is null
+      or claim_limit_type in ('PER_CLAIM','TOTAL_COVERAGE','FMV','MAX_RETAIL')
+    );
+exception
+  when duplicate_object then null;
+end $$;
+
 do $$
+begin
+  alter table public.product_pricing
+    add constraint product_pricing_claim_limit_amount_cents_check
+    check (claim_limit_amount_cents is null or claim_limit_amount_cents > 0);
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter table public.product_pricing
+    add constraint product_pricing_claim_limit_amount_required_check
+    check (
+      claim_limit_type is null
+      or claim_limit_type = 'FMV'
+      or claim_limit_amount_cents is not null
+    );
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter table public.product_pricing
+    add constraint product_pricing_
 begin
   alter table public.product_pricing
     add constraint product_pricing_claim_limit_cents_check

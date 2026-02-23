@@ -9,6 +9,7 @@ type ProfilesRow = {
   display_name?: string | null;
   company_name?: string | null;
   provider_logo_url?: string | null;
+  provider_terms_text?: string | null;
 };
 
 function toProviderPublic(r: ProfilesRow): ProviderPublic {
@@ -17,6 +18,7 @@ function toProviderPublic(r: ProfilesRow): ProviderPublic {
     displayName: r.display_name ?? undefined,
     companyName: r.company_name ?? undefined,
     logoUrl: r.provider_logo_url ?? undefined,
+    termsText: r.provider_terms_text ?? undefined,
   };
 }
 
@@ -42,7 +44,7 @@ export const supabaseProvidersApi: ProvidersApi = {
 
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, role, display_name, company_name, provider_logo_url")
+      .select("id, role, display_name, company_name, provider_logo_url, provider_terms_text")
       .in("id", wanted)
       .eq("role", "PROVIDER");
 
@@ -58,7 +60,7 @@ export const supabaseProvidersApi: ProvidersApi = {
 
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, role, display_name, company_name, provider_logo_url")
+      .select("id, role, display_name, company_name, provider_logo_url, provider_terms_text")
       .eq("id", uid)
       .maybeSingle();
 
@@ -78,12 +80,14 @@ export const supabaseProvidersApi: ProvidersApi = {
     if (typeof patch.companyName === "string") updateRow.company_name = patch.companyName.trim() || null;
     if (typeof patch.logoUrl === "string") updateRow.provider_logo_url = patch.logoUrl.trim() || null;
     if (patch.logoUrl === null) updateRow.provider_logo_url = null;
+    if (typeof patch.termsText === "string") updateRow.provider_terms_text = patch.termsText.trim() || null;
+    if (patch.termsText === null) updateRow.provider_terms_text = null;
 
     const { data, error } = await supabase
       .from("profiles")
       .update(updateRow)
       .eq("id", uid)
-      .select("id, role, display_name, company_name, provider_logo_url")
+      .select("id, role, display_name, company_name, provider_logo_url, provider_terms_text")
       .single();
 
     if (error) throw error;

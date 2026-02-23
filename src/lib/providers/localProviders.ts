@@ -10,6 +10,7 @@ type StoredProfile = {
   displayName?: string;
   companyName?: string;
   logoUrl?: string;
+  termsText?: string;
 };
 
 type LocalUserRecord = {
@@ -158,6 +159,7 @@ async function toPublicAsync(p: StoredProfile): Promise<ProviderPublic> {
     displayName: p.displayName,
     companyName: p.companyName,
     logoUrl: await resolveLogoUrl(p.logoUrl),
+    termsText: p.termsText,
   };
 }
 
@@ -212,6 +214,14 @@ export const localProvidersApi: ProvidersApi = {
             ? undefined
             : idx >= 0
               ? items[idx]!.logoUrl
+              : undefined,
+      termsText:
+        typeof patch.termsText === "string"
+          ? patch.termsText
+          : patch.termsText === null
+            ? undefined
+            : idx >= 0
+              ? items[idx]!.termsText
               : undefined,
     };
 

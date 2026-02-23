@@ -142,3 +142,65 @@
     box-shadow: var(--shadow-md);
   }
 }
+
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  body {
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .print-contract-root,
+  .print-contract-root * {
+    visibility: visible !important;
+  }
+
+  .print-contract-root {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+  }
+
+  .print-contract-root .max-w-4xl {
+    max-width: 190mm !important;
+    margin: 0 auto !important;
+  }
+
+  .print-contract-root .p-8 {
+    padding: 0 !important;
+  }
+
+  .print-contract-root .rounded-xl {
+    border-radius: 10px !important;
+  }
+
+  .print-contract-root .border {
+    border: 1px solid #dbe3ef !important;
+  }
+
+  .print-contract-root {
+    font-size: 11pt !important;
+    line-height: 1.35 !important;
+    color: #0f172a !important;
+  }
+
+  .print-contract-root .text-slate-500 {
+    color: #475569 !important;
+  }
+
+  .print-contract-root .text-slate-600 {
+    color: #334155 !important;
+  }
+
+  .print-contract-root .shadow-card {
+    box-shadow: none !important;
+  }
+}

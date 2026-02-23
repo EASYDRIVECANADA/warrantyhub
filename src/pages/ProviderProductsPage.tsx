@@ -786,7 +786,7 @@ export function ProviderProductsPage() {
     if (editor.pricingVariesByMileageBand) {
       const groups = new Map<string, ValidatedRow[]>();
       for (const r of rowsWithDefault) {
-        const key = `${r.termMonths ?? ""}|${r.termKm ?? ""}|${(r.vehicleClass ?? "").trim()}`;
+        const key = `${r.termMonths ?? ""}|${r.termKm ?? ""}|${(r.vehicleClass ?? "").trim()}|${r.deductibleCents}|${r.claimLimitCents ?? ""}`;
         const arr = groups.get(key) ?? [];
         arr.push(r);
         groups.set(key, arr);
@@ -907,25 +907,39 @@ export function ProviderProductsPage() {
       const productId = (savedProduct?.id ?? editor.id ?? "").trim();
       if (productId) {
         const existing = await pricingApi.list({ productId });
-        for (const r of existing) {
-          await pricingApi.remove(r.id);
+
+        const chunk = <T,>(arr: T[], size: number) => {
+          if (!Array.isArray(arr) || arr.length === 0) return [] as T[][];
+          const s = Math.max(1, Math.floor(size));
+          const out: T[][] = [];
+          for (let i = 0; i < arr.length; i += s) out.push(arr.slice(i, i + s));
+          return out;
+        };
+
+        for (const batch of chunk(existing, 25)) {
+          await Promise.all(batch.map((r) => pricingApi.remove(r.id)));
         }
-        for (const r of rowsWithDefault) {
-          await pricingApi.create({
-            productId,
-            isDefault: r.isDefault === true,
-            termMonths: r.termMonths,
-            termKm: r.termKm,
-            vehicleMileageMinKm: r.vehicleMileageMinKm,
-            vehicleMileageMaxKm: r.vehicleMileageMaxKm,
-            vehicleClass: r.vehicleClass,
-            claimLimitCents: r.claimLimitCents,
-            ...(typeof r.claimLimitType === "string" ? { claimLimitType: r.claimLimitType } : {}),
-            ...(typeof r.claimLimitAmountCents === "number" ? { claimLimitAmountCents: r.claimLimitAmountCents } : {}),
-            deductibleCents: r.deductibleCents,
-            basePriceCents: r.providerCostCents,
-            dealerCostCents: r.providerCostCents,
-          });
+
+        for (const batch of chunk(rowsWithDefault, 25)) {
+          await Promise.all(
+            batch.map((r) =>
+              pricingApi.create({
+                productId,
+                isDefault: r.isDefault === true,
+                termMonths: r.termMonths,
+                termKm: r.termKm,
+                vehicleMileageMinKm: r.vehicleMileageMinKm,
+                vehicleMileageMaxKm: r.vehicleMileageMaxKm,
+                vehicleClass: r.vehicleClass,
+                claimLimitCents: r.claimLimitCents,
+                ...(typeof r.claimLimitType === "string" ? { claimLimitType: r.claimLimitType } : {}),
+                ...(typeof r.claimLimitAmountCents === "number" ? { claimLimitAmountCents: r.claimLimitAmountCents } : {}),
+                deductibleCents: r.deductibleCents,
+                basePriceCents: r.providerCostCents,
+                dealerCostCents: r.providerCostCents,
+              }),
+            ),
+          );
         }
         await qc.invalidateQueries({ queryKey: ["product-pricing", productId] });
       }
@@ -1831,7 +1845,14 @@ export function ProviderProductsPage() {
                       if (editor.pricingVariesByMileageBand) {
                         const groups = new Map<string, (typeof parsed)[number][]>();
                         for (const p of parsed) {
-                          const groupKey = JSON.stringify([p.termMonths, p.termKm, typeof p.vehicleClass === "string" ? p.vehicleClass.trim() : ""]);
+                          const groupKey = JSON.stringify([
+                            p.termMonths,
+                            p.termKm,
+                            typeof p.vehicleClass === "string" ? p.vehicleClass.trim() : "",
+                            p.deductibleCents,
+                            p.row.claimLimitType || null,
+                            p.row.claimLimitType && p.row.claimLimitType !== "FMV" ? dollarsToCents(p.row.claimLimitAmount) ?? null : null,
+                          ]);
                           const arr = groups.get(groupKey) ?? [];
                           arr.push(p);
                           groups.set(groupKey, arr);

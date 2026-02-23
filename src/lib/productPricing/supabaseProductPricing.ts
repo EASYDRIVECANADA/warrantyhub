@@ -14,6 +14,8 @@ type ProductPricingRow = {
   vehicle_mileage_max_km?: number | null;
   vehicle_class?: string | null;
   claim_limit_cents?: number | null;
+  claim_limit_type?: string | null;
+  claim_limit_amount_cents?: number | null;
   deductible_cents: number;
   base_price_cents: number;
   dealer_cost_cents?: number | null;
@@ -33,6 +35,8 @@ function toPricing(r: ProductPricingRow): ProductPricing {
       typeof r.vehicle_mileage_max_km === "number" ? r.vehicle_mileage_max_km : r.vehicle_mileage_max_km === null ? null : undefined,
     vehicleClass: typeof r.vehicle_class === "string" ? r.vehicle_class : undefined,
     claimLimitCents: r.claim_limit_cents ?? undefined,
+    claimLimitType: typeof r.claim_limit_type === "string" ? (r.claim_limit_type as any) : undefined,
+    claimLimitAmountCents: typeof r.claim_limit_amount_cents === "number" ? r.claim_limit_amount_cents : undefined,
     deductibleCents: r.deductible_cents,
     basePriceCents: r.base_price_cents,
     dealerCostCents: r.dealer_cost_cents ?? undefined,
@@ -147,6 +151,14 @@ export const supabaseProductPricingApi: ProductPricingApi = {
 
     if (typeof input.claimLimitCents === "number") {
       insertRow.claim_limit_cents = input.claimLimitCents;
+    }
+
+    if (typeof (input as any).claimLimitType === "string" && (input as any).claimLimitType.trim()) {
+      insertRow.claim_limit_type = (input as any).claimLimitType.trim();
+    }
+
+    if (typeof (input as any).claimLimitAmountCents === "number") {
+      insertRow.claim_limit_amount_cents = (input as any).claimLimitAmountCents;
     }
 
     const { data, error } = await supabase.from("product_pricing").insert(insertRow).select("*").single();

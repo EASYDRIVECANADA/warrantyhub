@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { FileText, Package, Users } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 
 import { Button } from "../components/ui/button";
@@ -11,6 +11,7 @@ import type { Contract } from "../lib/contracts/types";
 import { getProductsApi } from "../lib/products/products";
 import type { Product } from "../lib/products/types";
 import { getProvidersApi } from "../lib/providers/providers";
+import type { ProviderPublic } from "../lib/providers/types";
 import { confirmProceed, sanitizeLettersOnly, sanitizeWordsOnly } from "../lib/utils";
 import { useAuth } from "../providers/AuthProvider";
 import { getProductPricingApi } from "../lib/productPricing/productPricing";
@@ -88,6 +89,8 @@ export function ProviderDashboardPage() {
   const contractsApi = useMemo(() => getContractsApi(), []);
   const pricingApi = useMemo(() => getProductPricingApi(), []);
 
+  const hasHydratedProfile = useRef(false);
+
   const myProfileQuery = useQuery({
     queryKey: ["my-provider-profile"],
     queryFn: () => providersApi.getMyProfile(),
@@ -103,22 +106,35 @@ export function ProviderDashboardPage() {
     queryFn: () => contractsApi.list(),
   });
 
-
   const [displayName, setDisplayName] = useState("");
   const [companyName, setCompanyName] = useState("");
+  const [termsText, setTermsText] = useState("");
 
   const saveProfileMutation = useMutation({
     mutationFn: async () => {
       return providersApi.updateMyProfile({
         displayName,
         companyName,
+        termsText,
       });
     },
     onSuccess: async (next) => {
       setDisplayName(next.displayName ?? "");
       setCompanyName(next.companyName ?? "");
+      setTermsText(next.termsText ?? "");
     },
   });
+
+  useEffect(() => {
+    const p = myProfileQuery.data as ProviderPublic | null | undefined;
+    if (!p) return;
+    if (hasHydratedProfile.current) return;
+    hasHydratedProfile.current = true;
+
+    setDisplayName((p.displayName ?? "").toString());
+    setCompanyName((p.companyName ?? "").toString());
+    setTermsText((p.termsText ?? "").toString());
+  }, [myProfileQuery.data]);
 
   const profileLoaded = myProfileQuery.data;
   const effectiveDisplayName = (profileLoaded?.displayName ?? "").trim();
@@ -392,6 +408,20 @@ export function ProviderDashboardPage() {
                 placeholder="Company name (e.g. Acme Warranty)"
                 disabled={busy}
               />
+
+              <div className="md:col-span-2">
+                <div className="text-sm font-medium text-foreground">Contract Terms & Conditions</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  This text appears on the printable contract. You can use tokens like {"{{product_name}}"}, {"{{term_months}}"}, {"{{term_km}}"}, {"{{deductible}}"}, {"{{coverage_details}}"}, {"{{exclusions}}"}.
+                </div>
+                <textarea
+                  value={termsText}
+                  onChange={(e) => setTermsText(e.target.value)}
+                  placeholder="Enter your Terms & Conditions..."
+                  className="mt-3 w-full min-h-[220px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  disabled={busy}
+                />
+              </div>
 
               {myProfileQuery.isLoading ? <div className="text-sm text-muted-foreground">Loading…</div> : null}
               {myProfileQuery.isError ? <div className="text-sm text-destructive">Failed to load provider profile.</div> : null}

@@ -12,6 +12,8 @@ import { BRAND } from "../lib/brand";
 import { getAppMode } from "../lib/runtime";
 import { useAuth } from "../providers/AuthProvider";
 
+const bridgeWarrantyLogoUrl = new URL("../../images/Bridge Warranty_White Background.png", import.meta.url).href;
+
 const LOCAL_DEALER_MEMBERSHIPS_KEY = "warrantyhub.local.dealer_memberships";
 
 function readLocalDealerMemberships(): Array<{ dealerId?: string; userId?: string }> {
@@ -23,6 +25,35 @@ function readLocalDealerMemberships(): Array<{ dealerId?: string; userId?: strin
   } catch {
     return [];
   }
+}
+
+function renderProviderTerms(input: {
+  providerTermsText?: string;
+  productName: string;
+  termMonthsLabel: string;
+  termKmLabel: string;
+  deductibleLabel: string;
+  coverageDetailsText: string;
+  exclusionsText: string;
+}) {
+  const defaultCoverageDetails = `This Vehicle Service Contract provides coverage for specified mechanical and electrical components of the registered vehicle, subject to the terms, conditions, exclusions, and limitations outlined herein.\n\nCovered Components may include:\n• Engine (internally lubricated parts)\n• Transmission / Transaxle\n• Drive Axle\n• Electrical Systems\n• Cooling System\n• Fuel System\n• Steering Components\n• Suspension Components\n• Air Conditioning System`;
+
+  const defaultExclusions = `This Contract does not provide coverage for normal wear and tear, routine maintenance services, brake components, tires, cosmetic items, or damage resulting from misuse, neglect, accidents, or unauthorized modifications.`;
+
+  const fallback = `BRIDGE WARRANTY\nVehicle Service Contract\n\nCoverage Details\n{{coverage_details}}\n\nExclusions\n{{exclusions}}\n\nDuration and Mileage Limits\nCoverage remains valid for the Term and Mileage limits specified in the Contract Schedule, whichever occurs first. Coverage automatically expires upon reaching either limit.\n\nDeductible Amount\nThe Contract Holder agrees to pay the deductible amount specified in the Contract Schedule per approved repair claim.\n\nClaim Process\nTo obtain benefits, the Contract Holder must contact the Administrator prior to any repair work. All repairs must receive authorization. Failure to follow this process may result in denial of coverage.\n\nService Provider Information\nRepairs must be performed by the Selling Dealership or a licensed repair facility approved by the Administrator.\n\nPayment Terms\nApproved repair costs may be paid directly to the repair facility or reimbursed to the Contract Holder following review and approval of documentation.\n\nTransferability\nThis Contract may be transferred to a subsequent private owner subject to Administrator approval and applicable transfer fees.\n\nDispute Resolution\nAny disputes arising under this Contract shall be resolved through the Administrator’s internal review process and, where applicable, binding arbitration.\n\nCancellation and Refund Policy\nThe Contract Holder may cancel this Contract subject to the cancellation provisions outlined in the Contract Schedule. Refunds, where applicable, will be calculated on a prorated basis`;
+
+  const raw = (input.providerTermsText ?? "").trim() || fallback;
+
+  const coverage = input.coverageDetailsText.trim() || defaultCoverageDetails;
+  const exclusions = input.exclusionsText.trim() || defaultExclusions;
+
+  return raw
+    .replaceAll("{{product_name}}", input.productName)
+    .replaceAll("{{term_months}}", input.termMonthsLabel)
+    .replaceAll("{{term_km}}", input.termKmLabel)
+    .replaceAll("{{deductible}}", input.deductibleLabel)
+    .replaceAll("{{coverage_details}}", coverage)
+    .replaceAll("{{exclusions}}", exclusions);
 }
 
 function dealershipUserIds(dealerId: string) {
@@ -113,6 +144,11 @@ export function DealerContractPrintPage() {
     return `Provider ${pid.slice(0, 8)}`;
   };
 
+  const providerForContract = (() => {
+    const pid = (selectedProduct?.providerId ?? contract?.providerId ?? "").trim();
+    return pid ? providerById.get(pid) : undefined;
+  })();
+
   const money = (cents?: number) => {
     if (typeof cents !== "number") return "—";
     return `$${(cents / 100).toFixed(2)}`;
@@ -174,18 +210,52 @@ export function DealerContractPrintPage() {
     .filter(Boolean)
     .join(", ");
 
+  const termMonthsLabel =
+    contract.pricingTermMonths === null
+      ? "Unlimited"
+      : typeof contract.pricingTermMonths === "number"
+        ? `${contract.pricingTermMonths} mo`
+        : "—";
+  const termKmLabel =
+    contract.pricingTermKm === null
+      ? "Unlimited"
+      : typeof contract.pricingTermKm === "number"
+        ? `${contract.pricingTermKm} km`
+        : "—";
+  const deductibleLabel = money(contract.pricingDeductibleCents ?? undefined);
+  const productName = (selectedProduct?.name ?? "—").toString();
+  const coverageDetailsText = (selectedProduct?.coverageDetails ?? "").trim();
+  const exclusionsText = (selectedProduct?.exclusions ?? "").trim();
+  const providerTerms = renderProviderTerms({
+    providerTermsText: providerForContract?.termsText,
+    productName,
+    termMonthsLabel,
+    termKmLabel,
+    deductibleLabel,
+    coverageDetailsText,
+    exclusionsText,
+  });
+
   return (
-    <div className="min-h-screen bg-white text-slate-900">
+    <div className="print-contract-root min-h-screen bg-white text-slate-900">
       <div className="max-w-4xl mx-auto p-8">
         <div className="border rounded-xl overflow-hidden">
           <div className="px-6 py-5 border-b">
             <div className="flex items-start justify-between gap-6">
               <div>
-                <div className="text-[11px] uppercase tracking-wide text-slate-500">{BRAND.name}</div>
+                <div className="flex items-center gap-3">
+                  <img src={bridgeWarrantyLogoUrl} alt={BRAND.name} className="h-14 w-auto object-contain" />
+                </div>
+                <div className="text-[11px] uppercase tracking-wide text-slate-500 mt-2">{BRAND.name}</div>
                 <h1 className="text-xl font-bold font-display mt-1">Warranty Contract • {titleForCopyType(type)}</h1>
                 <div className="text-sm text-slate-500 mt-1">Printed copy for records and audit trail.</div>
               </div>
               <div className="text-right">
+                {providerForContract?.logoUrl ? (
+                  <div className="flex justify-end">
+                    <img src={providerForContract.logoUrl} alt="" className="h-12 w-auto object-contain mb-2" />
+                  </div>
+                ) : null}
                 <div className="text-[11px] uppercase tracking-wide text-slate-500">Warranty ID</div>
                 <div className="text-sm font-semibold">{contract.warrantyId}</div>
                 <div className="text-[11px] text-slate-500 mt-1">Contract #{contract.contractNumber}</div>
@@ -251,7 +321,7 @@ export function DealerContractPrintPage() {
                   <div className="text-[11px] text-slate-500 mt-1">Provider: {providerDisplay(selectedProduct?.providerId ?? contract.providerId)}</div>
                 </div>
                 <div>
-                  <div className="text-[11px] text-slate-500">{type === "provider" ? "Provider cost" : "Retail price"}</div>
+                  <div className="text-[11px] text-slate-500">Price</div>
                   <div className="font-medium">
                     {type === "provider"
                       ? money((contract.pricingDealerCostCents ?? 0) + (contract.addonTotalCostCents ?? 0))
@@ -327,6 +397,11 @@ export function DealerContractPrintPage() {
                   <div>Date</div>
                 </div>
               </div>
+            </div>
+
+            <div className="mt-6 rounded-lg border p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Terms & Conditions</div>
+              <div className="mt-3 text-sm whitespace-pre-wrap leading-relaxed">{providerTerms}</div>
             </div>
           </div>
 
