@@ -48,6 +48,43 @@ function toAddon(r: ProductAddonsRow): ProductAddon {
   };
 }
 
+function missingColumnFromSchemaCacheError(e: unknown): string | null {
+  const msg = typeof (e as any)?.message === "string" ? String((e as any).message) : "";
+  if (!msg) return null;
+  const m = msg.match(/Could not find the '([^']+)' column/i);
+  return m && typeof m[1] === "string" && m[1].trim() ? m[1].trim() : null;
+}
+
+async function insertWithColumnFallback(supabase: any, row: Record<string, unknown>) {
+  const { data, error } = await supabase.from("product_addons").insert(row).select("*").single();
+  if (!error) return { data, error: null } as const;
+
+  const col = missingColumnFromSchemaCacheError(error);
+  if (!col) throw error;
+  if (!(col in row)) throw error;
+
+  const retryRow = { ...row };
+  delete (retryRow as any)[col];
+  const retry = await supabase.from("product_addons").insert(retryRow).select("*").single();
+  if (retry.error) throw retry.error;
+  return { data: retry.data, error: null } as const;
+}
+
+async function updateWithColumnFallback(supabase: any, id: string, row: Record<string, unknown>) {
+  const { data, error } = await supabase.from("product_addons").update(row).eq("id", id).select("*").single();
+  if (!error) return { data, error: null } as const;
+
+  const col = missingColumnFromSchemaCacheError(error);
+  if (!col) throw error;
+  if (!(col in row)) throw error;
+
+  const retryRow = { ...row };
+  delete (retryRow as any)[col];
+  const retry = await supabase.from("product_addons").update(retryRow).eq("id", id).select("*").single();
+  if (retry.error) throw retry.error;
+  return { data: retry.data, error: null } as const;
+}
+
 async function currentUserId(): Promise<string> {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error("Supabase is not configured");
@@ -111,8 +148,7 @@ export const supabaseProductAddonsApi: ProductAddonsApi = {
       updated_at: now,
     };
 
-    const { data, error } = await supabase.from("product_addons").insert(insertRow).select("*").single();
-    if (error) throw error;
+    const { data } = await insertWithColumnFallback(supabase, insertRow);
     return toAddon(data as ProductAddonsRow);
   },
 
@@ -139,8 +175,7 @@ export const supabaseProductAddonsApi: ProductAddonsApi = {
     if (typeof patch.dealerCostCents === "number") updateRow.dealer_cost_cents = patch.dealerCostCents;
     if (typeof patch.active === "boolean") updateRow.active = patch.active;
 
-    const { data, error } = await supabase.from("product_addons").update(updateRow).eq("id", id).select("*").single();
-    if (error) throw error;
+    const { data } = await updateWithColumnFallback(supabase, id, updateRow);
     return toAddon(data as ProductAddonsRow);
   },
 
