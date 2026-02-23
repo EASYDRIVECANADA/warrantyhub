@@ -35,17 +35,25 @@ async function selectProfilesWithFallback(
   select: string,
   build: (q: any) => any,
 ): Promise<{ data: any; error: any }>{
-  const attempt = await build(supabase.from("profiles").select(select));
-  if (!attempt?.error) return attempt;
-  const col = missingColumnFromSchemaCacheError(attempt.error);
-  if (!col) return attempt;
-  const cleaned = select
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s && s !== col)
-    .join(", ");
-  const retry = await build(supabase.from("profiles").select(cleaned));
-  return retry;
+  let currentSelect = select;
+  for (let i = 0; i < 5; i += 1) {
+    const attempt = await build(supabase.from("profiles").select(currentSelect));
+    if (!attempt?.error) return attempt;
+
+    const col = missingColumnFromSchemaCacheError(attempt.error);
+    if (!col) return attempt;
+
+    const next = currentSelect
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s && s !== col)
+      .join(", ");
+
+    if (!next || next === currentSelect) return attempt;
+    currentSelect = next;
+  }
+
+  return build(supabase.from("profiles").select(currentSelect));
 }
 
 async function updateProfilesWithFallback(
@@ -54,21 +62,27 @@ async function updateProfilesWithFallback(
   updateRow: Record<string, unknown>,
   select: string,
 ): Promise<{ data: any; error: any }>{
-  const attempt = await supabase.from("profiles").update(updateRow).eq("id", uid).select(select).single();
-  if (!attempt?.error) return attempt;
-  const col = missingColumnFromSchemaCacheError(attempt.error);
-  if (!col) return attempt;
+  let currentUpdate = { ...updateRow };
+  let currentSelect = select;
 
-  const retryUpdate = { ...updateRow };
-  if (col in retryUpdate) delete (retryUpdate as any)[col];
+  for (let i = 0; i < 5; i += 1) {
+    const attempt = await supabase.from("profiles").update(currentUpdate).eq("id", uid).select(currentSelect).single();
+    if (!attempt?.error) return attempt;
 
-  const cleaned = select
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s && s !== col)
-    .join(", ");
-  const retry = await supabase.from("profiles").update(retryUpdate).eq("id", uid).select(cleaned).single();
-  return retry;
+    const col = missingColumnFromSchemaCacheError(attempt.error);
+    if (!col) return attempt;
+
+    if (col in currentUpdate) delete (currentUpdate as any)[col];
+
+    const nextSelect = currentSelect
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s && s !== col)
+      .join(", ");
+    if (nextSelect && nextSelect !== currentSelect) currentSelect = nextSelect;
+  }
+
+  return supabase.from("profiles").update(currentUpdate).eq("id", uid).select(currentSelect).single();
 }
 
 function toProviderPublic(r: ProfilesRow): ProviderPublic {

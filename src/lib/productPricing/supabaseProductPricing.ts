@@ -23,6 +23,18 @@ type ProductPricingRow = {
 };
 
 function toPricing(r: ProductPricingRow): ProductPricing {
+  const persistedType = typeof r.claim_limit_type === "string" ? (r.claim_limit_type as any) : undefined;
+  const inferredType =
+    !persistedType && typeof r.claim_limit_cents === "number" && r.claim_limit_cents > 0 ? ("PER_CLAIM" as const) : undefined;
+  const type = persistedType ?? inferredType;
+
+  const amountCents =
+    typeof r.claim_limit_amount_cents === "number"
+      ? r.claim_limit_amount_cents
+      : typeof r.claim_limit_cents === "number"
+        ? r.claim_limit_cents
+        : undefined;
+
   return {
     id: r.id,
     providerId: r.provider_id,
@@ -34,9 +46,9 @@ function toPricing(r: ProductPricingRow): ProductPricing {
     vehicleMileageMaxKm:
       typeof r.vehicle_mileage_max_km === "number" ? r.vehicle_mileage_max_km : r.vehicle_mileage_max_km === null ? null : undefined,
     vehicleClass: typeof r.vehicle_class === "string" ? r.vehicle_class : undefined,
-    claimLimitCents: r.claim_limit_cents ?? undefined,
-    claimLimitType: typeof r.claim_limit_type === "string" ? (r.claim_limit_type as any) : undefined,
-    claimLimitAmountCents: typeof r.claim_limit_amount_cents === "number" ? r.claim_limit_amount_cents : undefined,
+    claimLimitCents: typeof amountCents === "number" ? amountCents : undefined,
+    claimLimitType: type,
+    claimLimitAmountCents: typeof amountCents === "number" ? amountCents : undefined,
     deductibleCents: r.deductible_cents,
     basePriceCents: r.base_price_cents,
     dealerCostCents: r.dealer_cost_cents ?? undefined,

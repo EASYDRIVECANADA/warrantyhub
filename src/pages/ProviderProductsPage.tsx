@@ -414,22 +414,35 @@ export function ProviderProductsPage() {
           const bk = b.termKm ?? Number.MAX_SAFE_INTEGER;
           return (am - bm) || (ak - bk) || (a.deductibleCents - b.deductibleCents);
         })
-        .map((r): EditorState["pricingRows"][number] => ({
-          key: r.id,
-          isDefault: r.isDefault === true,
-          termMonths: r.termMonths === null ? "" : String(r.termMonths),
-          termMonthsUnlimited: r.termMonths === null,
-          termKm: r.termKm === null ? "" : String(r.termKm),
-          termKmUnlimited: r.termKm === null,
-          vehicleMileageMinKm: typeof r.vehicleMileageMinKm === "number" ? String(r.vehicleMileageMinKm) : "",
-          vehicleMileageMaxKm: r.vehicleMileageMaxKm === null ? "" : typeof r.vehicleMileageMaxKm === "number" ? String(r.vehicleMileageMaxKm) : "",
-          vehicleMileageMaxUnlimited: r.vehicleMileageMaxKm === null,
-          vehicleClass: typeof r.vehicleClass === "string" && r.vehicleClass.trim() ? r.vehicleClass.trim() : "ALL",
-          claimLimitType: asClaimLimitType(typeof (r as any).claimLimitType === "string" ? (r as any).claimLimitType : undefined) ?? "",
-          claimLimitAmount: typeof (r as any).claimLimitAmountCents === "number" ? centsToDollars((r as any).claimLimitAmountCents) : typeof r.claimLimitCents === "number" ? centsToDollars(r.claimLimitCents) : "",
-          deductible: centsToDollars(r.deductibleCents),
-          providerCost: centsToDollars(r.basePriceCents),
-        }));
+        .map((r): EditorState["pricingRows"][number] => {
+          const persistedType = asClaimLimitType(typeof (r as any).claimLimitType === "string" ? (r as any).claimLimitType : undefined);
+          const inferredType = !persistedType && typeof r.claimLimitCents === "number" && r.claimLimitCents > 0 ? ("PER_CLAIM" as const) : undefined;
+          const claimLimitType = persistedType ?? inferredType ?? "";
+
+          const amountCents =
+            typeof (r as any).claimLimitAmountCents === "number"
+              ? (r as any).claimLimitAmountCents
+              : typeof r.claimLimitCents === "number"
+                ? r.claimLimitCents
+                : undefined;
+
+          return {
+            key: r.id,
+            isDefault: r.isDefault === true,
+            termMonths: r.termMonths === null ? "" : String(r.termMonths),
+            termMonthsUnlimited: r.termMonths === null,
+            termKm: r.termKm === null ? "" : String(r.termKm),
+            termKmUnlimited: r.termKm === null,
+            vehicleMileageMinKm: typeof r.vehicleMileageMinKm === "number" ? String(r.vehicleMileageMinKm) : "",
+            vehicleMileageMaxKm: r.vehicleMileageMaxKm === null ? "" : typeof r.vehicleMileageMaxKm === "number" ? String(r.vehicleMileageMaxKm) : "",
+            vehicleMileageMaxUnlimited: r.vehicleMileageMaxKm === null,
+            vehicleClass: typeof r.vehicleClass === "string" && r.vehicleClass.trim() ? r.vehicleClass.trim() : "ALL",
+            claimLimitType,
+            claimLimitAmount: typeof amountCents === "number" ? centsToDollars(amountCents) : "",
+            deductible: centsToDollars(r.deductibleCents),
+            providerCost: centsToDollars(r.basePriceCents),
+          };
+        });
 
       const variesByMileageBand = pricingRowsFromApi.some(
         (r) => typeof r.vehicleMileageMinKm === "number" || r.vehicleMileageMaxKm === null || typeof r.vehicleMileageMaxKm === "number",
