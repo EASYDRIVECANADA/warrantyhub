@@ -418,6 +418,64 @@ create policy "profiles_update_admin_all"
     )
   );
 
+drop policy if exists "storage_provider_logos_insert_own" on storage.objects;
+create policy "storage_provider_logos_insert_own"
+  on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'product-documents'
+    and (storage.foldername(name))[1] = 'provider-logos'
+    and (storage.foldername(name))[2] = auth.uid()::text
+  );
+
+drop policy if exists "storage_provider_logos_update_own" on storage.objects;
+create policy "storage_provider_logos_update_own"
+  on storage.objects
+  for update
+  to authenticated
+  using (
+    bucket_id = 'product-documents'
+    and (storage.foldername(name))[1] = 'provider-logos'
+    and (storage.foldername(name))[2] = auth.uid()::text
+  )
+  with check (
+    bucket_id = 'product-documents'
+    and (storage.foldername(name))[1] = 'provider-logos'
+    and (storage.foldername(name))[2] = auth.uid()::text
+  );
+
+drop policy if exists "storage_provider_logos_delete_own" on storage.objects;
+create policy "storage_provider_logos_delete_own"
+  on storage.objects
+  for delete
+  to authenticated
+  using (
+    bucket_id = 'product-documents'
+    and (storage.foldername(name))[1] = 'provider-logos'
+    and (storage.foldername(name))[2] = auth.uid()::text
+  );
+
+drop policy if exists "storage_provider_logos_select_public" on storage.objects;
+create policy "storage_provider_logos_select_public"
+  on storage.objects
+  for select
+  to anon
+  using (
+    bucket_id = 'product-documents'
+    and (storage.foldername(name))[1] = 'provider-logos'
+  );
+
+drop policy if exists "storage_provider_logos_select_authenticated" on storage.objects;
+create policy "storage_provider_logos_select_authenticated"
+  on storage.objects
+  for select
+  to authenticated
+  using (
+    bucket_id = 'product-documents'
+    and (storage.foldername(name))[1] = 'provider-logos'
+  );
+
 create table if not exists public.provider_companies (
   id uuid primary key default gen_random_uuid(),
   provider_company_name text not null,
