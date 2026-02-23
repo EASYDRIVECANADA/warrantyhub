@@ -346,8 +346,19 @@ export function ProviderProductsPage() {
   const addons = (addonsQuery.data ?? []) as ProductAddon[];
 
   const hasHydratedAddons = useRef(false);
+  const hydratedAddonsProductId = useRef<string>("");
   useEffect(() => {
-    if (!showEditor) return;
+    if (!showEditor) {
+      hasHydratedAddons.current = false;
+      hydratedAddonsProductId.current = "";
+      return;
+    }
+
+    if (hydratedAddonsProductId.current !== editorProductId) {
+      hasHydratedAddons.current = false;
+      hydratedAddonsProductId.current = editorProductId;
+    }
+
     if (!editorProductId) {
       hasHydratedAddons.current = false;
       setPendingAddons((s) => (s.length > 0 ? s : [{ key: crypto.randomUUID(), name: "", description: "", pricingType: "FIXED", price: "" }]));
