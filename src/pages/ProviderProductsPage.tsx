@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -333,112 +333,32 @@ export function ProviderProductsPage() {
 
   const addons = (addonsQuery.data ?? []) as ProductAddon[];
 
-  const [addonEditor, setAddonEditor] = useState<{
-    id?: string;
-    name: string;
-    description: string;
-    pricingType: "FIXED" | "PER_TERM" | "PER_CLAIM";
-    price: string;
-    appliesToAllPricingRows: boolean;
-    applicablePricingRowIds: string[];
-    active: boolean;
-  }>(() => ({
-    name: "",
-    description: "",
-    pricingType: "FIXED",
-    price: "",
-    appliesToAllPricingRows: true,
-    applicablePricingRowIds: [],
-    active: true,
-  }));
-
+  const hasHydratedAddons = useRef(false);
   useEffect(() => {
     if (!showEditor) return;
-    setAddonEditor({
-      name: "",
-      description: "",
-      pricingType: "FIXED",
-      price: "",
-      appliesToAllPricingRows: true,
-      applicablePricingRowIds: [],
-      active: true,
-    });
-    setPendingAddons([]);
-  }, [editorProductId, showEditor]);
+    if (!editorProductId) {
+      hasHydratedAddons.current = false;
+      setPendingAddons((s) => (s.length > 0 ? s : [{ key: crypto.randomUUID(), name: "", description: "", pricingType: "FIXED", price: "" }]));
+      return;
+    }
 
-  const saveAddonMutation = useMutation({
-    mutationFn: async () => {
-      const productId = editorProductId;
-      if (!productId) throw new Error("Select a product first");
+    if (addonsQuery.isLoading || addonsQuery.isError) return;
+    if (hasHydratedAddons.current) return;
+    hasHydratedAddons.current = true;
 
-      const name = addonEditor.name.trim();
-      if (!name) throw new Error("Add-on name is required");
+    const mapped = addons
+      .slice()
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((a): PendingAddon => ({
+        key: a.id,
+        name: a.name,
+        description: a.description ?? "",
+        pricingType: ((a as any).pricingType ?? "FIXED") as any,
+        price: centsToDollars(typeof a.dealerCostCents === "number" ? a.dealerCostCents : a.basePriceCents),
+      }));
 
-      const pricingType = addonEditor.pricingType;
-
-      const price = dollarsToCents(addonEditor.price);
-      if (typeof price !== "number" || price <= 0) throw new Error("Add-on price is required");
-
-      if (addonEditor.id) {
-        return addonsApi.update(addonEditor.id, {
-          name,
-          description: addonEditor.description.trim() || undefined,
-          pricingType,
-          appliesToAllPricingRows: addonEditor.appliesToAllPricingRows,
-          applicablePricingRowIds: addonEditor.appliesToAllPricingRows ? [] : addonEditor.applicablePricingRowIds,
-          basePriceCents: price,
-          minPriceCents: undefined,
-          maxPriceCents: undefined,
-          dealerCostCents: price,
-          active: addonEditor.active,
-        });
-      }
-
-      return addonsApi.create({
-        productId,
-        name,
-        description: addonEditor.description.trim() || undefined,
-        pricingType,
-        appliesToAllPricingRows: addonEditor.appliesToAllPricingRows,
-        applicablePricingRowIds: addonEditor.appliesToAllPricingRows ? [] : addonEditor.applicablePricingRowIds,
-        basePriceCents: price,
-        minPriceCents: undefined,
-        maxPriceCents: undefined,
-        dealerCostCents: price,
-        active: true,
-      });
-    },
-    onSuccess: async () => {
-      setAddonEditor({
-        name: "",
-        description: "",
-        pricingType: "FIXED",
-        price: "",
-        appliesToAllPricingRows: true,
-        applicablePricingRowIds: [],
-        active: true,
-      });
-      await qc.invalidateQueries({ queryKey: ["product-addons", editorProductId] });
-    },
-  });
-
-  const removeAddonMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await addonsApi.remove(id);
-    },
-    onSuccess: async () => {
-      setAddonEditor({
-        name: "",
-        description: "",
-        pricingType: "FIXED",
-        price: "",
-        appliesToAllPricingRows: true,
-        applicablePricingRowIds: [],
-        active: true,
-      });
-      await qc.invalidateQueries({ queryKey: ["product-addons", editorProductId] });
-    },
-  });
+    setPendingAddons(mapped.length > 0 ? mapped : [{ key: crypto.randomUUID(), name: "", description: "", pricingType: "FIXED", price: "" }]);
+  }, [addons, addonsQuery.isError, addonsQuery.isLoading, editorProductId, showEditor]);
 
   const productsQuery = useQuery({
     queryKey: ["provider-products"],
@@ -935,19 +855,23 @@ export function ProviderProductsPage() {
         await qc.invalidateQueries({ queryKey: ["product-pricing", productId] });
       }
 
-      if (productId && pendingAddons.length > 0) {
-        for (const a of pendingAddons) {
-          const name = a.name.trim();
-          if (!name) continue;
+      if (productId) {
+        const existingAddons = await addonsApi.list({ productId });
+        for (const a of existingAddons) {
+          await addonsApi.remove(a.id);
+        }
 
-          const price = dollarsToCents(a.price);
+        for (const row of pendingAddons) {
+          const name = row.name.trim();
+          if (!name) continue;
+          const price = dollarsToCents(row.price);
           if (typeof price !== "number" || price <= 0) continue;
 
           await addonsApi.create({
             productId,
             name,
-            description: a.description.trim() || undefined,
-            pricingType: a.pricingType,
+            description: row.description.trim() || undefined,
+            pricingType: row.pricingType,
             basePriceCents: price,
             minPriceCents: undefined,
             maxPriceCents: undefined,
@@ -1211,305 +1135,90 @@ export function ProviderProductsPage() {
 
             {activeTab === "ADDONS" ? (
               <div className="space-y-4">
-                {editorProductId ? (
-                  <div className="rounded-xl border p-4">
-                    <div className="font-semibold">Add-ons</div>
+                <div className="rounded-xl border p-4">
+                  <div className="font-semibold">Add-ons</div>
+                  <div className="text-xs text-muted-foreground mt-1">Add-ons are saved when you click the main Save button.</div>
 
-                    <div className="mt-4">
+                  {editorProductId ? (
+                    <div className="mt-3">
                       {addonsQuery.isLoading ? <div className="text-sm text-muted-foreground">Loading add-ons…</div> : null}
                       {addonsQuery.isError ? <div className="text-sm text-destructive">Failed to load add-ons.</div> : null}
+                    </div>
+                  ) : null}
 
-                      <div className="divide-y rounded-xl border">
-                        {addons.map((a) => (
-                          <div key={a.id} className="p-4 flex items-start justify-between gap-4">
-                            <div className="min-w-0">
-                              <div className="font-medium text-foreground truncate">{a.name}</div>
-                              {a.description ? <div className="text-xs text-muted-foreground mt-1">{a.description}</div> : null}
-                              <div className="text-xs text-muted-foreground mt-2">
-                                Retail {money(a.basePriceCents)}
-                                {` • Cost ${money(typeof a.dealerCostCents === "number" ? a.dealerCostCents : a.basePriceCents)}`}
-                                {` • ${(() => {
-                                  const t = typeof (a as any).pricingType === "string" ? String((a as any).pricingType).trim().toUpperCase() : "";
-                                  if (t === "PER_TERM") return "Per term";
-                                  if (t === "PER_CLAIM") return "Per claim";
-                                  return "Fixed";
-                                })()}`}
-                                {a.active ? " • Active" : " • Inactive"}
-                              </div>
-
-                      <div className="rounded-lg border p-3">
-                        <div className="text-sm font-medium">Compatibility</div>
-                        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <input
-                              type="radio"
-                              name="addon-compat"
-                              checked={addonEditor.appliesToAllPricingRows === true}
-                              onChange={() =>
-                                setAddonEditor((s) => ({
-                                  ...s,
-                                  appliesToAllPricingRows: true,
-                                  applicablePricingRowIds: [],
-                                }))
-                              }
-                              disabled={busy}
-                            />
-                            All pricing rows
-                          </label>
-                          <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <input
-                              type="radio"
-                              name="addon-compat"
-                              checked={addonEditor.appliesToAllPricingRows === false}
-                              onChange={() => setAddonEditor((s) => ({ ...s, appliesToAllPricingRows: false }))}
-                              disabled={busy}
-                            />
-                            Selected rows only
-                          </label>
+                  <div className="mt-4 space-y-3">
+                    {pendingAddons.map((row, idx) => (
+                      <div key={row.key} className="rounded-lg border p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-medium">Row {idx + 1}</div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={busy || pendingAddons.length <= 1}
+                            onClick={() => setPendingAddons((s) => s.filter((x) => x.key !== row.key))}
+                          >
+                            Remove
+                          </Button>
                         </div>
 
-                        {!addonEditor.appliesToAllPricingRows ? (
-                          <div className="mt-3 grid grid-cols-1 gap-2">
-                            {editor.pricingRows.map((r, idx) => {
-                              const rowId = r.key;
-                              const label =
-                                `Row ${idx + 1}: ` +
-                                `${r.termMonthsUnlimited ? "Unlimited" : (r.termMonths || "—")} mo` +
-                                ` / ` +
-                                `${r.termKmUnlimited ? "Unlimited" : (r.termKm || "—")} km`;
-
-                              const checked = addonEditor.applicablePricingRowIds.includes(rowId);
-                              return (
-                                <label key={rowId} className="flex items-center gap-2 text-sm text-muted-foreground">
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={(e) =>
-                                      setAddonEditor((s) => ({
-                                        ...s,
-                                        applicablePricingRowIds: e.target.checked
-                                          ? Array.from(new Set([...(s.applicablePricingRowIds ?? []), rowId]))
-                                          : (s.applicablePricingRowIds ?? []).filter((x) => x !== rowId),
-                                      }))
-                                    }
-                                    disabled={busy}
-                                  />
-                                  {label}
-                                </label>
-                              );
-                            })}
-
-                            {addonEditor.applicablePricingRowIds.length === 0 ? (
-                              <div className="text-xs text-rose-700">⚠ Select at least one pricing row.</div>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
-                            </div>
-
-                            <div className="flex gap-2 shrink-0">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setAddonEditor({
-                                    id: a.id,
-                                    name: a.name,
-                                    description: a.description ?? "",
-                                    pricingType: ((a as any).pricingType ?? "FIXED") as any,
-                                    price: centsToDollars(typeof a.dealerCostCents === "number" ? a.dealerCostCents : a.basePriceCents),
-                                    appliesToAllPricingRows: typeof (a as any).appliesToAllPricingRows === "boolean" ? Boolean((a as any).appliesToAllPricingRows) : true,
-                                    applicablePricingRowIds: Array.isArray((a as any).applicablePricingRowIds)
-                                      ? ((a as any).applicablePricingRowIds as unknown[]).filter((x) => typeof x === "string")
-                                      : [],
-                                    active: a.active,
-                                  });
-                                }}
-                                disabled={busy}
-                              >
-                                Edit
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="border-rose-200 text-rose-700 hover:bg-rose-50"
-                                disabled={busy || removeAddonMutation.isPending}
-                                onClick={() => {
-                                  const ok = window.confirm(`Delete add-on "${a.name}"? This cannot be undone.`);
-                                  if (!ok) return;
-                                  removeAddonMutation.mutate(a.id);
-                                }}
-                              >
-                                Delete
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-
-                {!editorProductId ? (
-                  <div className="rounded-xl border p-4">
-                    <div className="font-semibold">Add-on rows</div>
-
-                    <div className="mt-4 space-y-3">
-                      {pendingAddons.map((row, idx) => (
-                        <div key={row.key} className="rounded-lg border p-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="text-sm font-medium">Row {idx + 1}</div>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              disabled={busy || pendingAddons.length <= 1}
-                              onClick={() => setPendingAddons((s) => s.filter((x) => x.key !== row.key))}
-                            >
-                              Remove
-                            </Button>
-                          </div>
-
-                          <div className="mt-3 grid grid-cols-1 gap-3">
-                            <Input
-                              value={row.name}
-                              onChange={(e) =>
-                                setPendingAddons((s) => s.map((x) => (x.key === row.key ? { ...x, name: e.target.value } : x)))
-                              }
-                              placeholder="Add-on name"
-                              disabled={busy}
-                            />
-                            <Input
-                              value={row.description}
-                              onChange={(e) =>
-                                setPendingAddons((s) => s.map((x) => (x.key === row.key ? { ...x, description: e.target.value } : x)))
-                              }
-                              placeholder="Description (optional)"
-                              disabled={busy}
-                            />
-                            <select
-                              value={row.pricingType}
-                              onChange={(e) =>
-                                setPendingAddons((s) => s.map((x) => (x.key === row.key ? { ...x, pricingType: e.target.value as any } : x)))
-                              }
-                              className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
-                              disabled={busy}
-                            >
-                              <option value="FIXED">Fixed</option>
-                              <option value="PER_TERM">Per term</option>
-                              <option value="PER_CLAIM">Per claim</option>
-                            </select>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              <Input
-                                value={row.price}
-                                onChange={(e) =>
-                                  setPendingAddons((s) => s.map((x) => (x.key === row.key ? { ...x, price: sanitizeMoney(e.target.value) } : x)))
-                                }
-                                placeholder="Price"
-                                inputMode="decimal"
-                                disabled={busy}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={busy}
-                        onClick={() =>
-                          setPendingAddons((s) => [
-                            ...s,
-                            {
-                              key: crypto.randomUUID(),
-                              name: "",
-                              description: "",
-                              pricingType: "FIXED",
-                              price: "",
-                            },
-                          ])
-                        }
-                      >
-                        Add row
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="rounded-xl border p-4">
-                    <div className="font-semibold">{addonEditor.id ? "Edit add-on" : "New add-on"}</div>
-                    <div className="mt-4 grid grid-cols-1 gap-3">
-                      <Input
-                        value={addonEditor.name}
-                        onChange={(e) => setAddonEditor((s) => ({ ...s, name: e.target.value }))}
-                        placeholder="Add-on name"
-                        disabled={busy}
-                      />
-                      <Input
-                        value={addonEditor.description}
-                        onChange={(e) => setAddonEditor((s) => ({ ...s, description: e.target.value }))}
-                        placeholder="Description (optional)"
-                        disabled={busy}
-                      />
-
-                      <select
-                        value={addonEditor.pricingType}
-                        onChange={(e) => setAddonEditor((s) => ({ ...s, pricingType: e.target.value as any }))}
-                        className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
-                        disabled={busy}
-                      >
-                        <option value="FIXED">Fixed (1x per contract)</option>
-                        <option value="PER_TERM">Per term (1x for now)</option>
-                        <option value="PER_CLAIM">Per claim (1x for now)</option>
-                      </select>
-
-                      <Input
-                        value={addonEditor.price}
-                        onChange={(e) => setAddonEditor((s) => ({ ...s, price: sanitizeMoney(e.target.value) }))}
-                        placeholder="Price"
-                        inputMode="decimal"
-                        disabled={busy}
-                      />
-
-                      <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          disabled={busy || saveAddonMutation.isPending}
-                          onClick={async () => {
-                            setError(null);
-                            try {
-                              await saveAddonMutation.mutateAsync();
-                            } catch (e) {
-                              setError(e instanceof Error ? e.message : "Failed to save add-on");
+                        <div className="mt-3 grid grid-cols-1 gap-3">
+                          <Input
+                            value={row.name}
+                            onChange={(e) =>
+                              setPendingAddons((s) => s.map((x) => (x.key === row.key ? { ...x, name: e.target.value } : x)))
                             }
-                          }}
-                        >
-                          {addonEditor.id ? "Save" : "Add"}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() =>
-                            setAddonEditor({
-                              name: "",
-                              description: "",
-                              pricingType: "FIXED",
-                              price: "",
-                              appliesToAllPricingRows: true,
-                              applicablePricingRowIds: [],
-                              active: true,
-                            })
-                          }
-                        >
-                          Clear
-                        </Button>
+                            placeholder="Add-on name"
+                            disabled={busy}
+                          />
+                          <Input
+                            value={row.description}
+                            onChange={(e) =>
+                              setPendingAddons((s) => s.map((x) => (x.key === row.key ? { ...x, description: e.target.value } : x)))
+                            }
+                            placeholder="Description (optional)"
+                            disabled={busy}
+                          />
+                          <select
+                            value={row.pricingType}
+                            onChange={(e) =>
+                              setPendingAddons((s) => s.map((x) => (x.key === row.key ? { ...x, pricingType: e.target.value as any } : x)))
+                            }
+                            className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
+                            disabled={busy}
+                          >
+                            <option value="FIXED">Fixed (1x per contract)</option>
+                            <option value="PER_TERM">Per term (1x for now)</option>
+                            <option value="PER_CLAIM">Per claim (1x for now)</option>
+                          </select>
+                          <Input
+                            value={row.price}
+                            onChange={(e) =>
+                              setPendingAddons((s) => s.map((x) => (x.key === row.key ? { ...x, price: sanitizeMoney(e.target.value) } : x)))
+                            }
+                            placeholder="Price"
+                            inputMode="decimal"
+                            disabled={busy}
+                          />
+                        </div>
                       </div>
-                    </div>
+                    ))}
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() =>
+                        setPendingAddons((s) => [
+                          ...s,
+                          { key: crypto.randomUUID(), name: "", description: "", pricingType: "FIXED", price: "" },
+                        ])
+                      }
+                    >
+                      Add row
+                    </Button>
                   </div>
-                )}
+                </div>
               </div>
             ) : null}
 
