@@ -38,6 +38,18 @@ function money(cents?: number) {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function formatUnknownError(e: unknown) {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === "object") {
+    const anyE = e as any;
+    if (typeof anyE.message === "string" && anyE.message.trim()) return anyE.message;
+    if (typeof anyE.error_description === "string" && anyE.error_description.trim()) return anyE.error_description;
+    if (typeof anyE.details === "string" && anyE.details.trim()) return anyE.details;
+    if (typeof anyE.hint === "string" && anyE.hint.trim()) return anyE.hint;
+  }
+  return "Unexpected error";
+}
+
 function parseOptionalInt(v: string) {
   const t = v.trim();
   if (!t) return undefined;
@@ -775,6 +787,38 @@ export function ProviderProductsPage() {
       eligibilityTrimAllowlist: parseAllowlist(editor.eligibilityTrimAllowlist) ?? [],
     };
 
+    const normalizedAddons = pendingAddons
+      .map((r) => ({
+        key: r.key,
+        name: r.name.trim(),
+        description: r.description.trim(),
+        pricingType: r.pricingType,
+        priceRaw: r.price,
+      }))
+      .filter((r) => !!r.name);
+
+    for (const r of normalizedAddons) {
+      const price = dollarsToCents(r.priceRaw);
+      if (typeof price !== "number" || price <= 0) {
+        setError(`Add-on price is required for "${r.name}".`);
+        setActiveTab("ADDONS");
+        return;
+      }
+    }
+
+    {
+      const seenNames = new Set<string>();
+      for (const r of normalizedAddons) {
+        const k = r.name.toLowerCase();
+        if (seenNames.has(k)) {
+          setError(`Duplicate add-on name detected: "${r.name}".`);
+          setActiveTab("ADDONS");
+          return;
+        }
+        seenNames.add(k);
+      }
+    }
+
     try {
       let savedProduct: Product | null = null;
       if (!editor.id) {
@@ -856,30 +900,31 @@ export function ProviderProductsPage() {
       }
 
       if (productId) {
-        const existingAddons = await addonsApi.list({ productId });
-        for (const a of existingAddons) {
-          await addonsApi.remove(a.id);
-        }
+        try {
+          const existingAddons = await addonsApi.list({ productId });
+          for (const a of existingAddons) {
+            await addonsApi.remove(a.id);
+          }
 
-        for (const row of pendingAddons) {
-          const name = row.name.trim();
-          if (!name) continue;
-          const price = dollarsToCents(row.price);
-          if (typeof price !== "number" || price <= 0) continue;
-
-          await addonsApi.create({
-            productId,
-            name,
-            description: row.description.trim() || undefined,
-            pricingType: row.pricingType,
-            basePriceCents: price,
-            minPriceCents: undefined,
-            maxPriceCents: undefined,
-            dealerCostCents: price,
-            active: true,
-          });
+          for (const row of normalizedAddons) {
+            const price = dollarsToCents(row.priceRaw) as number;
+            await addonsApi.create({
+              productId,
+              name: row.name,
+              description: row.description || undefined,
+              pricingType: row.pricingType,
+              basePriceCents: price,
+              minPriceCents: undefined,
+              maxPriceCents: undefined,
+              dealerCostCents: price,
+              active: true,
+            });
+          }
+          await qc.invalidateQueries({ queryKey: ["product-addons", productId] });
+        } catch (e) {
+          setActiveTab("ADDONS");
+          throw new Error(`Failed to save add-ons: ${formatUnknownError(e)}`);
         }
-        await qc.invalidateQueries({ queryKey: ["product-addons", productId] });
       }
 
       await qc.invalidateQueries({ queryKey: ["marketplace-products"] });
@@ -888,7 +933,7 @@ export function ProviderProductsPage() {
       setEditor(emptyEditor());
       setPendingAddons([]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save product");
+      setError(e instanceof Error ? e.message : `Failed to save product: ${formatUnknownError(e)}`);
     }
   };
 
