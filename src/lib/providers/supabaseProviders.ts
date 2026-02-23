@@ -15,8 +15,19 @@ type ProfilesRow = {
 function missingColumnFromSchemaCacheError(e: unknown): string | null {
   const msg = typeof (e as any)?.message === "string" ? String((e as any).message) : "";
   if (!msg) return null;
-  const m = msg.match(/Could not find the '([^']+)' column/i);
-  return m && typeof m[1] === "string" && m[1].trim() ? m[1].trim() : null;
+
+  // Supabase schema cache error
+  const a = msg.match(/Could not find the '([^']+)' column/i);
+  if (a && typeof a[1] === "string" && a[1].trim()) return a[1].trim();
+
+  // Postgres missing column error
+  // Examples:
+  // - column profiles.provider_logo_url does not exist
+  // - column "provider_logo_url" does not exist
+  const b = msg.match(/column\s+([a-zA-Z0-9_]+\.)?"?([a-zA-Z0-9_]+)"?\s+does\s+not\s+exist/i);
+  if (b && typeof b[2] === "string" && b[2].trim()) return b[2].trim();
+
+  return null;
 }
 
 async function selectProfilesWithFallback(
