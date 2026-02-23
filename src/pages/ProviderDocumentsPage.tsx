@@ -55,14 +55,14 @@ export function ProviderDocumentsPage() {
       const userId = sessionData.session?.user?.id;
       if (!userId) throw new Error("Not authenticated");
 
-      const objectName = `provider-logos/${userId}/${crypto.randomUUID()}-${sanitizeFilename(input.file.name)}`;
-      const uploadRes = await supabase.storage.from("product-documents").upload(objectName, input.file, {
+      const objectName = `${userId}/${crypto.randomUUID()}-${sanitizeFilename(input.file.name)}`;
+      const uploadRes = await supabase.storage.from("provider-logos").upload(objectName, input.file, {
         upsert: true,
         contentType: input.file.type || undefined,
       });
       if (uploadRes.error) throw new Error(uploadRes.error.message);
 
-      const publicUrl = supabase.storage.from("product-documents").getPublicUrl(objectName).data.publicUrl;
+      const publicUrl = supabase.storage.from("provider-logos").getPublicUrl(objectName).data.publicUrl;
       await providersApi.updateMyProfile({ logoUrl: publicUrl });
     },
     onSuccess: async () => {

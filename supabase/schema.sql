@@ -1783,6 +1783,12 @@ begin
   $sql$;
 
   execute $sql$
+    insert into storage.buckets (id, name, public)
+    values ('provider-logos', 'provider-logos', true)
+    on conflict (id) do nothing;
+  $sql$;
+
+  execute $sql$
     alter table storage.objects enable row level security;
   $sql$;
 
@@ -1863,6 +1869,72 @@ begin
         and (storage.foldername(name))[1] = auth.uid()::text
       );
   $sql$;
+
+  execute $sql$
+    drop policy if exists "storage_product_documents_select_own_or_dealer" on storage.objects;
+  $sql$;
+
+  execute $sql$
+    drop policy if exists "storage_provider_logos_select_public" on storage.objects;
+    create policy "storage_provider_logos_select_public"
+      on storage.objects
+      for select
+      to anon
+      using (
+        bucket_id = 'provider-logos'
+      );
+  $sql$;
+
+  execute $sql$
+    drop policy if exists "storage_provider_logos_select_authenticated" on storage.objects;
+    create policy "storage_provider_logos_select_authenticated"
+      on storage.objects
+      for select
+      to authenticated
+      using (
+        bucket_id = 'provider-logos'
+      );
+  $sql$;
+
+  execute $sql$
+    drop policy if exists "storage_provider_logos_insert_own" on storage.objects;
+    create policy "storage_provider_logos_insert_own"
+      on storage.objects
+      for insert
+      to authenticated
+      with check (
+        bucket_id = 'provider-logos'
+        and (storage.foldername(name))[1] = auth.uid()::text
+      );
+  $sql$;
+
+  execute $sql$
+    drop policy if exists "storage_provider_logos_update_own" on storage.objects;
+    create policy "storage_provider_logos_update_own"
+      on storage.objects
+      for update
+      to authenticated
+      using (
+        bucket_id = 'provider-logos'
+        and (storage.foldername(name))[1] = auth.uid()::text
+      )
+      with check (
+        bucket_id = 'provider-logos'
+        and (storage.foldername(name))[1] = auth.uid()::text
+      );
+  $sql$;
+
+  execute $sql$
+    drop policy if exists "storage_provider_logos_delete_own" on storage.objects;
+    create policy "storage_provider_logos_delete_own"
+      on storage.objects
+      for delete
+      to authenticated
+      using (
+        bucket_id = 'provider-logos'
+        and (storage.foldername(name))[1] = auth.uid()::text
+      );
+  $sql$;
 exception
-  when insufficient_privilege then null;
+  when undefined_table then null;
 end $$;
