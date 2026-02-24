@@ -855,6 +855,7 @@ export function ProviderProductsPage() {
     saveInFlightRef.current = true;
     try {
       let savedProduct: Product | null = null;
+      const desiredPublished = editor.published;
       if (!editor.id) {
         savedProduct = (await createMutation.mutateAsync(input)) as Product;
 
@@ -862,15 +863,6 @@ export function ProviderProductsPage() {
           id: savedProduct.id,
           patch: overviewExtrasPatch,
         })) as Product;
-
-        if (editor.published) {
-          savedProduct = (await updateMutation.mutateAsync({
-            id: savedProduct.id,
-            patch: {
-              published: true,
-            },
-          })) as Product;
-        }
       } else {
         savedProduct = (await updateMutation.mutateAsync({
           id: editor.id,
@@ -888,7 +880,6 @@ export function ProviderProductsPage() {
             ...allowlistsForUpdate,
             basePriceCents: input.basePriceCents,
             dealerCostCents: input.dealerCostCents,
-            published: editor.published,
           },
         })) as Product;
       }
@@ -1030,6 +1021,16 @@ export function ProviderProductsPage() {
       }
 
       await qc.invalidateQueries({ queryKey: ["marketplace-products"] });
+
+      {
+        const productId = (savedProduct?.id ?? editor.id ?? "").trim();
+        if (productId) {
+          savedProduct = (await updateMutation.mutateAsync({
+            id: productId,
+            patch: { published: desiredPublished },
+          })) as Product;
+        }
+      }
 
       setShowEditor(false);
       setEditor(emptyEditor());
