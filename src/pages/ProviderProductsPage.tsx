@@ -327,6 +327,8 @@ export function ProviderProductsPage() {
   const [activeTab, setActiveTab] = useState<ProductEditorTab>("OVERVIEW");
   const [error, setError] = useState<string | null>(null);
 
+  const saveInFlightRef = useRef(false);
+
   const [pastePricingOpen, setPastePricingOpen] = useState(false);
   const [pastePricingText, setPastePricingText] = useState("");
 
@@ -587,6 +589,7 @@ export function ProviderProductsPage() {
   };
 
   const onSubmit = async () => {
+    if (saveInFlightRef.current) return;
     setError(null);
 
     const name = editor.name.trim();
@@ -843,6 +846,7 @@ export function ProviderProductsPage() {
       }
     }
 
+    saveInFlightRef.current = true;
     try {
       let savedProduct: Product | null = null;
       if (!editor.id) {
@@ -904,9 +908,7 @@ export function ProviderProductsPage() {
           return out;
         };
 
-        for (const batch of chunk(existing, 25)) {
-          await Promise.all(batch.map((r) => pricingApi.remove(r.id)));
-        }
+        const created: { id: string }[] = [];
 
         const toCreateInput = (r: (typeof normalizedRowsWithDefault)[number]) => ({
           productId,
@@ -924,17 +926,73 @@ export function ProviderProductsPage() {
           dealerCostCents: r.providerCostCents,
         });
 
+        const restoreInputs = existing.map((r) => ({
+          productId,
+          isDefault: r.isDefault === true,
+          termMonths: r.termMonths ?? undefined,
+          termKm: r.termKm ?? undefined,
+          vehicleMileageMinKm: typeof r.vehicleMileageMinKm === "number" ? r.vehicleMileageMinKm : undefined,
+          vehicleMileageMaxKm: r.vehicleMileageMaxKm === null ? null : typeof r.vehicleMileageMaxKm === "number" ? r.vehicleMileageMaxKm : undefined,
+          vehicleClass: typeof r.vehicleClass === "string" ? r.vehicleClass : undefined,
+          claimLimitCents: typeof r.claimLimitCents === "number" ? r.claimLimitCents : undefined,
+          ...(typeof (r as any).claimLimitType === "string" ? { claimLimitType: (r as any).claimLimitType } : {}),
+          ...(typeof (r as any).claimLimitAmountCents === "number" ? { claimLimitAmountCents: (r as any).claimLimitAmountCents } : {}),
+          deductibleCents: r.deductibleCents,
+          basePriceCents: r.basePriceCents,
+          dealerCostCents: typeof r.dealerCostCents === "number" ? r.dealerCostCents : r.basePriceCents,
+        }));
+
+        const normalizedRestoreInputs = (() => {
+          const arr = restoreInputs.slice();
+          if (arr.length === 0) return arr;
+          const firstDefaultIdx = arr.findIndex((r) => (r as any).isDefault === true);
+          const idx = firstDefaultIdx >= 0 ? firstDefaultIdx : 0;
+          return arr.map((r, i) => ({ ...r, isDefault: i === idx }));
+        })();
+
         const nonDefault = normalizedRowsWithDefault.filter((r) => r.isDefault !== true);
         const defaultRow = normalizedRowsWithDefault.find((r) => r.isDefault === true) ?? null;
 
-        for (const batch of chunk(nonDefault, 25)) {
-          await Promise.all(batch.map((r) => pricingApi.create(toCreateInput(r))));
-        }
+        try {
+          for (const batch of chunk(existing, 25)) {
+            await Promise.all(batch.map((r) => pricingApi.remove(r.id)));
+          }
 
-        if (defaultRow) {
-          await pricingApi.create(toCreateInput(defaultRow));
+          for (const batch of chunk(nonDefault, 25)) {
+            const res = await Promise.all(batch.map((r) => pricingApi.create(toCreateInput(r))));
+            for (const row of res) created.push({ id: (row as any).id });
+          }
+
+          if (defaultRow) {
+            const row = await pricingApi.create(toCreateInput(defaultRow));
+            created.push({ id: (row as any).id });
+          }
+
+          await qc.invalidateQueries({ queryKey: ["product-pricing", productId] });
+        } catch (e) {
+          try {
+            for (const batch of chunk(created, 25)) {
+              await Promise.all(batch.map((r) => pricingApi.remove(r.id)));
+            }
+
+            const restoreNonDefault = normalizedRestoreInputs.filter((r) => (r as any).isDefault !== true);
+            const restoreDefault = normalizedRestoreInputs.find((r) => (r as any).isDefault === true) ?? null;
+
+            for (const batch of chunk(restoreNonDefault, 25)) {
+              await Promise.all(batch.map((r) => pricingApi.create(r as any)));
+            }
+            if (restoreDefault) {
+              await pricingApi.create(restoreDefault as any);
+            }
+
+            await qc.invalidateQueries({ queryKey: ["product-pricing", productId] });
+          } catch {
+            // best-effort rollback
+          }
+
+          setActiveTab("PRICING");
+          throw new Error(`Failed to save pricing: ${formatUnknownError(e)}`);
         }
-        await qc.invalidateQueries({ queryKey: ["product-pricing", productId] });
       }
 
       if (productId) {
@@ -972,10 +1030,12 @@ export function ProviderProductsPage() {
       setPendingAddons([]);
     } catch (e) {
       setError(e instanceof Error ? e.message : `Failed to save product: ${formatUnknownError(e)}`);
+    } finally {
+      saveInFlightRef.current = false;
     }
   };
 
-  const busy = createMutation.isPending || updateMutation.isPending || removeMutation.isPending;
+  const busy = saveInFlightRef.current || createMutation.isPending || updateMutation.isPending || removeMutation.isPending;
 
   const onDelete = (p: Product) => {
     void (async () => {

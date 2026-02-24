@@ -135,7 +135,6 @@ export const supabaseProductPricingApi: ProductPricingApi = {
         .from("product_pricing")
         .update({ is_default: false })
         .eq("product_id", input.productId)
-        .eq("provider_id", providerId)
         .eq("is_default", true);
       if (clearError) throw clearError;
     }
