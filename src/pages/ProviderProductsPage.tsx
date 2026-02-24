@@ -887,6 +887,15 @@ export function ProviderProductsPage() {
       if (productId) {
         const existing = await pricingApi.list({ productId });
 
+        const normalizedRowsWithDefault = (() => {
+          const arr = rowsWithDefault.slice();
+          if (arr.length === 0) return arr;
+
+          const firstDefaultIdx = arr.findIndex((r) => r.isDefault === true);
+          const idx = firstDefaultIdx >= 0 ? firstDefaultIdx : 0;
+          return arr.map((r, i) => ({ ...r, isDefault: i === idx }));
+        })();
+
         const chunk = <T,>(arr: T[], size: number) => {
           if (!Array.isArray(arr) || arr.length === 0) return [] as T[][];
           const s = Math.max(1, Math.floor(size));
@@ -899,26 +908,31 @@ export function ProviderProductsPage() {
           await Promise.all(batch.map((r) => pricingApi.remove(r.id)));
         }
 
-        for (const batch of chunk(rowsWithDefault, 25)) {
-          await Promise.all(
-            batch.map((r) =>
-              pricingApi.create({
-                productId,
-                isDefault: r.isDefault === true,
-                termMonths: r.termMonths,
-                termKm: r.termKm,
-                vehicleMileageMinKm: r.vehicleMileageMinKm,
-                vehicleMileageMaxKm: r.vehicleMileageMaxKm,
-                vehicleClass: r.vehicleClass,
-                claimLimitCents: r.claimLimitCents,
-                ...(typeof r.claimLimitType === "string" ? { claimLimitType: r.claimLimitType } : {}),
-                ...(typeof r.claimLimitAmountCents === "number" ? { claimLimitAmountCents: r.claimLimitAmountCents } : {}),
-                deductibleCents: r.deductibleCents,
-                basePriceCents: r.providerCostCents,
-                dealerCostCents: r.providerCostCents,
-              }),
-            ),
-          );
+        const toCreateInput = (r: (typeof normalizedRowsWithDefault)[number]) => ({
+          productId,
+          isDefault: r.isDefault === true,
+          termMonths: r.termMonths,
+          termKm: r.termKm,
+          vehicleMileageMinKm: r.vehicleMileageMinKm,
+          vehicleMileageMaxKm: r.vehicleMileageMaxKm,
+          vehicleClass: r.vehicleClass,
+          claimLimitCents: r.claimLimitCents,
+          ...(typeof r.claimLimitType === "string" ? { claimLimitType: r.claimLimitType } : {}),
+          ...(typeof r.claimLimitAmountCents === "number" ? { claimLimitAmountCents: r.claimLimitAmountCents } : {}),
+          deductibleCents: r.deductibleCents,
+          basePriceCents: r.providerCostCents,
+          dealerCostCents: r.providerCostCents,
+        });
+
+        const nonDefault = normalizedRowsWithDefault.filter((r) => r.isDefault !== true);
+        const defaultRow = normalizedRowsWithDefault.find((r) => r.isDefault === true) ?? null;
+
+        for (const batch of chunk(nonDefault, 25)) {
+          await Promise.all(batch.map((r) => pricingApi.create(toCreateInput(r))));
+        }
+
+        if (defaultRow) {
+          await pricingApi.create(toCreateInput(defaultRow));
         }
         await qc.invalidateQueries({ queryKey: ["product-pricing", productId] });
       }
