@@ -141,10 +141,12 @@ export const supabaseProductsApi: ProductsApi = {
     if (typeof patch.termMonths === "number") updateRow.term_months = patch.termMonths;
     if (typeof patch.termKm === "number") updateRow.term_km = patch.termKm;
     if (typeof patch.deductibleCents === "number") updateRow.deductible_cents = patch.deductibleCents;
-    if (typeof patch.eligibilityMaxVehicleAgeYears === "number")
+    if (patch.eligibilityMaxVehicleAgeYears === null || typeof patch.eligibilityMaxVehicleAgeYears === "number") {
       updateRow.eligibility_max_vehicle_age_years = patch.eligibilityMaxVehicleAgeYears;
-    if (typeof patch.eligibilityMaxMileageKm === "number")
+    }
+    if (patch.eligibilityMaxMileageKm === null || typeof patch.eligibilityMaxMileageKm === "number") {
       updateRow.eligibility_max_mileage_km = patch.eligibilityMaxMileageKm;
+    }
     if (Array.isArray(patch.eligibilityMakeAllowlist)) updateRow.eligibility_make_allowlist = patch.eligibilityMakeAllowlist;
     if (Array.isArray(patch.eligibilityModelAllowlist)) updateRow.eligibility_model_allowlist = patch.eligibilityModelAllowlist;
     if (Array.isArray(patch.eligibilityTrimAllowlist)) updateRow.eligibility_trim_allowlist = patch.eligibilityTrimAllowlist;

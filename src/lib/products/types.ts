@@ -12,8 +12,8 @@ export type Product = {
   termMonths?: number;
   termKm?: number;
   deductibleCents?: number;
-  eligibilityMaxVehicleAgeYears?: number;
-  eligibilityMaxMileageKm?: number;
+  eligibilityMaxVehicleAgeYears?: number | null;
+  eligibilityMaxMileageKm?: number | null;
   eligibilityMakeAllowlist?: string[];
   eligibilityModelAllowlist?: string[];
   eligibilityTrimAllowlist?: string[];
@@ -32,8 +32,8 @@ export type CreateProductInput = {
   termMonths?: number;
   termKm?: number;
   deductibleCents?: number;
-  eligibilityMaxVehicleAgeYears?: number;
-  eligibilityMaxMileageKm?: number;
+  eligibilityMaxVehicleAgeYears?: number | null;
+  eligibilityMaxMileageKm?: number | null;
   eligibilityMakeAllowlist?: string[];
   eligibilityModelAllowlist?: string[];
   eligibilityTrimAllowlist?: string[];

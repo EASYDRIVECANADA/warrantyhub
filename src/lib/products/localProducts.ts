@@ -61,9 +61,17 @@ function read(): Product[] {
           termKm: typeof p.termKm === "number" ? p.termKm : undefined,
           deductibleCents: typeof p.deductibleCents === "number" ? p.deductibleCents : undefined,
           eligibilityMaxVehicleAgeYears:
-            typeof p.eligibilityMaxVehicleAgeYears === "number" ? p.eligibilityMaxVehicleAgeYears : undefined,
+            p.eligibilityMaxVehicleAgeYears === null
+              ? null
+              : typeof p.eligibilityMaxVehicleAgeYears === "number"
+                ? p.eligibilityMaxVehicleAgeYears
+                : undefined,
           eligibilityMaxMileageKm:
-            typeof p.eligibilityMaxMileageKm === "number" ? p.eligibilityMaxMileageKm : undefined,
+            p.eligibilityMaxMileageKm === null
+              ? null
+              : typeof p.eligibilityMaxMileageKm === "number"
+                ? p.eligibilityMaxMileageKm
+                : undefined,
           eligibilityMakeAllowlist: Array.isArray(p.eligibilityMakeAllowlist)
             ? (p.eligibilityMakeAllowlist.filter((x) => typeof x === "string") as string[])
             : undefined,
@@ -156,9 +164,18 @@ export const localProductsApi: ProductsApi = {
       nextAllowlists.eligibilityTrimAllowlist = patch.eligibilityTrimAllowlist.length ? patch.eligibilityTrimAllowlist : undefined;
     }
 
+    const nextEligibility: Partial<Pick<Product, "eligibilityMaxVehicleAgeYears" | "eligibilityMaxMileageKm">> = {};
+    if (patch.eligibilityMaxVehicleAgeYears === null || typeof patch.eligibilityMaxVehicleAgeYears === "number") {
+      nextEligibility.eligibilityMaxVehicleAgeYears = patch.eligibilityMaxVehicleAgeYears;
+    }
+    if (patch.eligibilityMaxMileageKm === null || typeof patch.eligibilityMaxMileageKm === "number") {
+      nextEligibility.eligibilityMaxMileageKm = patch.eligibilityMaxMileageKm;
+    }
+
     const next: Product = {
       ...current,
       ...patch,
+      ...nextEligibility,
       ...nextAllowlists,
       updatedAt: now,
     };

@@ -54,8 +54,14 @@ function parseOptionalInt(v: string) {
   const t = v.trim();
   if (!t) return undefined;
   const n = Number(t);
-  if (!Number.isFinite(n)) return undefined;
-  return Math.trunc(n);
+  return Number.isFinite(n) ? Math.floor(n) : undefined;
+}
+
+function parseOptionalIntOrNull(v: string) {
+  const t = v.trim();
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? Math.floor(n) : null;
 }
 
 function parseAllowlist(raw: string) {
@@ -877,8 +883,8 @@ export function ProviderProductsPage() {
             ...(typeof input.termMonths === "number" ? { termMonths: input.termMonths } : {}),
             ...(typeof input.termKm === "number" ? { termKm: input.termKm } : {}),
             ...(typeof input.deductibleCents === "number" ? { deductibleCents: input.deductibleCents } : {}),
-            eligibilityMaxVehicleAgeYears: input.eligibilityMaxVehicleAgeYears,
-            eligibilityMaxMileageKm: input.eligibilityMaxMileageKm,
+            eligibilityMaxVehicleAgeYears: parseOptionalIntOrNull(editor.eligibilityMaxVehicleAgeYears),
+            eligibilityMaxMileageKm: parseOptionalIntOrNull(editor.eligibilityMaxMileageKm),
             ...allowlistsForUpdate,
             basePriceCents: input.basePriceCents,
             dealerCostCents: input.dealerCostCents,
@@ -1246,6 +1252,12 @@ export function ProviderProductsPage() {
                       disabled={busy}
                     />
                   </div>
+                  {(() => {
+                    const openAge = !editor.eligibilityMaxVehicleAgeYears.trim();
+                    const openKm = !editor.eligibilityMaxMileageKm.trim();
+                    if (!(openAge && openKm)) return null;
+                    return <div className="mt-3 text-sm text-muted-foreground">Fully Open Product</div>;
+                  })()}
                 </div>
 
                 <div className="rounded-xl border p-4">
