@@ -266,19 +266,72 @@ export function DealerMarketplacePage() {
     ],
     enabled: Boolean(decoded) && typeof parsedMileage === "number" && candidateProductIds.length > 0,
     queryFn: async () => {
+      const treatClassAsWildcard = !vehicleClass.trim();
+
+      const asFiniteNonNegativeNumber = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
+
+      const matchesMinMax = (input: { value: number; min?: number | null; max?: number | null }) => {
+        const min = typeof input.min === "number" && Number.isFinite(input.min) ? input.min : 0;
+        const max = typeof input.max === "number" && Number.isFinite(input.max) ? input.max : null;
+        if (input.value < min) return false;
+        if (typeof max === "number" && input.value > max) return false;
+        return true;
+      };
+
+      const matchesMin = (input: { value: number | null; min?: number | null }) => {
+        const min = typeof input.min === "number" && Number.isFinite(input.min) ? input.min : null;
+        if (typeof min !== "number") return true;
+        if (input.value === null) return true;
+        return input.value >= min;
+      };
+
+      const matchesMax = (input: { value: number; max?: number | null }) => {
+        const max = typeof input.max === "number" && Number.isFinite(input.max) ? input.max : null;
+        if (typeof max !== "number") return true;
+        return input.value <= max;
+      };
+
+      const isEligibleIgnoringClass = (r: ProductPricing) => {
+        const mileage = asFiniteNonNegativeNumber(parsedMileage);
+        if (mileage === null) return false;
+
+        if (
+          !matchesMinMax({
+            value: mileage,
+            min: typeof r.vehicleMileageMinKm === "number" ? r.vehicleMileageMinKm : 0,
+            max: r.vehicleMileageMaxKm ?? null,
+          })
+        ) {
+          return false;
+        }
+
+        const termMonths = typeof r.termMonths === "number" && Number.isFinite(r.termMonths) ? r.termMonths : null;
+        const termKm = typeof r.termKm === "number" && Number.isFinite(r.termKm) ? r.termKm : null;
+
+        if (!matchesMin({ value: termMonths, min: minTermMonthsNum ?? null })) return false;
+        if (!matchesMin({ value: termKm, min: minTermKmNum ?? null })) return false;
+
+        const deductible = typeof r.deductibleCents === "number" && Number.isFinite(r.deductibleCents) ? r.deductibleCents : 0;
+        if (!matchesMax({ value: deductible, max: maxDeductibleCents ?? null })) return false;
+
+        return true;
+      };
+
       const entries = await Promise.all(
         candidateProductIds.map(async (pid) => {
           const rows = (await productPricingApi.list({ productId: pid })) as ProductPricing[];
-          const eligibleRows = rows.filter((r) =>
-            isPricingEligibleForVehicleWithConstraints({
-              pricing: r,
-              vehicleMileageKm: parsedMileage as number,
-              vehicleClass,
-              minTermMonths: minTermMonthsNum ?? null,
-              minTermKm: minTermKmNum ?? null,
-              maxDeductibleCents: maxDeductibleCents ?? null,
-            }),
-          );
+          const eligibleRows = treatClassAsWildcard
+            ? rows.filter((r) => isEligibleIgnoringClass(r))
+            : rows.filter((r) =>
+                isPricingEligibleForVehicleWithConstraints({
+                  pricing: r,
+                  vehicleMileageKm: parsedMileage as number,
+                  vehicleClass,
+                  minTermMonths: minTermMonthsNum ?? null,
+                  minTermKm: minTermKmNum ?? null,
+                  maxDeductibleCents: maxDeductibleCents ?? null,
+                }),
+              );
           const primary = bestPricingRowForVehicleMileage(eligibleRows);
           return [pid, primary] as const;
         }),
