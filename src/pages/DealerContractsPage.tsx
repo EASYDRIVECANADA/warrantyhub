@@ -146,6 +146,7 @@ export function DealerContractsPage() {
   const createFromMarketplaceMutation = useMutation({
     mutationFn: async () => {
       if (!user) throw new Error("Not signed in");
+      if (!dealerId) throw new Error("Your user is not linked to a dealer account.");
       if (!selectedProduct) throw new Error("Selected product not found");
 
       const uid = (user?.id ?? "").trim();

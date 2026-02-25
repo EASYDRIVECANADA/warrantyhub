@@ -152,11 +152,17 @@ export const supabaseContractsApi: ContractsApi = {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error("Supabase is not configured");
 
+    const dealerId = (input.dealerId ?? "").trim();
+    if (!dealerId) {
+      throw new Error("Dealer account is not linked. Please sign in as a dealer user with an assigned dealerId.");
+    }
+
     const now = new Date().toISOString();
 
     const baseInsert = {
       contract_number: input.contractNumber,
       customer_name: input.customerName,
+      dealer_id: dealerId,
       provider_id: input.providerId,
       product_id: input.productId,
       product_pricing_id: input.productPricingId,
