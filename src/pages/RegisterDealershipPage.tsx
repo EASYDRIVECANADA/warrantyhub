@@ -380,21 +380,28 @@ export function RegisterDealershipPage() {
 
                 {error ? (
                   isEmailConfirmationNotice || isExistingEmailNotice ? (
-                    <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                    <div
+                      className={
+                        "rounded-xl border px-4 py-3 text-sm " +
+                        (isExistingEmailNotice
+                          ? "border-red-200 bg-red-50 text-red-700"
+                          : "border-blue-200 bg-blue-50 text-blue-800")
+                      }
+                    >
                       <div>{error}</div>
                       {isExistingEmailNotice ? (
                         <div className="mt-3 flex flex-col gap-2">
                           <Button
                             type="button"
-                            variant="outline"
-                            className="w-fit"
+                            variant="ghost"
+                            className="w-fit border border-red-200 hover:bg-red-500/10 hover:text-red-600"
                             disabled={isLoading || isResetting}
                             onClick={sendResetEmail}
                           >
                             Send password reset email
                           </Button>
                           {resetSent ? (
-                            <div className="text-xs text-blue-700">
+                            <div className="text-xs text-red-600">
                               If an account exists for <span className="font-medium">{email.trim()}</span>, we sent a reset link.
                             </div>
                           ) : null}
