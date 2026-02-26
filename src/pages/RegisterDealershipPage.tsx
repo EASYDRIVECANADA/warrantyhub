@@ -5,6 +5,7 @@ import { Shield } from "lucide-react";
 
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { getAuthApi } from "../lib/auth/auth";
 import type { Role } from "../lib/auth/types";
 import { useAuth } from "../providers/AuthProvider";
 
@@ -40,8 +41,16 @@ export function RegisterDealershipPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [resetSent, setResetSent] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
   const isEmailConfirmationNotice = Boolean(error && error.toLowerCase().includes("confirm your email"));
+  const isExistingEmailNotice = Boolean(
+    error &&
+      (error.toLowerCase().includes("email already exists") ||
+        error.toLowerCase().includes("already registered") ||
+        error.toLowerCase().includes("already in use")),
+  );
 
   const validateStep = (target: 1 | 2 | 3) => {
     const bn = dealershipName.trim();
@@ -74,6 +83,7 @@ export function RegisterDealershipPage() {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setResetSent(false);
     try {
       const stepErr = validateStep(3);
       if (stepErr) return setError(stepErr);
@@ -109,6 +119,34 @@ export function RegisterDealershipPage() {
       } catch {
         setError("Sign up failed");
       }
+    }
+  };
+
+  const sendResetEmail = async () => {
+    setError(null);
+    setResetSent(false);
+
+    const e = email.trim();
+    if (!e) {
+      setError("Email is required");
+      return;
+    }
+
+    setIsResetting(true);
+    try {
+      const api = getAuthApi();
+      await api.requestPasswordReset(e, `${window.location.origin}/reset-password`);
+      setResetSent(true);
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else if (typeof err === "string") {
+        setError(err);
+      } else {
+        setError("Failed to send reset email");
+      }
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -341,9 +379,27 @@ export function RegisterDealershipPage() {
                 ) : null}
 
                 {error ? (
-                  isEmailConfirmationNotice ? (
+                  isEmailConfirmationNotice || isExistingEmailNotice ? (
                     <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-                      {error}
+                      <div>{error}</div>
+                      {isExistingEmailNotice ? (
+                        <div className="mt-3 flex flex-col gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="w-fit"
+                            disabled={isLoading || isResetting}
+                            onClick={sendResetEmail}
+                          >
+                            Send password reset email
+                          </Button>
+                          {resetSent ? (
+                            <div className="text-xs text-blue-700">
+                              If an account exists for <span className="font-medium">{email.trim()}</span>, we sent a reset link.
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                   ) : (
                     <div className="text-sm text-destructive">{error}</div>

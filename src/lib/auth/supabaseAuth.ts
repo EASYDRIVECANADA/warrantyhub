@@ -177,12 +177,23 @@ export const supabaseAuthApi: AuthApi = {
         emailRedirectTo: `${window.location.origin}/sign-in`,
       },
     });
-    if (error) throw new Error(error.message);
+    if (error) {
+      const msg = (error.message ?? "").toString();
+      const normalized = msg.trim().toLowerCase();
+      if (normalized.includes("already registered") || normalized.includes("already been registered")) {
+        throw new Error("Email already exists. Please sign in or reset your password.");
+      }
+      throw new Error(msg || "Sign up failed");
+    }
 
     const user = data.user;
     if (!user?.email) throw new Error("No user returned");
 
     if (!data.session) {
+      const identities = Array.isArray((user as any).identities) ? ((user as any).identities as unknown[]) : null;
+      if (identities && identities.length === 0) {
+        throw new Error("Email already exists. Please sign in or reset your password.");
+      }
       throw new Error("Account created. Please confirm your email, then sign in.");
     }
 
