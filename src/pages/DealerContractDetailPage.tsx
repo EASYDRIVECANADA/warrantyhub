@@ -913,7 +913,11 @@ export function DealerContractDetailPage() {
             {step === "PRICING" ? (
               <div className="rounded-2xl border bg-card p-6 shadow-card">
                 <div className="font-semibold">Pricing</div>
-                <div className="text-sm text-muted-foreground mt-1">Select the term + km option for this contract.</div>
+                <div className="text-sm text-muted-foreground mt-1">
+                  {selectedProduct?.productType === "GAP"
+                    ? "Select the loan band and finance term for this contract."
+                    : "Select the term + km option for this contract."}
+                </div>
 
                 <div className="mt-4 rounded-xl border p-4 bg-muted/20">
                   <div className="text-xs text-muted-foreground">Selected plan</div>
@@ -922,10 +926,12 @@ export function DealerContractDetailPage() {
                     {selectedProduct ? providerDisplay(selectedProduct.providerId) : ""}
                     {selectedProduct ? " • " : ""}
                     {selectedPricing
-                      ? `${selectedPricing.termMonths === null ? "Unlimited" : `${selectedPricing.termMonths} mo`} / ${selectedPricing.termKm === null ? "Unlimited" : `${selectedPricing.termKm.toLocaleString()} km`}`
+                      ? selectedProduct?.productType === "GAP"
+                        ? `${typeof selectedPricing.financeTermMonths === "number" ? `${selectedPricing.financeTermMonths} months` : "—"} • ${typeof selectedPricing.loanAmountMinCents === "number" ? money(selectedPricing.loanAmountMinCents) : "—"} - ${typeof selectedPricing.loanAmountMaxCents === "number" ? money(selectedPricing.loanAmountMaxCents) : "—"}`
+                        : `${selectedPricing.termMonths === null ? "Unlimited" : `${selectedPricing.termMonths} mo`} / ${selectedPricing.termKm === null ? "Unlimited" : `${selectedPricing.termKm.toLocaleString()} km`}`
                       : "Select a pricing option"}
-                    {selectedPricing ? " • " : ""}
-                    {selectedPricing ? `Deductible ${money(selectedPricing.deductibleCents)}` : ""}
+                    {selectedPricing && selectedProduct?.productType !== "GAP" ? " • " : ""}
+                    {selectedPricing && selectedProduct?.productType !== "GAP" ? `Deductible ${money(selectedPricing.deductibleCents)}` : ""}
                   </div>
                 </div>
 
@@ -942,6 +948,15 @@ export function DealerContractDetailPage() {
                     {eligiblePricingOptions
                       .slice()
                       .sort((a, b) => {
+                        if (selectedProduct?.productType === "GAP") {
+                          const at = typeof a.financeTermMonths === "number" ? a.financeTermMonths : Number.MAX_SAFE_INTEGER;
+                          const bt = typeof b.financeTermMonths === "number" ? b.financeTermMonths : Number.MAX_SAFE_INTEGER;
+                          const amin = typeof a.loanAmountMinCents === "number" ? a.loanAmountMinCents : Number.MAX_SAFE_INTEGER;
+                          const bmin = typeof b.loanAmountMinCents === "number" ? b.loanAmountMinCents : Number.MAX_SAFE_INTEGER;
+                          const amax = typeof a.loanAmountMaxCents === "number" ? a.loanAmountMaxCents : Number.MAX_SAFE_INTEGER;
+                          const bmax = typeof b.loanAmountMaxCents === "number" ? b.loanAmountMaxCents : Number.MAX_SAFE_INTEGER;
+                          return (at - bt) || (amin - bmin) || (amax - bmax) || (a.deductibleCents - b.deductibleCents);
+                        }
                         const am = a.termMonths ?? Number.MAX_SAFE_INTEGER;
                         const bm = b.termMonths ?? Number.MAX_SAFE_INTEGER;
                         const ak = a.termKm ?? Number.MAX_SAFE_INTEGER;
@@ -964,11 +979,15 @@ export function DealerContractDetailPage() {
                           }
                         >
                           <div className="text-sm font-medium">
-                            {(r.termMonths === null ? "Unlimited" : `${r.termMonths} mo`)} / {(r.termKm === null ? "Unlimited" : `${r.termKm.toLocaleString()} km`)}
+                            {selectedProduct?.productType === "GAP"
+                              ? `${typeof r.financeTermMonths === "number" ? `${r.financeTermMonths} months` : "—"} • ${typeof r.loanAmountMinCents === "number" ? money(r.loanAmountMinCents) : "—"} - ${typeof r.loanAmountMaxCents === "number" ? money(r.loanAmountMaxCents) : "—"}`
+                              : `${r.termMonths === null ? "Unlimited" : `${r.termMonths} mo`} / ${r.termKm === null ? "Unlimited" : `${r.termKm.toLocaleString()} km`}`}
                           </div>
-                          <div className={"text-xs mt-1 " + (r.id === selectedPricingId ? "text-primary-foreground/80" : "text-muted-foreground")}>
-                            Deductible {money(r.deductibleCents)}
-                          </div>
+                          {selectedProduct?.productType !== "GAP" ? (
+                            <div className={"text-xs mt-1 " + (r.id === selectedPricingId ? "text-primary-foreground/80" : "text-muted-foreground")}>
+                              Deductible {money(r.deductibleCents)}
+                            </div>
+                          ) : null}
                           <div className={"text-sm font-semibold mt-2 " + (r.id === selectedPricingId ? "text-primary-foreground" : "text-foreground")}>
                             {(() => {
                               const cost = costFromProductOrPricing({ dealerCostCents: r.dealerCostCents, basePriceCents: r.basePriceCents });

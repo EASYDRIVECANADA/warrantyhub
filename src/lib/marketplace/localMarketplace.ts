@@ -1,5 +1,5 @@
 import type { MarketplaceApi, MarketplaceProduct } from "./api";
-import type { Product, ProductType } from "../products/types";
+import type { PricingStructure, Product, ProductType } from "../products/types";
 
 import type { ProductPricing } from "../productPricing/types";
 
@@ -22,6 +22,14 @@ function readProducts(): Product[] {
           providerId,
           name: p.name ?? "",
           productType: (p.productType ?? "OTHER") as ProductType,
+          pricingStructure: typeof (p as any).pricingStructure === "string" ? ((p as any).pricingStructure as PricingStructure) : undefined,
+          keyBenefits: typeof (p as any).keyBenefits === "string" ? (p as any).keyBenefits : undefined,
+          coverageMaxLtvPercent:
+            (p as any).coverageMaxLtvPercent === null
+              ? null
+              : typeof (p as any).coverageMaxLtvPercent === "number"
+                ? (p as any).coverageMaxLtvPercent
+                : undefined,
           coverageDetails: p.coverageDetails,
           exclusions: p.exclusions,
           termMonths: typeof p.termMonths === "number" ? p.termMonths : undefined,

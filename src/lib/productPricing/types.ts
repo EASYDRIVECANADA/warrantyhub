@@ -8,6 +8,10 @@ export type ProductPricing = {
   vehicleMileageMinKm?: number;
   vehicleMileageMaxKm?: number | null;
   vehicleClass?: string;
+  loanAmountMinCents?: number;
+  loanAmountMaxCents?: number;
+  financeTermMonths?: number;
+  providerNetCostCents?: number;
   claimLimitCents?: number;
   claimLimitType?: ClaimLimitType;
   claimLimitAmountCents?: number;
@@ -27,6 +31,10 @@ export type CreateProductPricingInput = {
   vehicleMileageMinKm?: number;
   vehicleMileageMaxKm?: number | null;
   vehicleClass?: string;
+  loanAmountMinCents?: number;
+  loanAmountMaxCents?: number;
+  financeTermMonths?: number;
+  providerNetCostCents?: number;
   claimLimitCents?: number;
   claimLimitType?: ClaimLimitType;
   claimLimitAmountCents?: number;

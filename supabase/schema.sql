@@ -1214,6 +1214,12 @@ alter table public.products
   add column if not exists dealer_cost_cents integer;
 
 alter table public.products
+  add column if not exists key_benefits text;
+
+alter table public.products
+  add column if not exists coverage_max_ltv_percent integer;
+
+alter table public.products
   add column if not exists eligibility_make_allowlist text[];
 
 alter table public.products

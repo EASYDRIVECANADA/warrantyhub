@@ -13,6 +13,10 @@ type ProductPricingRow = {
   vehicle_mileage_min_km?: number | null;
   vehicle_mileage_max_km?: number | null;
   vehicle_class?: string | null;
+  loan_amount_min_cents?: number | null;
+  loan_amount_max_cents?: number | null;
+  finance_term_months?: number | null;
+  provider_net_cost_cents?: number | null;
   claim_limit_cents?: number | null;
   claim_limit_type?: string | null;
   claim_limit_amount_cents?: number | null;
@@ -46,6 +50,10 @@ function toPricing(r: ProductPricingRow): ProductPricing {
     vehicleMileageMaxKm:
       typeof r.vehicle_mileage_max_km === "number" ? r.vehicle_mileage_max_km : r.vehicle_mileage_max_km === null ? null : undefined,
     vehicleClass: typeof r.vehicle_class === "string" ? r.vehicle_class : undefined,
+    loanAmountMinCents: typeof r.loan_amount_min_cents === "number" ? r.loan_amount_min_cents : undefined,
+    loanAmountMaxCents: typeof r.loan_amount_max_cents === "number" ? r.loan_amount_max_cents : undefined,
+    financeTermMonths: typeof r.finance_term_months === "number" ? r.finance_term_months : undefined,
+    providerNetCostCents: typeof r.provider_net_cost_cents === "number" ? r.provider_net_cost_cents : undefined,
     claimLimitCents: typeof amountCents === "number" ? amountCents : undefined,
     claimLimitType: type,
     claimLimitAmountCents: typeof amountCents === "number" ? amountCents : undefined,
@@ -54,6 +62,10 @@ function toPricing(r: ProductPricingRow): ProductPricing {
     dealerCostCents: r.dealer_cost_cents ?? undefined,
     createdAt: r.created_at,
   };
+}
+
+function isAllowedFinanceTermMonths(v: number) {
+  return v === 24 || v === 36 || v === 48 || v === 60 || v === 72 || v === 84 || v === 96;
 }
 
 async function currentUserId(): Promise<string> {
@@ -110,6 +122,27 @@ export const supabaseProductPricingApi: ProductPricingApi = {
       throw new Error("deductibleCents must be a number >= 0");
     if (!Number.isFinite(input.basePriceCents) || input.basePriceCents <= 0) throw new Error("basePriceCents must be a positive number");
 
+    if (typeof input.financeTermMonths === "number") {
+      if (!Number.isFinite(input.financeTermMonths) || input.financeTermMonths <= 0) {
+        throw new Error("financeTermMonths must be a positive number");
+      }
+      if (!isAllowedFinanceTermMonths(input.financeTermMonths)) {
+        throw new Error("financeTermMonths must be one of: 24, 36, 48, 60, 72, 84, 96");
+      }
+      if (typeof input.loanAmountMinCents !== "number" || !Number.isFinite(input.loanAmountMinCents) || input.loanAmountMinCents < 0) {
+        throw new Error("loanAmountMinCents must be a number >= 0 when financeTermMonths is set");
+      }
+      if (typeof input.loanAmountMaxCents !== "number" || !Number.isFinite(input.loanAmountMaxCents) || input.loanAmountMaxCents <= 0) {
+        throw new Error("loanAmountMaxCents must be a number > 0 when financeTermMonths is set");
+      }
+      if (input.loanAmountMaxCents <= input.loanAmountMinCents) {
+        throw new Error("loanAmountMaxCents must be greater than loanAmountMinCents");
+      }
+      if (typeof input.providerNetCostCents !== "number" || !Number.isFinite(input.providerNetCostCents) || input.providerNetCostCents <= 0) {
+        throw new Error("providerNetCostCents must be a positive number when financeTermMonths is set");
+      }
+    }
+
     if (typeof input.vehicleMileageMinKm === "number" && (!Number.isFinite(input.vehicleMileageMinKm) || input.vehicleMileageMinKm < 0)) {
       throw new Error("vehicleMileageMinKm must be a number >= 0");
     }
@@ -149,6 +182,15 @@ export const supabaseProductPricingApi: ProductPricingApi = {
       base_price_cents: input.basePriceCents,
       dealer_cost_cents: typeof input.dealerCostCents === "number" ? input.dealerCostCents : null,
     };
+
+    if (typeof input.financeTermMonths === "number") {
+      insertRow.finance_term_months = input.financeTermMonths;
+      insertRow.loan_amount_min_cents = input.loanAmountMinCents;
+      insertRow.loan_amount_max_cents = input.loanAmountMaxCents;
+      insertRow.provider_net_cost_cents = input.providerNetCostCents;
+      // Backward compatibility: base_price_cents drives existing UI.
+      insertRow.base_price_cents = input.providerNetCostCents;
+    }
 
     if (typeof input.vehicleMileageMinKm === "number") {
       insertRow.vehicle_mileage_min_km = input.vehicleMileageMinKm;

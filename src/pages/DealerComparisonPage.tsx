@@ -9,6 +9,7 @@ import { costFromProductOrPricing, retailFromCost } from "../lib/dealerPricing";
 import { useDealerMarkupPct } from "../lib/dealerMarkup";
 import { getProductPricingApi } from "../lib/productPricing/productPricing";
 import { isPricingEligibleForVehicle } from "../lib/productPricing/eligibility";
+import { resolveFinanceMatrixPricingRow } from "../lib/productPricing/financeMatrix";
 import type { ProductPricing } from "../lib/productPricing/types";
 import { getAppMode } from "../lib/runtime";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
@@ -86,6 +87,8 @@ export function DealerComparisonPage() {
   const [decoded, setDecoded] = useState<VinDecoded | null>(null);
   const [mileageKm, setMileageKm] = useState(() => (searchParams.get("mileageKm") ?? ""));
   const [vehicleClass] = useState("");
+  const [loanAmount] = useState(() => (searchParams.get("loanAmount") ?? ""));
+  const [financeTermMonths] = useState(() => (searchParams.get("financeTermMonths") ?? ""));
   const [decodeError, setDecodeError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [providerId, setProviderId] = useState("");
@@ -137,6 +140,20 @@ export function DealerComparisonPage() {
     if (!raw) return undefined;
     const n = Number(raw);
     return Number.isFinite(n) ? n : undefined;
+  })();
+
+  const loanAmountCents = (() => {
+    const raw = loanAmount.trim();
+    if (!raw) return undefined;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : undefined;
+  })();
+
+  const financeTermMonthsNum = (() => {
+    const raw = financeTermMonths.trim();
+    if (!raw) return undefined;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? Math.round(n) : undefined;
   })();
 
   const eligible = (p: Product) => {
@@ -205,12 +222,28 @@ export function DealerComparisonPage() {
   }, [filteredProducts, markupPct, priceSort]);
 
   const eligibleVariantByProductIdQuery = useQuery({
-    queryKey: ["compare-eligible-variant-by-product", filteredProducts.map((p) => p.id).join(","), parsedMileage ?? "", vehicleClass],
+    queryKey: [
+      "compare-eligible-variant-by-product",
+      filteredProducts.map((p) => p.id).join(","),
+      parsedMileage ?? "",
+      vehicleClass,
+      loanAmountCents ?? "",
+      financeTermMonthsNum ?? "",
+    ],
     enabled: Boolean(decoded) && typeof parsedMileage === "number" && filteredProducts.length > 0,
     queryFn: async () => {
       const entries = await Promise.all(
         filteredProducts.map(async (p) => {
           const rows = (await productPricingApi.list({ productId: p.id })) as ProductPricing[];
+          if ((p as any).pricingStructure === "FINANCE_MATRIX") {
+            const resolved = resolveFinanceMatrixPricingRow({
+              rows,
+              loanAmountCents: loanAmountCents ?? null,
+              financeTermMonths: financeTermMonthsNum ?? null,
+            });
+            return [p.id, resolved.ok] as const;
+          }
+
           const ok = rows.some((r) => isPricingEligibleForVehicle({ pricing: r, vehicleMileageKm: parsedMileage as number, vehicleClass }));
           return [p.id, ok] as const;
         }),
@@ -248,12 +281,29 @@ export function DealerComparisonPage() {
     .filter(Boolean) as Product[];
 
   const pricingByProductIdQuery = useQuery({
-    queryKey: ["compare-pricing", selectedProducts.map((p) => p.id).join(","), parsedMileage ?? "", vehicleClass],
+    queryKey: [
+      "compare-pricing",
+      selectedProducts.map((p) => p.id).join(","),
+      parsedMileage ?? "",
+      vehicleClass,
+      loanAmountCents ?? "",
+      financeTermMonthsNum ?? "",
+    ],
     enabled: selectedProducts.length > 0,
     queryFn: async () => {
       const entries = await Promise.all(
         selectedProducts.map(async (p) => {
           const rows = (await productPricingApi.list({ productId: p.id })) as ProductPricing[];
+
+          if ((p as any).pricingStructure === "FINANCE_MATRIX") {
+            const resolved = resolveFinanceMatrixPricingRow({
+              rows,
+              loanAmountCents: loanAmountCents ?? null,
+              financeTermMonths: financeTermMonthsNum ?? null,
+            });
+            return [p.id, resolved.ok ? [resolved.row] : []] as const;
+          }
+
           const eligible = typeof parsedMileage === "number"
             ? rows.filter((r) => isPricingEligibleForVehicle({ pricing: r, vehicleMileageKm: parsedMileage, vehicleClass }))
             : rows;

@@ -9,10 +9,13 @@ import { getProductsApi } from "../lib/products/products";
 import { getProductPricingApi } from "../lib/productPricing/productPricing";
 import { getProductAddonsApi } from "../lib/productAddons/productAddons";
 import { sanitizeDigitsOnly, sanitizeMoney, sanitizeWordsOnly } from "../lib/utils";
-import type { CreateProductInput, Product, ProductType } from "../lib/products/types";
+import type { CreateProductInput, Product, ProductType, PricingStructure } from "../lib/products/types";
 import type { ClaimLimitType, ProductPricing } from "../lib/productPricing/types";
 import type { ProductAddon } from "../lib/productAddons/types";
 import { defaultPricingRow } from "../lib/productPricing/defaultRow";
+
+const FINANCE_TERMS = [24, 36, 48, 60, 72, 84, 96] as const;
+type FinanceTermMonths = (typeof FINANCE_TERMS)[number];
 
 function productTypeLabel(t: ProductType) {
   if (t === "EXTENDED_WARRANTY") return "Extended Warranty";
@@ -102,6 +105,9 @@ function pricingUniqKey(r: {
   vehicleClass?: string;
   deductibleCents: number;
   claimLimitCents?: number;
+  loanAmountMinCents?: number;
+  loanAmountMaxCents?: number;
+  financeTermMonths?: number;
 }) {
   const termMonths = r.termMonths;
   const termKm = r.termKm;
@@ -109,7 +115,21 @@ function pricingUniqKey(r: {
   const mileageMax = r.vehicleMileageMaxKm === null ? null : typeof r.vehicleMileageMaxKm === "number" ? r.vehicleMileageMaxKm : null;
   const vehicleClass = typeof r.vehicleClass === "string" && r.vehicleClass.trim() ? r.vehicleClass.trim() : null;
   const claimLimit = typeof r.claimLimitCents === "number" ? r.claimLimitCents : null;
-  return JSON.stringify([termMonths, termKm, mileageMin, mileageMax, vehicleClass, r.deductibleCents, claimLimit]);
+  const loanAmountMin = typeof r.loanAmountMinCents === "number" ? r.loanAmountMinCents : null;
+  const loanAmountMax = typeof r.loanAmountMaxCents === "number" ? r.loanAmountMaxCents : null;
+  const financeTermMonths = typeof r.financeTermMonths === "number" ? r.financeTermMonths : null;
+  return JSON.stringify([
+    termMonths,
+    termKm,
+    mileageMin,
+    mileageMax,
+    vehicleClass,
+    r.deductibleCents,
+    claimLimit,
+    loanAmountMin,
+    loanAmountMax,
+    financeTermMonths,
+  ]);
 }
 
 function validatePricingHealth(rows: ProductPricing[]) {
@@ -162,8 +182,12 @@ type EditorState = {
   name: string;
   productType: ProductType;
   programCode: string;
+  pricingStructure: PricingStructure;
   pricingVariesByMileageBand: boolean;
   pricingVariesByVehicleClass: boolean;
+  financeBands: FinanceBand[];
+  financeDefaultBandId: string;
+  financeDefaultTermMonths: FinanceTermMonths;
   pricingRows: Array<{
     key: string;
     isDefault: boolean;
@@ -175,6 +199,9 @@ type EditorState = {
     vehicleMileageMaxKm: string;
     vehicleMileageMaxUnlimited: boolean;
     vehicleClass: string;
+    loanAmountMin: string;
+    loanAmountMax: string;
+    financeTermMonths: string;
     claimLimitType: "" | "PER_CLAIM" | "TOTAL_COVERAGE" | "FMV" | "MAX_RETAIL";
     claimLimitAmount: string;
     deductible: string;
@@ -185,6 +212,8 @@ type EditorState = {
   eligibilityMakeAllowlist: string;
   eligibilityModelAllowlist: string;
   eligibilityTrimAllowlist: string;
+  keyBenefits: string;
+  coverageMaxLtvPercent: string;
   coverageDetails: string;
   exclusions: string;
   internalNotes: string;
@@ -206,8 +235,19 @@ function emptyEditor(): EditorState {
     name: "",
     productType: "EXTENDED_WARRANTY",
     programCode: "",
+    pricingStructure: "FLAT",
     pricingVariesByMileageBand: false,
     pricingVariesByVehicleClass: false,
+    financeBands: [
+      {
+        id: crypto.randomUUID(),
+        loanAmountMin: "",
+        loanAmountMax: "",
+        pricesByTermMonths: {},
+      },
+    ],
+    financeDefaultBandId: "",
+    financeDefaultTermMonths: 24,
     pricingRows: [
       {
         key: crypto.randomUUID(),
@@ -220,6 +260,9 @@ function emptyEditor(): EditorState {
         vehicleMileageMaxKm: "",
         vehicleMileageMaxUnlimited: false,
         vehicleClass: "ALL",
+        loanAmountMin: "",
+        loanAmountMax: "",
+        financeTermMonths: "",
         claimLimitType: "",
         claimLimitAmount: "",
         deductible: "",
@@ -231,6 +274,8 @@ function emptyEditor(): EditorState {
     eligibilityMakeAllowlist: "",
     eligibilityModelAllowlist: "",
     eligibilityTrimAllowlist: "",
+    keyBenefits: "",
+    coverageMaxLtvPercent: "",
     coverageDetails: "",
     exclusions: "",
     internalNotes: "",
@@ -250,6 +295,9 @@ function editorFromProduct(p: Product): EditorState {
     vehicleMileageMaxKm: "",
     vehicleMileageMaxUnlimited: false,
     vehicleClass: "ALL",
+    loanAmountMin: "",
+    loanAmountMax: "",
+    financeTermMonths: "",
     claimLimitType: "",
     claimLimitAmount: "",
     deductible: "",
@@ -260,8 +308,19 @@ function editorFromProduct(p: Product): EditorState {
     name: p.name,
     productType: p.productType,
     programCode: (p.programCode ?? "").trim(),
+    pricingStructure: p.productType === "GAP" ? (p.pricingStructure ?? "FINANCE_MATRIX") : (p.pricingStructure ?? "FLAT"),
     pricingVariesByMileageBand: false,
     pricingVariesByVehicleClass: false,
+    financeBands: [
+      {
+        id: crypto.randomUUID(),
+        loanAmountMin: "",
+        loanAmountMax: "",
+        pricesByTermMonths: {},
+      },
+    ],
+    financeDefaultBandId: "",
+    financeDefaultTermMonths: 24,
     pricingRows: [fallbackRow],
     eligibilityMaxVehicleAgeYears:
       typeof p.eligibilityMaxVehicleAgeYears === "number" ? String(p.eligibilityMaxVehicleAgeYears) : "",
@@ -270,6 +329,13 @@ function editorFromProduct(p: Product): EditorState {
     eligibilityMakeAllowlist: allowlistToString(p.eligibilityMakeAllowlist),
     eligibilityModelAllowlist: allowlistToString(p.eligibilityModelAllowlist),
     eligibilityTrimAllowlist: allowlistToString(p.eligibilityTrimAllowlist),
+    keyBenefits: (p.keyBenefits ?? "").trim(),
+    coverageMaxLtvPercent:
+      p.coverageMaxLtvPercent === null
+        ? ""
+        : typeof p.coverageMaxLtvPercent === "number"
+          ? String(p.coverageMaxLtvPercent)
+          : "",
     coverageDetails: p.coverageDetails ?? "",
     exclusions: p.exclusions ?? "",
     internalNotes: p.internalNotes ?? "",
@@ -322,6 +388,66 @@ function splitTableRow(line: string): string[] {
   return line.split(",").map((x) => x.trim());
 }
 
+function isAllowedFinanceTermMonths(v: number) {
+  return v === 24 || v === 36 || v === 48 || v === 60 || v === 72 || v === 84 || v === 96;
+}
+
+type FinanceBand = {
+  id: string;
+  loanAmountMin: string;
+  loanAmountMax: string;
+  pricesByTermMonths: Partial<Record<FinanceTermMonths, string>>;
+};
+
+function parseFinanceMatrixPaste(rawText: string): FinanceBand[] {
+  const raw = (rawText ?? "").trim();
+  if (!raw) throw new Error("Paste rate sheet text first.");
+
+  const lines = raw
+    .split(/\r?\n/g)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length === 0) throw new Error("Paste rate sheet text first.");
+
+  const first = splitTableRow(lines[0]!);
+  const header = first.map((h) => h.replace(/\s+/g, "").toLowerCase());
+
+  const hasHeader = header.some((h) => h === "loan_min" || h === "loanmin" || h === "loan_amount_min" || h === "loanamountmin");
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+  const monthCols = (hasHeader ? header.slice(2) : first.slice(2)).map((h) => Number(String(h).trim()));
+
+  if (monthCols.length === 0 || monthCols.some((m) => !Number.isFinite(m) || !isAllowedFinanceTermMonths(m))) {
+    throw new Error("Rate sheet header must include finance term columns: 24, 36, 48, 60, 72, 84, 96");
+  }
+
+  const out: FinanceBand[] = [];
+  for (const line of dataLines) {
+    const cols = splitTableRow(line);
+    const loanMin = sanitizeMoney((cols[0] ?? "").trim());
+    const loanMax = sanitizeMoney((cols[1] ?? "").trim());
+    if (!loanMin || !loanMax) continue;
+
+    const band: FinanceBand = {
+      id: crypto.randomUUID(),
+      loanAmountMin: loanMin,
+      loanAmountMax: loanMax,
+      pricesByTermMonths: {},
+    };
+
+    for (let i = 0; i < monthCols.length; i += 1) {
+      const term = monthCols[i]!;
+      const cell = sanitizeMoney((cols[i + 2] ?? "").trim());
+      if (!cell) continue;
+      band.pricesByTermMonths[term as FinanceTermMonths] = cell;
+    }
+
+    out.push(band);
+  }
+
+  if (out.length === 0) throw new Error("No finance matrix rows found in the pasted rate sheet.");
+  return out;
+}
+
 export function ProviderProductsPage() {
   const api = useMemo(() => getProductsApi(), []);
   const pricingApi = useMemo(() => getProductPricingApi(), []);
@@ -337,6 +463,9 @@ export function ProviderProductsPage() {
 
   const [pastePricingOpen, setPastePricingOpen] = useState(false);
   const [pastePricingText, setPastePricingText] = useState("");
+
+  const [pasteFinanceOpen, setPasteFinanceOpen] = useState(false);
+  const [pasteFinanceText, setPasteFinanceText] = useState("");
 
   const [pendingAddons, setPendingAddons] = useState<PendingAddon[]>([]);
 
@@ -445,6 +574,9 @@ export function ProviderProductsPage() {
             vehicleMileageMaxKm: r.vehicleMileageMaxKm === null ? "" : typeof r.vehicleMileageMaxKm === "number" ? String(r.vehicleMileageMaxKm) : "",
             vehicleMileageMaxUnlimited: r.vehicleMileageMaxKm === null,
             vehicleClass: typeof r.vehicleClass === "string" && r.vehicleClass.trim() ? r.vehicleClass.trim() : "ALL",
+            loanAmountMin: typeof (r as any).loanAmountMinCents === "number" ? String((r as any).loanAmountMinCents / 100) : "",
+            loanAmountMax: typeof (r as any).loanAmountMaxCents === "number" ? String((r as any).loanAmountMaxCents / 100) : "",
+            financeTermMonths: typeof (r as any).financeTermMonths === "number" ? String((r as any).financeTermMonths) : "",
             claimLimitType,
             claimLimitAmount: typeof amountCents === "number" ? centsToDollars(amountCents) : "",
             deductible: centsToDollars(r.deductibleCents),
@@ -457,6 +589,61 @@ export function ProviderProductsPage() {
       );
 
       const variesByVehicleClass = pricingRowsFromApi.some((r) => typeof r.vehicleClass === "string" && r.vehicleClass.trim());
+
+      const hasFinanceMatrix = pricingRowsFromApi.some((r) => typeof (r as any).financeTermMonths === "number");
+
+      const nextFinanceBands = (() => {
+        if (!hasFinanceMatrix) return s.financeBands;
+
+        const byBand = new Map<string, FinanceBand>();
+        for (const r of pricingRowsFromApi) {
+          const term = (r as any).financeTermMonths;
+          const min = (r as any).loanAmountMinCents;
+          const max = (r as any).loanAmountMaxCents;
+          const net = (r as any).providerNetCostCents;
+
+          if (typeof term !== "number" || !isAllowedFinanceTermMonths(term)) continue;
+          if (typeof min !== "number" || typeof max !== "number") continue;
+          if (typeof net !== "number") continue;
+
+          const minD = (min / 100).toFixed(2).replace(/\.00$/, "");
+          const maxD = (max / 100).toFixed(2).replace(/\.00$/, "");
+          const k = `${min}|${max}`;
+          const existing = byBand.get(k);
+          if (existing) {
+            existing.pricesByTermMonths[term as FinanceTermMonths] = centsToDollars(net);
+          } else {
+            byBand.set(k, {
+              id: crypto.randomUUID(),
+              loanAmountMin: minD,
+              loanAmountMax: maxD,
+              pricesByTermMonths: { [term as FinanceTermMonths]: centsToDollars(net) },
+            });
+          }
+        }
+        const arr = Array.from(byBand.values()).sort((a, b) => {
+          const am = dollarsToCents(a.loanAmountMin) ?? 0;
+          const bm = dollarsToCents(b.loanAmountMin) ?? 0;
+          return am - bm;
+        });
+        return arr.length > 0 ? arr : s.financeBands;
+      })();
+
+      const nextDefault = (() => {
+        if (!hasFinanceMatrix) return { bandId: s.financeDefaultBandId, term: s.financeDefaultTermMonths };
+        const d = pricingRowsFromApi.find((r) => r.isDefault === true) as any;
+        if (!d) return { bandId: s.financeDefaultBandId, term: s.financeDefaultTermMonths };
+        const term = d.financeTermMonths;
+        const min = d.loanAmountMinCents;
+        const max = d.loanAmountMaxCents;
+        if (typeof term !== "number" || !isAllowedFinanceTermMonths(term) || typeof min !== "number" || typeof max !== "number") {
+          return { bandId: s.financeDefaultBandId, term: s.financeDefaultTermMonths };
+        }
+        const band = nextFinanceBands.find(
+          (b) => dollarsToCents(b.loanAmountMin) === min && dollarsToCents(b.loanAmountMax) === max,
+        );
+        return { bandId: band?.id ?? s.financeDefaultBandId, term: term as FinanceTermMonths };
+      })();
 
       if (mapped.length === 0) return s;
       const same =
@@ -474,6 +661,9 @@ export function ProviderProductsPage() {
             row.vehicleMileageMaxKm === next.vehicleMileageMaxKm &&
             row.vehicleMileageMaxUnlimited === next.vehicleMileageMaxUnlimited &&
             row.vehicleClass === next.vehicleClass &&
+            row.loanAmountMin === next.loanAmountMin &&
+            row.loanAmountMax === next.loanAmountMax &&
+            row.financeTermMonths === next.financeTermMonths &&
             row.claimLimitType === next.claimLimitType &&
             row.claimLimitAmount === next.claimLimitAmount &&
             row.deductible === next.deductible &&
@@ -485,8 +675,12 @@ export function ProviderProductsPage() {
       return {
         ...s,
         pricingRows: mapped,
+        pricingStructure: hasFinanceMatrix ? "FINANCE_MATRIX" : s.pricingStructure,
         pricingVariesByMileageBand: variesByMileageBand,
         pricingVariesByVehicleClass: variesByVehicleClass,
+        financeBands: nextFinanceBands,
+        financeDefaultBandId: nextDefault.bandId,
+        financeDefaultTermMonths: nextDefault.term,
       };
     });
   }, [editorProductId, pricingRowsFromApi, pricingRowsQuery.isError, pricingRowsQuery.isLoading, showEditor]);
@@ -613,12 +807,185 @@ export function ProviderProductsPage() {
       vehicleMileageMinKm?: number;
       vehicleMileageMaxKm?: number | null;
       vehicleClass?: string;
+      loanAmountMinCents?: number;
+      loanAmountMaxCents?: number;
+      financeTermMonths?: number;
+      deductibleCents: number;
       claimLimitCents?: number;
       claimLimitType?: ClaimLimitType;
       claimLimitAmountCents?: number;
-      deductibleCents: number;
       providerCostCents: number;
     };
+
+    if (editor.pricingStructure === "FINANCE_MATRIX") {
+      const bands = editor.financeBands.slice();
+      if (bands.length === 0) {
+        setError("Add at least one loan band.");
+        setActiveTab("PRICING");
+        return;
+      }
+
+      const parsedBands = bands
+        .map((b) => {
+          const minCents = dollarsToCents(b.loanAmountMin);
+          const maxCents = dollarsToCents(b.loanAmountMax);
+          return { b, minCents, maxCents };
+        })
+        .sort((a, b) => ((a.minCents ?? 0) - (b.minCents ?? 0)));
+
+      for (const { b, minCents, maxCents } of parsedBands) {
+        if (typeof minCents !== "number" || typeof maxCents !== "number") {
+          setError("All loan bands require loan min and loan max.");
+          setActiveTab("PRICING");
+          return;
+        }
+        if (maxCents <= minCents) {
+          setError("Each loan band requires loan max > loan min.");
+          setActiveTab("PRICING");
+          return;
+        }
+        for (const t of FINANCE_TERMS) {
+          const dollars = (b.pricesByTermMonths?.[t] ?? "").trim();
+          const cents = dollarsToCents(dollars);
+          if (typeof cents !== "number" || cents <= 0) {
+            setError("Every finance term price must be filled for every loan band.");
+            setActiveTab("PRICING");
+            return;
+          }
+        }
+      }
+
+      for (let i = 0; i < parsedBands.length; i += 1) {
+        const a = parsedBands[i]!;
+        if (typeof a.minCents !== "number" || typeof a.maxCents !== "number") continue;
+        for (let j = i + 1; j < parsedBands.length; j += 1) {
+          const b = parsedBands[j]!;
+          if (typeof b.minCents !== "number" || typeof b.maxCents !== "number") continue;
+          if (b.minCents > a.maxCents) break;
+          const overlaps = Math.max(a.minCents, b.minCents) <= Math.min(a.maxCents, b.maxCents);
+          if (overlaps) {
+            setError("Overlapping loan bands detected. Please adjust loan ranges so they do not overlap.");
+            setActiveTab("PRICING");
+            return;
+          }
+        }
+      }
+
+      if (!editor.financeDefaultBandId) {
+        setError("Select a default cell (radio button) in the Finance Matrix.");
+        setActiveTab("PRICING");
+        return;
+      }
+
+      saveInFlightRef.current = true;
+      let saveStep = "";
+      try {
+        const input: CreateProductInput = {
+          name,
+          productType: editor.productType,
+          pricingStructure: editor.pricingStructure,
+          keyBenefits: editor.keyBenefits.trim() || undefined,
+          coverageMaxLtvPercent: parseOptionalInt(editor.coverageMaxLtvPercent),
+          coverageDetails: editor.coverageDetails.trim() || undefined,
+          exclusions: editor.exclusions.trim() || undefined,
+          eligibilityMaxVehicleAgeYears: parseOptionalInt(editor.eligibilityMaxVehicleAgeYears),
+          eligibilityMaxMileageKm: parseOptionalInt(editor.eligibilityMaxMileageKm),
+          eligibilityMakeAllowlist: parseAllowlist(editor.eligibilityMakeAllowlist),
+          eligibilityModelAllowlist: parseAllowlist(editor.eligibilityModelAllowlist),
+          eligibilityTrimAllowlist: parseAllowlist(editor.eligibilityTrimAllowlist),
+        };
+
+        const overviewExtrasPatch = {
+          programCode: editor.programCode.trim() || "",
+          internalNotes: editor.internalNotes.trim() || "",
+        };
+
+        const allowlistsForUpdate = {
+          eligibilityMakeAllowlist: parseAllowlist(editor.eligibilityMakeAllowlist) ?? [],
+          eligibilityModelAllowlist: parseAllowlist(editor.eligibilityModelAllowlist) ?? [],
+          eligibilityTrimAllowlist: parseAllowlist(editor.eligibilityTrimAllowlist) ?? [],
+        };
+
+        let savedProduct: Product | null = null;
+        if (!editor.id) {
+          saveStep = "Create product";
+          savedProduct = (await createMutation.mutateAsync(input)) as Product;
+          saveStep = "Update product";
+          savedProduct = (await updateMutation.mutateAsync({ id: savedProduct.id, patch: overviewExtrasPatch })) as Product;
+        } else {
+          saveStep = "Update product";
+          savedProduct = (await updateMutation.mutateAsync({
+            id: editor.id,
+            patch: {
+              name: input.name,
+              productType: input.productType,
+              pricingStructure: "FINANCE_MATRIX",
+              keyBenefits: input.keyBenefits ?? "",
+              coverageMaxLtvPercent: input.coverageMaxLtvPercent ?? null,
+              coverageDetails: input.coverageDetails ?? "",
+              exclusions: input.exclusions ?? "",
+              ...overviewExtrasPatch,
+              ...(input.coverageMaxLtvPercent === null ? { coverageMaxLtvPercent: null } : {}),
+              eligibilityMaxVehicleAgeYears: parseOptionalIntOrNull(editor.eligibilityMaxVehicleAgeYears),
+              eligibilityMaxMileageKm: parseOptionalIntOrNull(editor.eligibilityMaxMileageKm),
+              ...allowlistsForUpdate,
+            },
+          })) as Product;
+        }
+
+        const productId = (savedProduct?.id ?? editor.id ?? "").trim();
+        if (productId) {
+          saveStep = "Delete existing pricing";
+          const existing = await pricingApi.list({ productId });
+          for (const r of existing) await pricingApi.remove(r.id);
+
+          const defaultBand = editor.financeBands.find((b) => b.id === editor.financeDefaultBandId) ?? null;
+
+          saveStep = "Create finance matrix pricing";
+          for (const band of editor.financeBands) {
+            const loanAmountMinCents = dollarsToCents(band.loanAmountMin)!;
+            const loanAmountMaxCents = dollarsToCents(band.loanAmountMax)!;
+            for (const term of FINANCE_TERMS) {
+              const net = dollarsToCents((band.pricesByTermMonths?.[term] ?? "").trim())!;
+              const isDefault =
+                defaultBand?.id === band.id && editor.financeDefaultTermMonths === term;
+              await pricingApi.create({
+                productId,
+                isDefault,
+                termMonths: null,
+                termKm: null,
+                financeTermMonths: term,
+                loanAmountMinCents,
+                loanAmountMaxCents,
+                providerNetCostCents: net,
+                deductibleCents: 0,
+                basePriceCents: net,
+                dealerCostCents: net,
+              } as any);
+            }
+          }
+
+          saveStep = "Refresh pricing";
+          await qc.invalidateQueries({ queryKey: ["product-pricing", productId] });
+        }
+
+        setShowEditor(false);
+        setPastePricingOpen(false);
+        setPasteFinanceOpen(false);
+        setPastePricingText("");
+        setPasteFinanceText("");
+        saveStep = "Refresh products";
+        await qc.invalidateQueries({ queryKey: ["provider-products"] });
+      } catch (e) {
+        console.error("Failed to save finance matrix product", { step: saveStep, error: e });
+        const msg = formatUnknownError(e);
+        setError(saveStep ? `Failed at: ${saveStep}. ${msg}` : msg);
+        setActiveTab("PRICING");
+      } finally {
+        saveInFlightRef.current = false;
+      }
+      return;
+    }
 
     const normalizedRows = editor.pricingRows
       .map((r) => ({
@@ -634,6 +1001,9 @@ export function ProviderProductsPage() {
               ? undefined
               : r.vehicleClass.trim() || undefined
             : undefined,
+        loanAmountMinCents: dollarsToCents(r.loanAmountMin),
+        loanAmountMaxCents: dollarsToCents(r.loanAmountMax),
+        financeTermMonths: parseOptionalInt(r.financeTermMonths),
         claimLimitType: asClaimLimitType(r.claimLimitType),
         claimLimitAmountCents: dollarsToCents(r.claimLimitAmount),
         deductibleCents: dollarsToCents(r.deductible) ?? 0,
@@ -642,6 +1012,38 @@ export function ProviderProductsPage() {
       .filter((r) => r.termMonths !== undefined || r.termKm !== undefined || r.providerCostCents || r.deductibleCents);
 
     const validatedRows: ValidatedRow[] = normalizedRows.map((r) => {
+      if (editor.pricingStructure === "FINANCE_MATRIX") {
+        const term = r.financeTermMonths;
+        if (typeof term !== "number" || !isAllowedFinanceTermMonths(term)) {
+          throw new Error("Finance term months is required and must be one of: 24, 36, 48, 60, 72, 84, 96.");
+        }
+        if (typeof r.loanAmountMinCents !== "number" || !Number.isFinite(r.loanAmountMinCents) || r.loanAmountMinCents < 0) {
+          throw new Error("Loan amount min is required for Finance Matrix rows.");
+        }
+        if (typeof r.loanAmountMaxCents !== "number" || !Number.isFinite(r.loanAmountMaxCents) || r.loanAmountMaxCents <= 0) {
+          throw new Error("Loan amount max is required for Finance Matrix rows.");
+        }
+        if (r.loanAmountMaxCents <= r.loanAmountMinCents) {
+          throw new Error("Loan amount max must be greater than loan amount min.");
+        }
+        if (typeof r.providerCostCents !== "number" || r.providerCostCents <= 0) {
+          throw new Error("Each Finance Matrix cell requires provider net cost.");
+        }
+
+        return {
+          key: r.key,
+          isDefault: r.isDefault === true,
+          termMonths: null,
+          termKm: null,
+          loanAmountMinCents: r.loanAmountMinCents,
+          loanAmountMaxCents: r.loanAmountMaxCents,
+          financeTermMonths: term,
+          providerNetCostCents: r.providerCostCents,
+          deductibleCents: 0,
+          providerCostCents: r.providerCostCents,
+        } as any;
+      }
+
       if (r.termMonths !== null && typeof r.termMonths !== "number") {
         throw new Error("Published products require at least one valid pricing row.");
       }
@@ -795,11 +1197,14 @@ export function ProviderProductsPage() {
     const input: CreateProductInput = {
       name,
       productType: editor.productType,
+      pricingStructure: editor.pricingStructure,
+      keyBenefits: editor.keyBenefits.trim() || undefined,
+      coverageMaxLtvPercent: parseOptionalInt(editor.coverageMaxLtvPercent),
       coverageDetails: editor.coverageDetails.trim() || undefined,
       exclusions: editor.exclusions.trim() || undefined,
       termMonths: primary && typeof primary.termMonths === "number" ? primary.termMonths : undefined,
       termKm: primary && typeof primary.termKm === "number" ? primary.termKm : undefined,
-      deductibleCents: primary ? primary.deductibleCents : undefined,
+      deductibleCents: primary && typeof primary.deductibleCents === "number" ? primary.deductibleCents : undefined,
       eligibilityMaxVehicleAgeYears: parseOptionalInt(editor.eligibilityMaxVehicleAgeYears),
       eligibilityMaxMileageKm: parseOptionalInt(editor.eligibilityMaxMileageKm),
       eligibilityMakeAllowlist: parseAllowlist(editor.eligibilityMakeAllowlist),
@@ -869,6 +1274,8 @@ export function ProviderProductsPage() {
           patch: {
             name: input.name,
             productType: input.productType,
+            keyBenefits: input.keyBenefits ?? "",
+            coverageMaxLtvPercent: input.coverageMaxLtvPercent ?? null,
             coverageDetails: input.coverageDetails ?? "",
             exclusions: input.exclusions ?? "",
             ...overviewExtrasPatch,
@@ -910,17 +1317,31 @@ export function ProviderProductsPage() {
         const toCreateInput = (r: (typeof normalizedRowsWithDefault)[number]) => ({
           productId,
           isDefault: r.isDefault === true,
-          termMonths: r.termMonths,
-          termKm: r.termKm,
-          vehicleMileageMinKm: r.vehicleMileageMinKm,
-          vehicleMileageMaxKm: r.vehicleMileageMaxKm,
-          vehicleClass: r.vehicleClass,
-          claimLimitCents: r.claimLimitCents,
-          ...(typeof r.claimLimitType === "string" ? { claimLimitType: r.claimLimitType } : {}),
-          ...(typeof r.claimLimitAmountCents === "number" ? { claimLimitAmountCents: r.claimLimitAmountCents } : {}),
-          deductibleCents: r.deductibleCents,
-          basePriceCents: r.providerCostCents,
-          dealerCostCents: r.providerCostCents,
+          ...(editor.pricingStructure === "FINANCE_MATRIX"
+            ? {
+                termMonths: null,
+                termKm: null,
+                financeTermMonths: (r as any).financeTermMonths,
+                loanAmountMinCents: (r as any).loanAmountMinCents,
+                loanAmountMaxCents: (r as any).loanAmountMaxCents,
+                providerNetCostCents: r.providerCostCents,
+                deductibleCents: 0,
+                basePriceCents: r.providerCostCents,
+                dealerCostCents: r.providerCostCents,
+              }
+            : {
+                termMonths: r.termMonths,
+                termKm: r.termKm,
+                vehicleMileageMinKm: r.vehicleMileageMinKm,
+                vehicleMileageMaxKm: r.vehicleMileageMaxKm,
+                vehicleClass: r.vehicleClass,
+                claimLimitCents: r.claimLimitCents,
+                ...(typeof r.claimLimitType === "string" ? { claimLimitType: r.claimLimitType } : {}),
+                ...(typeof r.claimLimitAmountCents === "number" ? { claimLimitAmountCents: r.claimLimitAmountCents } : {}),
+                deductibleCents: r.deductibleCents,
+                basePriceCents: r.providerCostCents,
+                dealerCostCents: r.providerCostCents,
+              }),
         });
 
         const restoreInputs = existing.map((r) => ({
@@ -967,6 +1388,7 @@ export function ProviderProductsPage() {
 
           await qc.invalidateQueries({ queryKey: ["product-pricing", productId] });
         } catch (e) {
+          console.error("Failed to save pricing", e);
           try {
             for (const batch of chunk(created, 25)) {
               await Promise.all(batch.map((r) => pricingApi.remove(r.id)));
@@ -1203,6 +1625,23 @@ export function ProviderProductsPage() {
                 />
 
                 <textarea
+                  value={editor.keyBenefits}
+                  onChange={(e) => setEditor((s) => ({ ...s, keyBenefits: e.target.value }))}
+                  placeholder="Key benefits (shown on card)\n\nExample:\nCovers loan deficit after total loss\nUp to $50,000 deficit coverage\nDeductible reimbursement up to $1,000\nUp to 130% LTV"
+                  className={textareaClassName()}
+                  disabled={busy}
+                />
+
+                {editor.productType === "GAP" ? (
+                  <Input
+                    value={editor.coverageMaxLtvPercent}
+                    onChange={(e) => setEditor((s) => ({ ...s, coverageMaxLtvPercent: e.target.value }))}
+                    placeholder="Max LTV percent (GAP only). Example: 130 or 160"
+                    disabled={busy}
+                  />
+                ) : null}
+
+                <textarea
                   value={editor.coverageDetails}
                   onChange={(e) => setEditor((s) => ({ ...s, coverageDetails: e.target.value }))}
                   placeholder="Coverage summary"
@@ -1384,25 +1823,41 @@ export function ProviderProductsPage() {
                   <div className="font-semibold">Pricing</div>
 
                   {(() => {
-                    type PricingStructure = "FLAT" | "MILEAGE" | "CLASS" | "MILEAGE_CLASS";
-                    const structure: PricingStructure = editor.pricingVariesByMileageBand
-                      ? editor.pricingVariesByVehicleClass
-                        ? "MILEAGE_CLASS"
-                        : "MILEAGE"
-                      : editor.pricingVariesByVehicleClass
-                        ? "CLASS"
-                        : "FLAT";
+                    const structure = editor.pricingStructure;
 
                     const setStructure = (next: PricingStructure) => {
                       const wantsMileage = next === "MILEAGE" || next === "MILEAGE_CLASS";
                       const wantsClass = next === "CLASS" || next === "MILEAGE_CLASS";
+                      const wantsFinance = next === "FINANCE_MATRIX";
 
                       setEditor((s) => ({
                         ...s,
-                        pricingVariesByMileageBand: wantsMileage,
-                        pricingVariesByVehicleClass: wantsClass,
+                        pricingStructure: next,
+                        pricingVariesByMileageBand: wantsFinance ? false : wantsMileage,
+                        pricingVariesByVehicleClass: wantsFinance ? false : wantsClass,
+                        financeBands:
+                          next === "FINANCE_MATRIX"
+                            ? (s.financeBands.length > 0
+                                ? s.financeBands
+                                : [{ id: crypto.randomUUID(), loanAmountMin: "", loanAmountMax: "", pricesByTermMonths: {} }])
+                            : s.financeBands,
                         pricingRows: s.pricingRows.map((r) => ({
                           ...r,
+                          ...(wantsFinance
+                            ? {
+                                termMonths: "",
+                                termMonthsUnlimited: true,
+                                termKm: "",
+                                termKmUnlimited: true,
+                                vehicleMileageMinKm: "",
+                                vehicleMileageMaxKm: "",
+                                vehicleMileageMaxUnlimited: false,
+                                vehicleClass: "ALL",
+                                claimLimitType: "",
+                                claimLimitAmount: "",
+                                deductible: "0.00",
+                              }
+                            : null),
                           ...(wantsMileage
                             ? null
                             : {
@@ -1459,6 +1914,19 @@ export function ProviderProductsPage() {
                             />
                             Mileage + Class Pricing
                           </label>
+
+                          {editor.productType === "GAP" ? (
+                            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <input
+                                type="radio"
+                                name="pricing-structure"
+                                checked={structure === "FINANCE_MATRIX"}
+                                onChange={() => setStructure("FINANCE_MATRIX")}
+                                disabled={busy}
+                              />
+                              Finance Matrix Pricing
+                            </label>
+                          ) : null}
                         </div>
                       </div>
                     );
@@ -1474,7 +1942,77 @@ export function ProviderProductsPage() {
                     >
                       Paste Pricing Table
                     </Button>
+
+                    {editor.pricingStructure === "FINANCE_MATRIX" ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="ml-2"
+                        disabled={busy}
+                        onClick={() => setPasteFinanceOpen((v) => !v)}
+                      >
+                        Paste Rate Sheet
+                      </Button>
+                    ) : null}
                   </div>
+
+                  {editor.pricingStructure === "FINANCE_MATRIX" && pasteFinanceOpen ? (
+                    <div className="mt-3 rounded-lg border p-3 space-y-3">
+                      <textarea
+                        value={pasteFinanceText}
+                        onChange={(e) => setPasteFinanceText(e.target.value)}
+                        className={textareaClassName()}
+                        placeholder={
+                          "Paste CSV/TSV rate sheet. Example:\n" +
+                          "loan_min,loan_max,24,36,48,60,72,84,96\n" +
+                          "0,10000,446,455,464,473,483,503,525"
+                        }
+                        disabled={busy}
+                      />
+
+                      <div className="flex gap-2 flex-wrap">
+                        <Button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            setError(null);
+                            try {
+                              const parsedRows = parseFinanceMatrixPaste(pasteFinanceText);
+                              setEditor((s) => {
+                                return {
+                                  ...s,
+                                  pricingStructure: "FINANCE_MATRIX",
+                                  pricingVariesByMileageBand: false,
+                                  pricingVariesByVehicleClass: false,
+                                  financeBands: parsedRows,
+                                  financeDefaultBandId: parsedRows[0]?.id ?? "",
+                                  financeDefaultTermMonths: 24,
+                                };
+                              });
+                              setPasteFinanceText("");
+                              setPasteFinanceOpen(false);
+                            } catch (e) {
+                              setError(e instanceof Error ? e.message : "Failed to parse rate sheet");
+                            }
+                          }}
+                        >
+                          Parse & Add Rows
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => {
+                            setPasteFinanceText("");
+                            setPasteFinanceOpen(false);
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
 
                   {pastePricingOpen ? (
                     <div className="mt-3 rounded-lg border p-3 space-y-3">
@@ -1580,6 +2118,9 @@ export function ProviderProductsPage() {
                                   vehicleMileageMaxKm: maxUnlimited ? "" : sanitizeDigitsOnly(rawMax),
                                   vehicleMileageMaxUnlimited: maxUnlimited,
                                   vehicleClass,
+                                  loanAmountMin: "",
+                                  loanAmountMax: "",
+                                  financeTermMonths: "",
                                   claimLimitType: claimLimitType ?? "",
                                   claimLimitAmount: sanitizeMoney(rawClaimAmt),
                                   deductible: sanitizeMoney(rawDed),
@@ -1636,6 +2177,217 @@ export function ProviderProductsPage() {
 
                   <div className="mt-3 space-y-3">
                     {(() => {
+                      if (editor.pricingStructure === "FINANCE_MATRIX") {
+                        const asMoney = (v: string) => sanitizeMoney(v);
+
+                        const parsedBands = editor.financeBands
+                          .slice()
+                          .map((b) => ({
+                            ...b,
+                            loanAmountMin: (b.loanAmountMin ?? "").trim(),
+                            loanAmountMax: (b.loanAmountMax ?? "").trim(),
+                          }));
+
+                        const bandIssuesById = new Map<string, string[]>();
+                        const bandsWithParsed = parsedBands
+                          .map((b) => {
+                            const minCents = dollarsToCents(b.loanAmountMin);
+                            const maxCents = dollarsToCents(b.loanAmountMax);
+                            return { ...b, minCents, maxCents };
+                          })
+                          .sort((a, b) => ((a.minCents ?? 0) - (b.minCents ?? 0)));
+
+                        for (const b of bandsWithParsed) {
+                          const issues: string[] = [];
+                          if (typeof b.minCents !== "number") issues.push("Loan min required");
+                          if (typeof b.maxCents !== "number") issues.push("Loan max required");
+                          if (typeof b.minCents === "number" && typeof b.maxCents === "number" && b.maxCents <= b.minCents) {
+                            issues.push("Loan max must be > loan min");
+                          }
+                          for (const t of FINANCE_TERMS) {
+                            const v = (b.pricesByTermMonths?.[t] ?? "").trim();
+                            if (!v) issues.push(`Missing ${t} mo price`);
+                          }
+                          bandIssuesById.set(b.id, issues);
+                        }
+
+                        for (let i = 0; i < bandsWithParsed.length; i += 1) {
+                          const a = bandsWithParsed[i]!;
+                          if (typeof a.minCents !== "number" || typeof a.maxCents !== "number") continue;
+                          for (let j = i + 1; j < bandsWithParsed.length; j += 1) {
+                            const b = bandsWithParsed[j]!;
+                            if (typeof b.minCents !== "number" || typeof b.maxCents !== "number") continue;
+                            if (b.minCents > a.maxCents) break;
+                            const overlaps = Math.max(a.minCents, b.minCents) <= Math.min(a.maxCents, b.maxCents);
+                            if (!overlaps) continue;
+                            bandIssuesById.set(a.id, Array.from(new Set([...(bandIssuesById.get(a.id) ?? []), "Overlaps another band"])));
+                            bandIssuesById.set(b.id, Array.from(new Set([...(bandIssuesById.get(b.id) ?? []), "Overlaps another band"])));
+                          }
+                        }
+
+                        return (
+                          <div className="space-y-3">
+                            <div className="text-sm text-muted-foreground">
+                              Finance Matrix: rows are loan amount bands, columns are finance terms. Each cell is provider net cost.
+                            </div>
+
+                            <div className="rounded-lg border overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="border-b bg-muted/20">
+                                    <th className="text-left px-3 py-2 text-xs text-muted-foreground min-w-[220px]">Loan amount band</th>
+                                    {FINANCE_TERMS.map((t) => (
+                                      <th key={t} className="text-left px-3 py-2 text-xs text-muted-foreground min-w-[120px]">
+                                        {t} mo
+                                      </th>
+                                    ))}
+                                    <th className="text-left px-3 py-2 text-xs text-muted-foreground min-w-[220px]">Issues</th>
+                                    <th className="text-right px-3 py-2 text-xs text-muted-foreground">Action</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y">
+                                  {editor.financeBands.map((b) => (
+                                    <tr key={b.id}>
+                                      <td className="px-3 py-2 align-top">
+                                        <div className="grid grid-cols-2 gap-2">
+                                          <Input
+                                            value={b.loanAmountMin}
+                                            onChange={(e) => {
+                                              const nextMin = asMoney(e.target.value);
+                                              setEditor((s) => ({
+                                                ...s,
+                                                financeBands: s.financeBands.map((x) => (x.id === b.id ? { ...x, loanAmountMin: nextMin } : x)),
+                                              }));
+                                            }}
+                                            placeholder="Loan min"
+                                            inputMode="decimal"
+                                            disabled={busy}
+                                            className="h-8"
+                                          />
+                                          <Input
+                                            value={b.loanAmountMax}
+                                            onChange={(e) => {
+                                              const nextMax = asMoney(e.target.value);
+                                              setEditor((s) => ({
+                                                ...s,
+                                                financeBands: s.financeBands.map((x) => (x.id === b.id ? { ...x, loanAmountMax: nextMax } : x)),
+                                              }));
+                                            }}
+                                            placeholder="Loan max"
+                                            inputMode="decimal"
+                                            disabled={busy}
+                                            className="h-8"
+                                          />
+                                        </div>
+                                      </td>
+
+                                      {FINANCE_TERMS.map((t) => {
+                                        const isDefault = editor.financeDefaultBandId === b.id && editor.financeDefaultTermMonths === t;
+                                        const value = b.pricesByTermMonths?.[t] ?? "";
+                                        return (
+                                          <td key={t} className="px-3 py-2 align-top">
+                                            <div className="flex items-center gap-2">
+                                              <input
+                                                type="radio"
+                                                name="default-pricing-row"
+                                                checked={isDefault}
+                                                onChange={() => {
+                                                  setEditor((s) => ({
+                                                    ...s,
+                                                    financeDefaultBandId: b.id,
+                                                    financeDefaultTermMonths: t,
+                                                  }));
+                                                }}
+                                                disabled={busy}
+                                                title={"Set as default"}
+                                              />
+                                              <Input
+                                                value={value}
+                                                onChange={(e) => {
+                                                  const v = asMoney(e.target.value);
+                                                  setEditor((s) => ({
+                                                    ...s,
+                                                    financeBands: s.financeBands.map((x) =>
+                                                      x.id === b.id
+                                                        ? {
+                                                            ...x,
+                                                            pricesByTermMonths: { ...x.pricesByTermMonths, [t]: v },
+                                                          }
+                                                        : x,
+                                                    ),
+                                                  }));
+                                                }}
+                                                placeholder="$"
+                                                inputMode="decimal"
+                                                disabled={busy}
+                                                className={("h-8 " + (isDefault ? "border-emerald-300" : ""))}
+                                              />
+                                            </div>
+                                          </td>
+                                        );
+                                      })}
+
+                                      <td className="px-3 py-2 align-top">
+                                        {(bandIssuesById.get(b.id) ?? []).length > 0 ? (
+                                          <div className="text-xs text-rose-700">
+                                            {(bandIssuesById.get(b.id) ?? []).slice(0, 4).join(" • ")}
+                                          </div>
+                                        ) : (
+                                          <div className="text-xs text-muted-foreground">OK</div>
+                                        )}
+                                      </td>
+
+                                      <td className="px-3 py-2 text-right align-top">
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="sm"
+                                          disabled={busy || editor.financeBands.length <= 1}
+                                          onClick={() => {
+                                            setEditor((s) => ({
+                                              ...s,
+                                              financeBands: s.financeBands.filter((x) => x.id !== b.id),
+                                              ...(s.financeDefaultBandId === b.id
+                                                ? { financeDefaultBandId: s.financeBands.find((x) => x.id !== b.id)?.id ?? "" }
+                                                : null),
+                                            }));
+                                          }}
+                                        >
+                                          Remove band
+                                        </Button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            <Button
+                              type="button"
+                              variant="outline"
+                              disabled={busy}
+                              onClick={() => {
+                                setEditor((s) => ({
+                                  ...s,
+                                  financeBands: [
+                                    ...s.financeBands,
+                                    {
+                                      id: crypto.randomUUID(),
+                                      loanAmountMin: "",
+                                      loanAmountMax: "",
+                                      pricesByTermMonths: {},
+                                    },
+                                  ],
+                                  financeDefaultBandId: s.financeDefaultBandId || s.financeBands[0]?.id || "",
+                                }));
+                              }}
+                            >
+                              Add loan band
+                            </Button>
+                          </div>
+                        );
+                      }
+
                       const parsed = editor.pricingRows.map((row, idx) => {
                         const termMonths = row.termMonthsUnlimited ? null : parseOptionalInt(row.termMonths);
                         const termKm = row.termKmUnlimited ? null : parseOptionalInt(row.termKm);
@@ -2182,37 +2934,42 @@ export function ProviderProductsPage() {
                       );
                     })()}
 
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() =>
-                        setEditor((s) => ({
-                          ...s,
-                          pricingRows: [
-                            ...s.pricingRows,
-                            {
-                              key: crypto.randomUUID(),
-                              isDefault: false,
-                              termMonths: "",
-                              termMonthsUnlimited: false,
-                              termKm: "",
-                              termKmUnlimited: false,
-                              vehicleMileageMinKm: "",
-                              vehicleMileageMaxKm: "",
-                              vehicleMileageMaxUnlimited: false,
-                              vehicleClass: "ALL",
-                              claimLimitType: "",
-                              claimLimitAmount: "",
-                              deductible: "",
-                              providerCost: "",
-                            },
-                          ],
-                        }))
-                      }
-                      disabled={busy}
-                    >
-                      Add Pricing Row
-                    </Button>
+                    {editor.pricingStructure !== "FINANCE_MATRIX" ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setEditor((s) => ({
+                            ...s,
+                            pricingRows: [
+                              ...s.pricingRows,
+                              {
+                                key: crypto.randomUUID(),
+                                isDefault: false,
+                                termMonths: "",
+                                termMonthsUnlimited: false,
+                                termKm: "",
+                                termKmUnlimited: false,
+                                vehicleMileageMinKm: "",
+                                vehicleMileageMaxKm: "",
+                                vehicleMileageMaxUnlimited: false,
+                                vehicleClass: "ALL",
+                                loanAmountMin: "",
+                                loanAmountMax: "",
+                                financeTermMonths: "",
+                                claimLimitType: "",
+                                claimLimitAmount: "",
+                                deductible: "",
+                                providerCost: "",
+                              },
+                            ],
+                          }))
+                        }
+                        disabled={busy}
+                      >
+                        Add Pricing Row
+                      </Button>
+                    ) : null}
                   </div>
 
                   <div className="mt-3 flex items-center justify-between gap-3">
@@ -2221,7 +2978,20 @@ export function ProviderProductsPage() {
                       <Button
                         type="button"
                         variant={editor.published ? "default" : "outline"}
-                        onClick={() => setEditor((s) => ({ ...s, published: true }))}
+                        onClick={() => {
+                          const next = true;
+                          setEditor((s) => ({ ...s, published: next }));
+                          const id = (editor.id ?? "").trim();
+                          if (!id) return;
+                          void (async () => {
+                            try {
+                              await updateMutation.mutateAsync({ id, patch: { published: next } });
+                            } catch (e) {
+                              setEditor((s) => ({ ...s, published: false }));
+                              setError(e instanceof Error ? e.message : formatUnknownError(e));
+                            }
+                          })();
+                        }}
                         disabled={busy}
                       >
                         Published
@@ -2229,7 +2999,20 @@ export function ProviderProductsPage() {
                       <Button
                         type="button"
                         variant={!editor.published ? "default" : "outline"}
-                        onClick={() => setEditor((s) => ({ ...s, published: false }))}
+                        onClick={() => {
+                          const next = false;
+                          setEditor((s) => ({ ...s, published: next }));
+                          const id = (editor.id ?? "").trim();
+                          if (!id) return;
+                          void (async () => {
+                            try {
+                              await updateMutation.mutateAsync({ id, patch: { published: next } });
+                            } catch (e) {
+                              setEditor((s) => ({ ...s, published: true }));
+                              setError(e instanceof Error ? e.message : formatUnknownError(e));
+                            }
+                          })();
+                        }}
                         disabled={busy}
                       >
                         Draft

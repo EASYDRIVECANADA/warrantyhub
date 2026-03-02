@@ -74,6 +74,10 @@ function read(): ProductPricing[] {
           vehicleMileageMaxKm:
             typeof r.vehicleMileageMaxKm === "number" ? r.vehicleMileageMaxKm : r.vehicleMileageMaxKm === null ? null : undefined,
           vehicleClass: typeof r.vehicleClass === "string" ? r.vehicleClass : undefined,
+          loanAmountMinCents: typeof (r as any).loanAmountMinCents === "number" ? (r as any).loanAmountMinCents : undefined,
+          loanAmountMaxCents: typeof (r as any).loanAmountMaxCents === "number" ? (r as any).loanAmountMaxCents : undefined,
+          financeTermMonths: typeof (r as any).financeTermMonths === "number" ? (r as any).financeTermMonths : undefined,
+          providerNetCostCents: typeof (r as any).providerNetCostCents === "number" ? (r as any).providerNetCostCents : undefined,
           claimLimitCents: typeof (r as any).claimLimitCents === "number" ? (r as any).claimLimitCents : undefined,
           claimLimitType: typeof (r as any).claimLimitType === "string" ? (r as any).claimLimitType : undefined,
           claimLimitAmountCents: typeof (r as any).claimLimitAmountCents === "number" ? (r as any).claimLimitAmountCents : undefined,
@@ -130,6 +134,27 @@ export const localProductPricingApi: ProductPricingApi = {
       throw new Error("deductibleCents must be a number >= 0");
     if (!Number.isFinite(input.basePriceCents) || input.basePriceCents <= 0) throw new Error("basePriceCents must be a positive number");
 
+    if (typeof input.financeTermMonths === "number") {
+      if (!Number.isFinite(input.financeTermMonths) || input.financeTermMonths <= 0) {
+        throw new Error("financeTermMonths must be a positive number");
+      }
+      if (![24, 36, 48, 60, 72, 84, 96].includes(input.financeTermMonths)) {
+        throw new Error("financeTermMonths must be one of: 24, 36, 48, 60, 72, 84, 96");
+      }
+      if (typeof input.loanAmountMinCents !== "number" || !Number.isFinite(input.loanAmountMinCents) || input.loanAmountMinCents < 0) {
+        throw new Error("loanAmountMinCents must be a number >= 0 when financeTermMonths is set");
+      }
+      if (typeof input.loanAmountMaxCents !== "number" || !Number.isFinite(input.loanAmountMaxCents) || input.loanAmountMaxCents <= 0) {
+        throw new Error("loanAmountMaxCents must be a number > 0 when financeTermMonths is set");
+      }
+      if (input.loanAmountMaxCents <= input.loanAmountMinCents) {
+        throw new Error("loanAmountMaxCents must be greater than loanAmountMinCents");
+      }
+      if (typeof input.providerNetCostCents !== "number" || !Number.isFinite(input.providerNetCostCents) || input.providerNetCostCents <= 0) {
+        throw new Error("providerNetCostCents must be a positive number when financeTermMonths is set");
+      }
+    }
+
     if (typeof input.vehicleMileageMinKm === "number" && (!Number.isFinite(input.vehicleMileageMinKm) || input.vehicleMileageMinKm < 0)) {
       throw new Error("vehicleMileageMinKm must be a number >= 0");
     }
@@ -163,11 +188,15 @@ export const localProductPricingApi: ProductPricingApi = {
             ? null
             : input.vehicleMileageMaxKm,
       vehicleClass: typeof input.vehicleClass === "string" ? input.vehicleClass : undefined,
+      loanAmountMinCents: typeof input.loanAmountMinCents === "number" ? input.loanAmountMinCents : undefined,
+      loanAmountMaxCents: typeof input.loanAmountMaxCents === "number" ? input.loanAmountMaxCents : undefined,
+      financeTermMonths: typeof input.financeTermMonths === "number" ? input.financeTermMonths : undefined,
+      providerNetCostCents: typeof input.providerNetCostCents === "number" ? input.providerNetCostCents : undefined,
       claimLimitCents: typeof input.claimLimitCents === "number" ? input.claimLimitCents : undefined,
       claimLimitType: typeof (input as any).claimLimitType === "string" ? (input as any).claimLimitType : undefined,
       claimLimitAmountCents: typeof (input as any).claimLimitAmountCents === "number" ? (input as any).claimLimitAmountCents : undefined,
       deductibleCents: input.deductibleCents,
-      basePriceCents: input.basePriceCents,
+      basePriceCents: typeof input.providerNetCostCents === "number" ? input.providerNetCostCents : input.basePriceCents,
       dealerCostCents: typeof input.dealerCostCents === "number" ? input.dealerCostCents : undefined,
       createdAt: now,
     };

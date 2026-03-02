@@ -1,7 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useMutation } from "@tanstack/react-query";
+
+import {
+  BadgeDollarSign,
+  Building2,
+  Car,
+  CircleCheck,
+  Gauge,
+  Search as SearchIcon,
+  SlidersHorizontal,
+  Shapes,
+  X,
+} from "lucide-react";
 
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -19,14 +31,37 @@ import { getProvidersApi } from "../lib/providers/providers";
 import type { ProviderPublic } from "../lib/providers/types";
 import { useAuth } from "../providers/AuthProvider";
 import { decodeVin } from "../lib/vin/decodeVin";
-import { getAppMode } from "../lib/runtime";
+import { getAppMode, hasSupabaseEnv } from "../lib/runtime";
 
 function productTypeLabel(t: ProductType) {
   if (t === "EXTENDED_WARRANTY") return "Extended Warranty";
   if (t === "TIRE_RIM") return "Tire & Rim";
   if (t === "APPEARANCE") return "Appearance";
-  if (t === "GAP") return "GAP";
+  if (t === "GAP") return "GAP Insurance";
   return "Other";
+}
+
+function bulletLinesFromText(text: string, max: number) {
+  const raw = (text ?? "").replace(/\r\n/g, "\n").trim();
+  if (!raw) return [] as string[];
+
+  const lines = raw
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => l.replace(/^[-•*]+\s*/, ""))
+    .filter(Boolean);
+
+  return lines.slice(0, max);
+}
+
+function firstSentenceOrLine(text: string) {
+  const raw = (text ?? "").replace(/\r\n/g, "\n").trim();
+  if (!raw) return "";
+  const firstLine = raw.split("\n")[0] ?? "";
+  const idx = firstLine.indexOf(".");
+  if (idx >= 30 && idx <= 120) return firstLine.slice(0, idx + 1);
+  return firstLine;
 }
 
 function providerLabel(id: string) {
@@ -82,6 +117,7 @@ export function DealerMarketplacePage() {
   const productPricingApi = useMemo(() => getProductPricingApi(), []);
   const { user } = useAuth();
   const mode = useMemo(() => getAppMode(), []);
+  const supabaseConfigured = useMemo(() => hasSupabaseEnv(), []);
 
   const [searchParams] = useSearchParams();
 
@@ -102,6 +138,9 @@ export function DealerMarketplacePage() {
   const [minTermMonths, setMinTermMonths] = useState("");
   const [minTermKm, setMinTermKm] = useState("");
   const [maxDeductible, setMaxDeductible] = useState("");
+  const [loanAmount, setLoanAmount] = useState("");
+
+  const [eligiblePage, setEligiblePage] = useState(1);
 
   const dealerId = (mode === "local" ? (user?.dealerId ?? user?.id ?? "") : (user?.dealerId ?? "")).trim();
   const { markupPct } = useDealerMarkupPct(dealerId);
@@ -154,6 +193,7 @@ export function DealerMarketplacePage() {
     setMinTermMonths("");
     setMinTermKm("");
     setMaxDeductible("");
+    setLoanAmount("");
   };
 
   const productsQuery = useQuery({
@@ -162,8 +202,14 @@ export function DealerMarketplacePage() {
   });
 
   const products = (productsQuery.data ?? []) as MarketplaceProduct[];
+  const isProviderSignedIn = (user?.role ?? "") === "PROVIDER";
+  const roleMayBlockPublishedProducts = mode === "supabase" && isProviderSignedIn;
+
+  const isGapProduct = (p: { productType?: unknown }) => String(p.productType ?? "") === "GAP";
+  const anyGapProductsExist = products.some((p) => isGapProduct(p));
 
   const providerOptions = Array.from(new Set(products.map((p) => p.providerId).filter(Boolean))).sort();
+  const productTypeOptions = Array.from(new Set(products.map((p) => String(p.productType ?? "")).filter(Boolean))).sort();
 
   const providersQuery = useQuery({
     queryKey: ["providers", providerOptions.join(",")],
@@ -172,6 +218,53 @@ export function DealerMarketplacePage() {
   });
 
   const providerById = new Map(((providersQuery.data ?? []) as ProviderPublic[]).map((p) => [p.id, p] as const));
+
+  const providerItems = useMemo(() => {
+    return providerOptions
+      .map((pid) => {
+        const provider = providerById.get(pid);
+        return {
+          id: pid,
+          name: providerDisplayName(provider, pid),
+          logoUrl: provider?.logoUrl ?? null,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [providerById, providerOptions]);
+
+  const selectedProviderItem = useMemo(() => {
+    const pid = providerId.trim();
+    if (!pid) return null;
+    return providerItems.find((p) => p.id === pid) ?? null;
+  }, [providerId, providerItems]);
+
+  const [providerOpen, setProviderOpen] = useState(false);
+  const [providerQuery, setProviderQuery] = useState("");
+  const [providerActiveIndex, setProviderActiveIndex] = useState(0);
+  const providerComboboxRef = useRef<HTMLDivElement | null>(null);
+
+  const filteredProviderItems = useMemo(() => {
+    const q = providerQuery.trim().toLowerCase();
+    if (!q) return providerItems;
+    return providerItems.filter((p) => p.name.toLowerCase().includes(q));
+  }, [providerItems, providerQuery]);
+
+  useEffect(() => {
+    if (!providerOpen) return;
+    setProviderActiveIndex(0);
+  }, [providerOpen, providerQuery]);
+
+  useEffect(() => {
+    if (!providerOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const el = providerComboboxRef.current;
+      if (!el) return;
+      if (e.target instanceof Node && el.contains(e.target)) return;
+      setProviderOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [providerOpen]);
 
   const q = norm(search);
 
@@ -182,11 +275,16 @@ export function DealerMarketplacePage() {
   const eligibleByVehicle = (p: Product) => {
     if (!decoded) return false;
 
+    const effectiveMaxAgeYears = (() => {
+      if (typeof p.eligibilityMaxVehicleAgeYears === "number") return p.eligibilityMaxVehicleAgeYears;
+      return isGapProduct(p) ? 10 : undefined;
+    })();
+
     const eligibleByAge =
-      typeof p.eligibilityMaxVehicleAgeYears !== "number"
+      typeof effectiveMaxAgeYears !== "number"
         ? true
         : typeof vehicleAgeYears === "number"
-          ? vehicleAgeYears <= p.eligibilityMaxVehicleAgeYears
+          ? vehicleAgeYears <= effectiveMaxAgeYears
           : false;
 
     const eligibleByMileage =
@@ -231,6 +329,17 @@ export function DealerMarketplacePage() {
     return typeof n === "number" ? Math.round(n * 100) : undefined;
   })();
 
+  const loanAmountCents = (() => {
+    const n = parseNum(loanAmount);
+    return typeof n === "number" && n > 0 ? Math.round(n * 100) : undefined;
+  })();
+
+  const showGapQuoteFields = (() => {
+    if (!decoded) return false;
+    if (productType.trim() && productType.trim() === "GAP") return true;
+    return anyGapProductsExist;
+  })();
+
   const filtered = (decoded ? products.filter((p) => eligibleByVehicle(p)) : [])
     .filter((p) => (!providerId.trim() ? true : p.providerId === providerId.trim()))
     .filter((p) => (!productType.trim() ? true : p.productType === (productType.trim() as ProductType)))
@@ -263,6 +372,7 @@ export function DealerMarketplacePage() {
       minTermMonthsNum ?? "",
       minTermKmNum ?? "",
       maxDeductibleCents ?? "",
+      loanAmountCents ?? "",
     ],
     enabled: Boolean(decoded) && typeof parsedMileage === "number" && candidateProductIds.length > 0,
     queryFn: async () => {
@@ -320,6 +430,12 @@ export function DealerMarketplacePage() {
       const entries = await Promise.all(
         candidateProductIds.map(async (pid) => {
           const rows = (await productPricingApi.list({ productId: pid })) as ProductPricing[];
+
+          const product = filtered.find((p) => p.id === pid) as MarketplaceProduct | undefined;
+          if (product?.pricingStructure === "FINANCE_MATRIX") {
+            return [pid, null] as const;
+          }
+
           const eligibleRows = treatClassAsWildcard
             ? rows.filter((r) => isEligibleIgnoringClass(r))
             : rows.filter((r) =>
@@ -348,7 +464,11 @@ export function DealerMarketplacePage() {
     if (!decoded) return [] as Product[];
     if (typeof parsedMileage !== "number") return [] as Product[];
     if (candidateProductIds.length === 0) return [] as Product[];
-    return filtered.filter((p) => Boolean(eligibleVariantPricingByProductId[p.id]));
+    return filtered.filter((p) => {
+      const mp = p as MarketplaceProduct;
+      if (mp.pricingStructure === "FINANCE_MATRIX") return true;
+      return Boolean(eligibleVariantPricingByProductId[p.id]);
+    });
   }, [candidateProductIds.length, decoded, eligibleVariantPricingByProductId, filtered, parsedMileage]);
 
   const filteredByVariantAndPrice = useMemo(() => {
@@ -392,11 +512,38 @@ export function DealerMarketplacePage() {
       .sort((a, b) => a.providerName.localeCompare(b.providerName));
   }, [eligibleVariantPricingByProductId, filteredByVariantAndPrice, priceSort, providerById]);
 
+  const eligibleFlat = useMemo(() => {
+    return grouped.flatMap((g) =>
+      g.products.map((p) => ({
+        product: p,
+        providerName: g.providerName,
+        providerLogoUrl: g.providerLogoUrl,
+      })),
+    );
+  }, [grouped]);
+
+  const ELIGIBLE_PAGE_SIZE = 5;
+  const eligibleTotalPages = Math.max(1, Math.ceil(eligibleFlat.length / ELIGIBLE_PAGE_SIZE));
+
+  useEffect(() => {
+    setEligiblePage(1);
+  }, [decoded?.vin, mileageKm, providerId, productType, priceSort, search, loanAmount, maxPrice, maxYears, maxKm, minTermMonths, minTermKm, maxDeductible]);
+
+  useEffect(() => {
+    setEligiblePage((p) => Math.min(Math.max(1, p), eligibleTotalPages));
+  }, [eligibleTotalPages]);
+
+  const eligiblePageItems = useMemo(() => {
+    const start = (eligiblePage - 1) * ELIGIBLE_PAGE_SIZE;
+    return eligibleFlat.slice(start, start + ELIGIBLE_PAGE_SIZE);
+  }, [eligibleFlat, eligiblePage]);
+
   const detailHrefFor = (productId: string) => {
     const params = new URLSearchParams();
     if (decoded?.vin) params.set("vin", decoded.vin);
     if (mileageKm.trim()) params.set("mileageKm", mileageKm.trim());
     if (vehicleClass.trim()) params.set("vehicleClass", vehicleClass.trim());
+    if (loanAmount.trim()) params.set("loanAmount", loanAmount.trim());
     const qs = params.toString();
     return `/dealer-marketplace/products/${productId}${qs ? `?${qs}` : ""}`;
   };
@@ -406,6 +553,7 @@ export function DealerMarketplacePage() {
     if (vin.trim()) params.set("vin", vin.trim());
     if (mileageKm.trim()) params.set("mileageKm", mileageKm.trim());
     if (vehicleClass.trim()) params.set("vehicleClass", vehicleClass.trim());
+    if (loanAmount.trim()) params.set("loanAmount", loanAmount.trim());
     const qs = params.toString();
     return `/dealer-marketplace/compare${qs ? `?${qs}` : ""}`;
   })();
@@ -427,185 +575,499 @@ export function DealerMarketplacePage() {
             <div className="font-semibold">Search</div>
           </div>
 
-          <div className="p-6 space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
-              <div className="lg:col-span-4">
-                <div className="text-xs text-muted-foreground mb-1">VIN</div>
-                <Input value={vin} onChange={(e) => setVin(e.target.value)} placeholder="Enter VIN" className="h-9 text-sm" />
-                <div className="mt-3 flex gap-2">
-                  <Button
-                    className="h-9 flex-1"
-                    disabled={!vin.trim() || decodeMutation.isPending}
-                    onClick={() => {
-                      setDecodeError(null);
-                      void decodeMutation.mutateAsync(vin);
-                    }}
-                  >
-                    Decode
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-9 whitespace-nowrap bg-red-500/10 hover:bg-red-500/15 border-red-500/20"
-                    disabled={decodeMutation.isPending && !decoded}
-                    onClick={() => resetVinSearch()}
-                  >
-                    Reset
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-9 whitespace-nowrap"
-                    disabled={!canUseFilters}
-                    onClick={() => {
-                      setSearch("");
-                      setProviderId("");
-                      setPriceSort("");
-                    }}
-                  >
-                    Clear filters
-                  </Button>
-                </div>
-              </div>
-
-              <div className="lg:col-span-2">
-                <div className="text-xs text-muted-foreground mb-1">Mileage (km)</div>
-                <Input
-                  value={mileageKm}
-                  onChange={(e) => setMileageKm(e.target.value)}
-                  placeholder="e.g. 85000"
-                  inputMode="numeric"
-                  className={"h-9 text-sm " + (decoded && !mileageKm.trim() ? "border-yellow-500" : "")}
-                  disabled={!canUseFilters}
-                />
-              </div>
-
-              <div className="lg:col-span-2">
-                <div className="text-xs text-muted-foreground mb-1">Sort by price</div>
-                <select
-                  value={priceSort}
-                  onChange={(e) => setPriceSort(e.target.value)}
-                  disabled={!canUseFilters}
-                  className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-sm disabled:opacity-60"
-                >
-                  <option value="">Sort by price</option>
-                  <option value="PRICE_ASC">Low to High</option>
-                  <option value="PRICE_DESC">High to Low</option>
-                </select>
-              </div>
-
-              <div className="lg:col-span-2">
-                <div className="text-xs text-muted-foreground mb-1">Search products</div>
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Product name"
-                  className={"h-9 text-sm " + (!canUseFilters ? "opacity-60 pointer-events-none" : "")}
-                />
-              </div>
-
-              <div className="lg:col-span-2">
-                <div className="text-xs text-muted-foreground mb-1">Provider</div>
-                <select
-                  value={providerId}
-                  onChange={(e) => setProviderId(e.target.value)}
-                  disabled={!canUseFilters}
-                  className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-sm disabled:opacity-60"
-                >
-                  <option value="">All providers</option>
-                  {providerOptions.map((pid) => (
-                    <option key={pid} value={pid}>
-                      {providerDisplayName(providerById.get(pid), pid)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="text-xs text-muted-foreground">
-                {decoded ? (
-                  <span className="inline-flex items-center rounded-full border bg-background px-2.5 py-1">
-                    {filteredByVariant.length} eligible product{filteredByVariant.length === 1 ? "" : "s"}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-
-            {decodeError ? <div className="text-sm text-destructive">{decodeError}</div> : null}
-            {decoded && !mileageKm.trim() ? (
-              <div className="text-xs text-muted-foreground">Mileage is required to calculate eligibility.</div>
-            ) : null}
-
-            {decoded ? (
-              <div className="rounded-xl border p-3 bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-xs font-medium text-foreground">Vehicle</div>
-                    <div className="text-[11px] text-muted-foreground mt-1 truncate">
-                      {decoded.vehicleYear ?? "—"} {decoded.vehicleMake ?? ""} {decoded.vehicleModel ?? ""} {decoded.vehicleTrim ?? ""}
+          <div className="p-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              <div className="lg:col-span-8 space-y-6">
+                <div className="rounded-2xl border bg-background/40 overflow-hidden">
+                  <div className="px-5 py-4 border-b">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <Car className="h-4 w-4" />
+                      Vehicle &amp; Deal Information
                     </div>
                   </div>
-                  <div className="text-[11px] text-muted-foreground whitespace-nowrap">VIN: {decoded.vin}</div>
-                </div>
 
-                {(() => {
-                  const rows = [
-                    { label: "Year", value: decoded.vehicleYear },
-                    { label: "Make, Model", value: [decoded.vehicleMake, decoded.vehicleModel].filter(Boolean).join(" ") },
-                    { label: "Trim", value: decoded.vehicleTrim },
-                    { label: "Engine", value: decoded.vehicleEngine },
-                    { label: "Drive Type", value: decoded.vehicleDriveType },
-                    { label: "Transmission", value: decoded.vehicleTransmission },
-                    { label: "Body Style", value: decoded.vehicleBodyStyle },
-                    { label: "Manufactured In", value: decoded.manufacturedIn },
-                    { label: "Brake System", value: decoded.vehicleBrakeSystem },
-                    { label: "Tires", value: decoded.tires },
-                    { label: "Warranty", value: decoded.warranty },
-                    { label: "MSRP", value: decoded.msrp },
-                  ] as const;
-
-                  const primary = rows.slice(0, 4);
-                  const secondary = rows.slice(4);
-
-                  return (
-                    <>
-                      <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        {primary.map((row) => (
-                          <div key={row.label} className="rounded-lg border bg-background/60 px-2.5 py-2">
-                            <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80">{row.label}</div>
-                            <div className="text-[11px] font-semibold text-foreground mt-0.5 truncate">
-                              {row.value?.toString().trim() ? row.value : "NOT ON FILE"}
-                            </div>
-                          </div>
-                        ))}
+                  <div className="p-5">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                      <div className="md:col-span-6">
+                        <div className="text-xs text-muted-foreground mb-1">VIN</div>
+                        <div className="flex gap-2">
+                          <Input value={vin} onChange={(e) => setVin(e.target.value)} placeholder="Enter VIN" className="h-10 text-sm" />
+                          <Button
+                            className="h-10 whitespace-nowrap"
+                            disabled={!vin.trim() || decodeMutation.isPending}
+                            onClick={() => {
+                              setDecodeError(null);
+                              void decodeMutation.mutateAsync(vin);
+                            }}
+                          >
+                            Decode
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="h-10 whitespace-nowrap"
+                            disabled={decodeMutation.isPending && !decoded}
+                            onClick={() => resetVinSearch()}
+                          >
+                            Reset
+                          </Button>
+                        </div>
                       </div>
 
-                      <div className="mt-2">
+                      <div className="md:col-span-3">
+                        <div className="text-xs text-muted-foreground mb-1">Mileage (km)</div>
+                        <div className="relative">
+                          <Input
+                            value={mileageKm}
+                            onChange={(e) => setMileageKm(e.target.value)}
+                            placeholder="55,555"
+                            inputMode="numeric"
+                            className={"h-10 text-sm pr-10 " + (decoded && !mileageKm.trim() ? "border-yellow-500" : "")}
+                            disabled={!canUseFilters}
+                          />
+                          <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">km</div>
+                        </div>
+                      </div>
+
+                      <div className="md:col-span-3">
+                        <div className="text-xs text-muted-foreground mb-1">Provider</div>
+                        <div ref={providerComboboxRef} className="relative">
+                          <button
+                            type="button"
+                            disabled={!canUseFilters}
+                            onClick={() => setProviderOpen((v) => !v)}
+                            onKeyDown={(e) => {
+                              if (!canUseFilters) return;
+                              if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                setProviderOpen(true);
+                              }
+                            }}
+                            className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-xs shadow-sm disabled:opacity-60 flex items-center justify-between gap-2"
+                          >
+                            <span className="min-w-0 flex items-center gap-2">
+                              <span className="h-6 w-6 rounded border bg-white/70 overflow-hidden flex items-center justify-center shrink-0">
+                                {selectedProviderItem?.logoUrl ? (
+                                  <img src={selectedProviderItem.logoUrl} alt="" className="h-full w-full object-contain" />
+                                ) : (
+                                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                                )}
+                              </span>
+                              <span className="truncate">{selectedProviderItem ? selectedProviderItem.name : "All providers"}</span>
+                            </span>
+                            <span className="text-muted-foreground">▾</span>
+                          </button>
+
+                          {providerOpen ? (
+                            <div className="absolute z-30 mt-1 w-full rounded-md border bg-background shadow-md">
+                              <div className="p-2 border-b">
+                                <Input
+                                  value={providerQuery}
+                                  onChange={(e) => setProviderQuery(e.target.value)}
+                                  placeholder="Search provider"
+                                  className="h-8 text-xs"
+                                  autoFocus
+                                  onKeyDown={(e) => {
+                                    const max = filteredProviderItems.length;
+                                    if (e.key === "Escape") {
+                                      e.preventDefault();
+                                      setProviderOpen(false);
+                                      return;
+                                    }
+                                    if (e.key === "ArrowDown") {
+                                      e.preventDefault();
+                                      setProviderActiveIndex((i) => Math.min(i + 1, max));
+                                      return;
+                                    }
+                                    if (e.key === "ArrowUp") {
+                                      e.preventDefault();
+                                      setProviderActiveIndex((i) => Math.max(i - 1, 0));
+                                      return;
+                                    }
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      if (providerActiveIndex === 0) {
+                                        setProviderId("");
+                                      } else {
+                                        const item = filteredProviderItems[providerActiveIndex - 1];
+                                        if (item) setProviderId(item.id);
+                                      }
+                                      setProviderOpen(false);
+                                    }
+                                  }}
+                                />
+                              </div>
+
+                              <div className="max-h-64 overflow-auto p-1">
+                                <button
+                                  type="button"
+                                  className={
+                                    "w-full text-left px-2 py-2 rounded-sm text-xs flex items-center gap-2 hover:bg-muted " +
+                                    (providerActiveIndex === 0 ? "bg-muted" : "")
+                                  }
+                                  onMouseEnter={() => setProviderActiveIndex(0)}
+                                  onClick={() => {
+                                    setProviderId("");
+                                    setProviderOpen(false);
+                                  }}
+                                >
+                                  <span className="h-5 w-5 rounded border bg-white/70 overflow-hidden flex items-center justify-center shrink-0">
+                                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                                  </span>
+                                  <span className="truncate">All providers</span>
+                                </button>
+
+                                {filteredProviderItems.map((p, idx) => (
+                                  <button
+                                    key={p.id}
+                                    type="button"
+                                    className={
+                                      "w-full text-left px-2 py-2 rounded-sm text-xs flex items-center gap-2 hover:bg-muted " +
+                                      (providerActiveIndex === idx + 1 ? "bg-muted" : "")
+                                    }
+                                    onMouseEnter={() => setProviderActiveIndex(idx + 1)}
+                                    onClick={() => {
+                                      setProviderId(p.id);
+                                      setProviderOpen(false);
+                                    }}
+                                  >
+                                    <span className="h-5 w-5 rounded border bg-white/70 overflow-hidden flex items-center justify-center shrink-0">
+                                      {p.logoUrl ? <img src={p.logoUrl} alt="" className="h-full w-full object-contain" /> : <Building2 className="h-4 w-4 text-muted-foreground" />}
+                                    </span>
+                                    <span className="truncate">{p.name}</span>
+                                  </button>
+                                ))}
+
+                                {filteredProviderItems.length === 0 ? (
+                                  <div className="px-2 py-2 text-xs text-muted-foreground">No providers found.</div>
+                                ) : null}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+
+                    {decoded ? (
+                      <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+                        <CircleCheck className="h-4 w-4 text-green-600" />
+                        <span className="truncate">
+                          {decoded.vehicleYear ?? "—"} {decoded.vehicleMake ?? ""} {decoded.vehicleModel ?? ""} {decoded.vehicleTrim ?? ""}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border bg-background/40 overflow-hidden">
+                  <div className="px-5 py-4 border-b">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <BadgeDollarSign className="h-4 w-4" />
+                      Deal Finance
+                    </div>
+                  </div>
+
+                  <div className="p-5 grid grid-cols-1 md:grid-cols-12 gap-4">
+                    <div className="md:col-span-7 rounded-xl border bg-background/70 p-4">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                        <Gauge className="h-4 w-4" />
+                        Loan Details (GAP only)
+                      </div>
+
+                      <div className="mt-3">
+                        <div className="text-xs text-muted-foreground mb-1">Loan Amount</div>
+                        {showGapQuoteFields ? (
+                          <Input
+                            value={loanAmount}
+                            onChange={(e) => setLoanAmount(e.target.value)}
+                            placeholder="e.g. 12000"
+                            inputMode="decimal"
+                            className={"h-10 text-sm " + (!canUseFilters ? "opacity-60 pointer-events-none" : "")}
+                          />
+                        ) : (
+                          <div className="h-10 rounded-md border border-input bg-transparent px-3 text-xs shadow-sm flex items-center text-muted-foreground/70">
+                            —
+                          </div>
+                        )}
+                        <div className="mt-2 text-xs text-muted-foreground">Finance term will be selected on the GAP plan page.</div>
+                      </div>
+                    </div>
+
+                    <div className="md:col-span-5 rounded-xl border bg-background/70 p-4">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                        <Shapes className="h-4 w-4" />
+                        Other Products
+                      </div>
+                      <div className="mt-3 text-sm text-muted-foreground">Loan amount not required.</div>
+                    </div>
+                  </div>
+                </div>
+
+                {decoded ? (
+                  <div className="rounded-2xl border bg-background/40 overflow-hidden">
+                    <div className="px-5 py-4 border-b">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                          <Car className="h-4 w-4" />
+                          Vehicle Summary
+                        </div>
                         <button
                           type="button"
-                          className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-4"
+                          className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-4"
                           onClick={() => setShowVehicleDetails((v: boolean) => !v)}
                         >
                           {showVehicleDetails ? "Hide details" : "More details"}
                         </button>
                       </div>
+                    </div>
 
-                      {showVehicleDetails ? (
-                        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {secondary.map((row) => (
-                            <div key={row.label} className="rounded-lg border bg-background/60 px-2.5 py-2">
-                              <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80">{row.label}</div>
-                              <div className="text-[11px] font-semibold text-foreground mt-0.5 truncate">
-                                {row.value?.toString().trim() ? row.value : "NOT ON FILE"}
-                              </div>
-                            </div>
-                          ))}
+                    <div className="p-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-foreground truncate">
+                            {decoded.vehicleYear ?? "—"} {decoded.vehicleMake ?? ""} {decoded.vehicleModel ?? ""}
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1 truncate">VIN: {decoded.vin}</div>
                         </div>
-                      ) : null}
-                    </>
-                  );
-                })()}
+                      </div>
+
+                      {(() => {
+                        const rows = [
+                          { label: "Year", value: decoded.vehicleYear },
+                          { label: "Make, Model", value: [decoded.vehicleMake, decoded.vehicleModel].filter(Boolean).join(" ") },
+                          { label: "Trim", value: decoded.vehicleTrim },
+                          { label: "Engine", value: decoded.vehicleEngine },
+                          { label: "Drive Type", value: decoded.vehicleDriveType },
+                          { label: "Transmission", value: decoded.vehicleTransmission },
+                          { label: "Body Style", value: decoded.vehicleBodyStyle },
+                          { label: "Manufactured In", value: decoded.manufacturedIn },
+                          { label: "Brake System", value: decoded.vehicleBrakeSystem },
+                          { label: "Tires", value: decoded.tires },
+                          { label: "Warranty", value: decoded.warranty },
+                          { label: "MSRP", value: decoded.msrp },
+                        ] as const;
+
+                        const primary = rows.slice(0, 4);
+                        const secondary = rows.slice(4);
+
+                        return (
+                          <>
+                            <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                              {primary.map((row) => (
+                                <div key={row.label} className="rounded-lg border bg-background/60 px-2.5 py-2">
+                                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80">{row.label}</div>
+                                  <div className="text-[11px] font-semibold text-foreground mt-0.5 truncate">
+                                    {row.value?.toString().trim() ? row.value : "NOT ON FILE"}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+
+                            {showVehicleDetails ? (
+                              <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {secondary.map((row) => (
+                                  <div key={row.label} className="rounded-lg border bg-background/60 px-2.5 py-2">
+                                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80">{row.label}</div>
+                                    <div className="text-[11px] font-semibold text-foreground mt-0.5 truncate">
+                                      {row.value?.toString().trim() ? row.value : "NOT ON FILE"}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                ) : null}
+
+                {decodeError ? <div className="text-sm text-destructive">{decodeError}</div> : null}
+                {import.meta.env.DEV ? (
+                  <div className="text-[11px] text-muted-foreground">Mode: {mode} (supabase env: {supabaseConfigured ? "yes" : "no"})</div>
+                ) : null}
+                {roleMayBlockPublishedProducts && !productsQuery.isLoading && !productsQuery.isError && products.length === 0 ? (
+                  <div className="text-xs text-destructive">
+                    No products are visible for your current account. In Supabase mode, published Marketplace products are only selectable by Dealer/Admin users.
+                    Please sign in with a Dealer (or Admin) account to view eligible products.
+                  </div>
+                ) : null}
               </div>
-            ) : null}
+
+              <div className="lg:col-span-4 space-y-6">
+                <div className="rounded-2xl border bg-background/40 overflow-hidden">
+                  <div className="px-5 py-4 border-b">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <SlidersHorizontal className="h-4 w-4" />
+                      Filters &amp; Sorting
+                    </div>
+                  </div>
+
+                  <div className="p-5 space-y-4">
+                    <div>
+                      <div className="text-xs font-semibold text-foreground">Product type</div>
+                      <select
+                        value={productType}
+                        onChange={(e) => setProductType(e.target.value)}
+                        disabled={!canUseFilters}
+                        className="mt-2 h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm disabled:opacity-60"
+                      >
+                        <option value="">All types</option>
+                        {productTypeOptions.map((t) => (
+                          <option key={t} value={t}>
+                            {t === "GAP" ? "GAP Insurance" : productTypeLabel(t as ProductType)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold text-foreground">Sort by</div>
+                      <select
+                        value={priceSort}
+                        onChange={(e) => setPriceSort(e.target.value)}
+                        disabled={!canUseFilters}
+                        className="mt-2 h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm disabled:opacity-60"
+                      >
+                        <option value="">Sort by price</option>
+                        <option value="PRICE_ASC">Low to High</option>
+                        <option value="PRICE_DESC">High to Low</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold text-foreground">Search products</div>
+                      <div className="mt-2 relative">
+                        <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          value={search}
+                          onChange={(e) => setSearch(e.target.value)}
+                          placeholder="Product name"
+                          className={"h-10 text-sm pl-9 " + (!canUseFilters ? "opacity-60 pointer-events-none" : "")}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border bg-background/40 overflow-hidden">
+                  <div className="px-5 py-4 border-b">
+                    <div className="text-sm font-semibold text-foreground">Active Filters</div>
+                  </div>
+
+                  <div className="p-5 space-y-2">
+                    {decoded && mileageKm.trim() ? (
+                      <div className="flex items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2 text-sm">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Gauge className="h-4 w-4 text-muted-foreground" />
+                          <div className="truncate">Mileage: {mileageKm.trim()} km</div>
+                        </div>
+                        <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setMileageKm("")}> 
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {productType.trim() ? (
+                      <div className="flex items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2 text-sm">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Shapes className="h-4 w-4 text-muted-foreground" />
+                          <div className="truncate">Type: {productType === "GAP" ? "GAP Insurance" : productTypeLabel(productType as ProductType)}</div>
+                        </div>
+                        <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setProductType("")}> 
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {providerId.trim() ? (
+                      <div className="flex items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2 text-sm">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Building2 className="h-4 w-4 text-muted-foreground" />
+                          <div className="truncate">Provider: {selectedProviderItem ? selectedProviderItem.name : "Selected"}</div>
+                        </div>
+                        <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setProviderId("")}> 
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {showGapQuoteFields && loanAmount.trim() ? (
+                      <div className="flex items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2 text-sm">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <BadgeDollarSign className="h-4 w-4 text-muted-foreground" />
+                          <div className="truncate">Loan: ${loanAmount.trim()} (GAP)</div>
+                        </div>
+                        <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setLoanAmount("")}> 
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {search.trim() ? (
+                      <div className="flex items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2 text-sm">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <SearchIcon className="h-4 w-4 text-muted-foreground" />
+                          <div className="truncate">Search: {search.trim()}</div>
+                        </div>
+                        <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setSearch("")}> 
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {!mileageKm.trim() && !productType.trim() && !providerId.trim() && !loanAmount.trim() && !search.trim() ? (
+                      <div className="text-sm text-muted-foreground">No active filters.</div>
+                    ) : null}
+
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        className="text-sm text-blue-600 hover:underline underline-offset-4"
+                        disabled={!canUseFilters}
+                        onClick={() => {
+                          setMileageKm("");
+                          setSearch("");
+                          setProviderId("");
+                          setPriceSort("");
+                          setProductType("");
+                          if (showGapQuoteFields) setLoanAmount("");
+                        }}
+                      >
+                        Clear all
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {decoded ? (
+                  <div className="text-xs text-muted-foreground">
+                    <span className="inline-flex items-center rounded-full border bg-background px-2.5 py-1">
+                      {filteredByVariant.length} eligible product{filteredByVariant.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                ) : null}
+
+                {decoded && !mileageKm.trim() ? (
+                  <div className="text-xs text-muted-foreground">Mileage is required to calculate eligibility.</div>
+                ) : null}
+
+                {decoded && (productType.trim() === "GAP" || anyGapProductsExist) ? (
+                  typeof vehicleAgeYears === "number" && vehicleAgeYears > 10 ? (
+                    <div className="text-xs text-muted-foreground">GAP Insurance is only eligible for vehicles up to 10 years old. This vehicle is {vehicleAgeYears} years old.</div>
+                  ) : null
+                ) : null}
+
+                {decoded && showGapQuoteFields && (anyGapProductsExist || productType.trim() === "GAP") ? (
+                  loanAmount.trim() ? (
+                    !loanAmountCents ? (
+                      <div className="text-xs text-destructive">Loan amount must be &gt; 0.</div>
+                    ) : null
+                  ) : (
+                    <div className="text-xs text-muted-foreground">Enter loan amount to view eligible GAP loan bands. Choose term on the GAP plan page.</div>
+                  )
+                ) : null}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -628,75 +1090,177 @@ export function DealerMarketplacePage() {
         ) : eligibleVariantPricingByProductIdQuery.isError ? (
           <div className="px-6 py-10 text-sm text-destructive">Failed to load eligible plans.</div>
         ) : (
-          <div className="p-6 overflow-x-auto">
-            <div className="grid grid-flow-col auto-cols-[360px] gap-6 pb-2">
-              {grouped.map((g, idx) => {
-                const a = accentForIndex(idx);
+          <div className="p-6">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="text-sm text-muted-foreground">
+                {eligibleFlat.length ? (
+                  <span>
+                    Showing {(eligiblePage - 1) * ELIGIBLE_PAGE_SIZE + 1}-{Math.min(eligiblePage * ELIGIBLE_PAGE_SIZE, eligibleFlat.length)} of {eligibleFlat.length}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {eligiblePageItems.map((item, idx) => {
+                const p = item.product;
+                const mp = p as MarketplaceProduct;
+                const primaryPricing = eligibleVariantPricingByProductId[p.id] ?? null;
+                const shownMonths =
+                  primaryPricing
+                    ? primaryPricing.termMonths === null
+                      ? "Unlimited"
+                      : typeof primaryPricing.termMonths === "number"
+                        ? `${primaryPricing.termMonths} mo`
+                        : "—"
+                    : typeof mp.pricingDefault?.termMonths === "number"
+                      ? `${mp.pricingDefault.termMonths} mo`
+                      : "—";
+
+                const shownKm =
+                  primaryPricing
+                    ? primaryPricing.termKm === null
+                      ? "Unlimited"
+                      : typeof primaryPricing.termKm === "number"
+                        ? `${primaryPricing.termKm.toLocaleString()} km`
+                        : "—"
+                    : typeof mp.pricingDefault?.termKm === "number"
+                      ? `${mp.pricingDefault.termKm.toLocaleString()} km`
+                      : "—";
+
+                const shownDeductibleCents =
+                  typeof primaryPricing?.deductibleCents === "number"
+                    ? primaryPricing.deductibleCents
+                    : typeof mp.pricingDefault?.deductibleCents === "number"
+                      ? mp.pricingDefault.deductibleCents
+                      : undefined;
+
+                const shownPrice = shownPriceFor(mp, primaryPricing);
+
+                const isGap = isGapProduct(mp);
+                const isGapPlus160 = isGap && norm(mp.name ?? "").includes("160");
+                const gapLtvPct = isGap
+                  ? typeof (mp as any).coverageMaxLtvPercent === "number"
+                    ? (mp as any).coverageMaxLtvPercent
+                    : isGapPlus160
+                      ? 160
+                      : 130
+                  : null;
+                const gapMaxAgeYears = typeof mp.eligibilityMaxVehicleAgeYears === "number" ? mp.eligibilityMaxVehicleAgeYears : 10;
+                const gapDescription = firstSentenceOrLine(mp.coverageDetails ?? "") || "Protect your loan from total loss.";
+                const gapBulletsFromProduct = bulletLinesFromText(mp.keyBenefits ?? "", 4);
+                const gapBulletsFallback = bulletLinesFromText(mp.coverageDetails ?? "", 4);
+                const gapBullets = gapBulletsFromProduct.length
+                  ? gapBulletsFromProduct
+                  : gapBulletsFallback.length
+                    ? gapBulletsFallback
+                    : [
+                        "Covers loan balance after total loss",
+                        "Up to $50,000 deficit coverage",
+                        "Deductible reimbursement (up to $1,000)",
+                        `Vehicles up to ${gapMaxAgeYears} years eligible`,
+                      ];
+
+                const matrixNeedsLoanDetails = mp.pricingStructure === "FINANCE_MATRIX" && !loanAmountCents;
+                const matrixNoBand = false;
+                const canSelect = !(matrixNeedsLoanDetails || matrixNoBand);
+
+                const accent = accentForIndex(idx);
+
                 return (
                   <div
-                    key={g.providerId}
+                    key={p.id}
                     className={
-                      "rounded-2xl border bg-background overflow-hidden ring-1 shadow-sm transition-shadow hover:shadow-md flex flex-col max-h-[640px] " +
-                      a.ring +
+                      "rounded-2xl border bg-background overflow-hidden shadow-sm ring-1 transition-shadow hover:shadow-md " +
+                      accent.ring +
                       " " +
-                      a.border
+                      accent.border
                     }
                   >
-                    <div className={"px-5 py-4 border-b bg-gradient-to-r sticky top-0 z-10 " + a.header}>
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="h-8 w-8 rounded-lg border bg-white/70 overflow-hidden flex items-center justify-center shrink-0">
-                          {g.providerLogoUrl ? (
-                            <img src={g.providerLogoUrl} alt="" className="h-full w-full object-contain" />
-                          ) : null}
+                    <div className={"px-4 py-3 border-b bg-gradient-to-r " + accent.header}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-foreground truncate">{item.providerName}</div>
                         </div>
-                        <div className="font-semibold truncate">{g.providerName}</div>
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {g.products.length} product{g.products.length === 1 ? "" : "s"}
+                        <div className="h-7 w-7 rounded-md border bg-white/70 overflow-hidden flex items-center justify-center shrink-0">
+                          {item.providerLogoUrl ? <img src={item.providerLogoUrl} alt="" className="h-full w-full object-contain" /> : null}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="p-4 space-y-3 overflow-y-auto min-h-0 flex-1">
-                      {g.products.map((p) => (
-                        (() => {
-                          const mp = p as MarketplaceProduct;
-                          const primaryPricing = eligibleVariantPricingByProductId[p.id] ?? null;
-                          const shownMonths =
-                            primaryPricing
-                              ? primaryPricing.termMonths === null
-                                ? "Unlimited"
-                                : typeof primaryPricing.termMonths === "number"
-                                  ? `${primaryPricing.termMonths} mo`
-                                  : "—"
-                              : typeof mp.pricingDefault?.termMonths === "number"
-                                ? `${mp.pricingDefault.termMonths} mo`
-                                : "—";
+                    <div className="p-4">
+                      {isGap ? (
+                        <div className="space-y-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <div className="font-semibold text-foreground truncate">
+                                  <Link to={detailHrefFor(p.id)} className="hover:underline">
+                                    {p.name}{gapLtvPct ? ` ${gapLtvPct}%` : ""}
+                                  </Link>
+                                </div>
+                                {isGapPlus160 ? (
+                                  <span className="inline-flex items-center rounded-full border bg-yellow-400/20 px-2 py-0.5 text-[11px] text-yellow-900">
+                                    160% LTV Coverage
+                                  </span>
+                                ) : null}
+                              </div>
+                              <div className="mt-1 text-sm text-muted-foreground">{gapDescription}</div>
+                            </div>
 
-                          const shownKm =
-                            primaryPricing
-                              ? primaryPricing.termKm === null
-                                ? "Unlimited"
-                                : typeof primaryPricing.termKm === "number"
-                                  ? `${primaryPricing.termKm.toLocaleString()} km`
-                                  : "—"
-                              : typeof mp.pricingDefault?.termKm === "number"
-                                ? `${mp.pricingDefault.termKm.toLocaleString()} km`
-                                : "—";
+                            <div className="shrink-0 text-right">
+                              {matrixNeedsLoanDetails ? (
+                                <>
+                                  <div className="text-[11px] text-muted-foreground whitespace-nowrap">Price</div>
+                                  <div className="text-sm font-semibold whitespace-nowrap leading-none mt-2 text-muted-foreground">Needs loan details</div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="text-[11px] text-muted-foreground whitespace-nowrap">Price</div>
+                                  <div className="text-sm font-semibold whitespace-nowrap leading-none mt-2 text-muted-foreground">Select term in View</div>
+                                </>
+                              )}
+                            </div>
+                          </div>
 
-                          const shownDeductibleCents =
-                            typeof primaryPricing?.deductibleCents === "number"
-                              ? primaryPricing.deductibleCents
-                              : typeof mp.pricingDefault?.deductibleCents === "number"
-                                ? mp.pricingDefault.deductibleCents
-                                : undefined;
+                          <div className="rounded-lg border bg-muted/10 p-3">
+                            <div className="grid grid-cols-1 gap-2 text-[12px] text-muted-foreground leading-snug">
+                              {gapBullets.map((b) => (
+                                <div key={b} className="flex items-start gap-2">
+                                  <span className="mt-0.5">✔</span>
+                                  <span>{b}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
 
-                          const shownPrice = shownPriceFor(mp, primaryPricing);
+                          <div className="text-[11px] text-muted-foreground rounded-md border bg-background/70 px-3 py-2">
+                            {loanAmountCents ? (
+                              <span>
+                                Based on: {money(loanAmountCents)} loan <span className="text-muted-foreground">•</span> select term in View
+                              </span>
+                            ) : (
+                              <span>Enter loan amount to see GAP options</span>
+                            )}
+                          </div>
 
-                          return (
-                        <div
-                          key={p.id}
-                          className="rounded-xl border bg-background/60 p-4 shadow-sm ring-1 ring-blue-500/5 transition-colors hover:bg-muted/30"
-                        >
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <Button size="sm" variant="outline" asChild className="h-11">
+                              <Link to={detailHrefFor(mp.id)}>View details</Link>
+                            </Button>
+                            {canSelect ? (
+                              <Button size="sm" asChild className="h-11 bg-yellow-400 text-black hover:bg-yellow-300">
+                                <Link to={`/dealer-contracts?productId=${encodeURIComponent(mp.id)}&vin=${encodeURIComponent(decoded.vin)}`}>Select Protection</Link>
+                              </Button>
+                            ) : (
+                              <Button size="sm" disabled className="h-11 bg-yellow-400 text-black hover:bg-yellow-300 opacity-60">
+                                Select Protection
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <>
                           <div className="flex items-start justify-between gap-4">
                             <div className="min-w-0">
                               <div className="font-medium text-foreground truncate">
@@ -706,9 +1270,7 @@ export function DealerMarketplacePage() {
                               </div>
 
                               <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                                <span className="inline-flex items-center rounded-full border bg-background px-2 py-0.5">
-                                  {productTypeLabel(mp.productType)}
-                                </span>
+                                <span className="inline-flex items-center rounded-full border bg-background px-2 py-0.5">{productTypeLabel(mp.productType)}</span>
                                 <span className="inline-flex items-center rounded-full border bg-background px-2 py-0.5">
                                   {shownMonths} / {shownKm}
                                 </span>
@@ -721,15 +1283,10 @@ export function DealerMarketplacePage() {
                             </div>
 
                             <div className="shrink-0 text-right">
-                              {(() => {
-                                const primary = shownPrice;
-                                return (
-                                  <div className="flex flex-col items-end">
-                                    <div className="text-[11px] text-muted-foreground whitespace-nowrap">Price</div>
-                                    <div className="text-2xl font-bold whitespace-nowrap leading-none mt-1">{money(primary)}</div>
-                                  </div>
-                                );
-                              })()}
+                              <div className="flex flex-col items-end">
+                                <div className="text-[11px] text-muted-foreground whitespace-nowrap">Price</div>
+                                <div className="text-2xl font-bold whitespace-nowrap leading-none mt-1">{money(shownPrice)}</div>
+                              </div>
                             </div>
                           </div>
 
@@ -741,22 +1298,59 @@ export function DealerMarketplacePage() {
                               <Link to={`/dealer-contracts?productId=${encodeURIComponent(mp.id)}&vin=${encodeURIComponent(decoded.vin)}`}>Select</Link>
                             </Button>
                           </div>
-                        </div>
-                          );
-                        })()
-                      ))}
-
-                      {productsQuery.isLoading ? <div className="px-1 py-2 text-sm text-muted-foreground">Loading…</div> : null}
-                      {productsQuery.isError ? <div className="px-1 py-2 text-sm text-destructive">Failed to load products.</div> : null}
-                      {!productsQuery.isLoading && !productsQuery.isError && g.products.length === 0 ? (
-                        <div className="px-1 py-10 text-sm text-muted-foreground">No eligible products.</div>
-                      ) : null}
+                        </>
+                      )}
                     </div>
                   </div>
                 );
               })}
+            </div>
 
-              {!productsQuery.isLoading && !productsQuery.isError && grouped.length === 0 ? (
+            {eligibleFlat.length > 0 && eligibleTotalPages > 1 ? (
+              <div className="mt-6 flex items-center justify-between gap-3 flex-wrap">
+                <Button variant="outline" size="sm" disabled={eligiblePage <= 1} onClick={() => setEligiblePage((p) => Math.max(1, p - 1))}>
+                  Previous
+                </Button>
+
+                <div className="flex items-center gap-1">
+                  {(() => {
+                    const maxButtons = 7;
+                    const half = Math.floor(maxButtons / 2);
+                    let start = Math.max(1, eligiblePage - half);
+                    let end = Math.min(eligibleTotalPages, start + maxButtons - 1);
+                    start = Math.max(1, end - maxButtons + 1);
+
+                    const pages: number[] = [];
+                    for (let i = start; i <= end; i++) pages.push(i);
+
+                    return pages.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setEligiblePage(p)}
+                        className={
+                          "h-9 min-w-9 px-3 rounded-md border text-sm transition-colors " +
+                          (p === eligiblePage ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted")
+                        }
+                      >
+                        {p}
+                      </button>
+                    ));
+                  })()}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={eligiblePage >= eligibleTotalPages}
+                  onClick={() => setEligiblePage((p) => Math.min(eligibleTotalPages, p + 1))}
+                >
+                  Next
+                </Button>
+              </div>
+            ) : null}
+
+            {!productsQuery.isLoading && !productsQuery.isError && eligibleFlat.length === 0 ? (
                 <div className="px-2 py-10 text-sm text-muted-foreground">
                   <div className="font-medium text-foreground">No eligible products found</div>
                   <div className="mt-2">Try clearing filters or adjusting your search.</div>
@@ -783,7 +1377,6 @@ export function DealerMarketplacePage() {
                 </div>
               ) : null}
             </div>
-          </div>
         )}
       </div>
     </PageShell>

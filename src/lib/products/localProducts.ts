@@ -1,5 +1,5 @@
 import type { ProductsApi } from "./api";
-import type { CreateProductInput, Product, ProductType } from "./types";
+import type { CreateProductInput, Product, ProductType, PricingStructure } from "./types";
 
 const STORAGE_KEY = "warrantyhub.local.products";
 const DEV_BYPASS_KEY = "warrantyhub.dev.bypass_user";
@@ -53,7 +53,15 @@ function read(): Product[] {
           providerId,
           name: p.name ?? "",
           productType: (p.productType ?? "OTHER") as ProductType,
+          pricingStructure: typeof (p as any).pricingStructure === "string" ? ((p as any).pricingStructure as PricingStructure) : undefined,
           programCode: typeof p.programCode === "string" ? p.programCode : undefined,
+          keyBenefits: typeof (p as any).keyBenefits === "string" ? (p as any).keyBenefits : undefined,
+          coverageMaxLtvPercent:
+            (p as any).coverageMaxLtvPercent === null
+              ? null
+              : typeof (p as any).coverageMaxLtvPercent === "number"
+                ? (p as any).coverageMaxLtvPercent
+                : undefined,
           coverageDetails: p.coverageDetails,
           exclusions: p.exclusions,
           internalNotes: typeof p.internalNotes === "string" ? p.internalNotes : undefined,
@@ -120,6 +128,9 @@ export const localProductsApi: ProductsApi = {
       providerId: uid,
       name: input.name,
       productType: input.productType,
+      pricingStructure: input.pricingStructure,
+      keyBenefits: input.keyBenefits,
+      coverageMaxLtvPercent: input.coverageMaxLtvPercent,
       coverageDetails: input.coverageDetails,
       exclusions: input.exclusions,
       termMonths: input.termMonths,

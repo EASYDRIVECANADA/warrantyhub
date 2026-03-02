@@ -1,13 +1,14 @@
 import { getSupabaseClient } from "../supabase/client";
 
 import type { ProductsApi } from "./api";
-import type { CreateProductInput, Product, ProductType } from "./types";
+import type { CreateProductInput, Product, ProductType, PricingStructure } from "./types";
 
 type ProductsRow = {
   id: string;
   provider_id: string;
   name: string;
   product_type: string;
+  pricing_structure?: string | null;
   coverage_details?: string | null;
   exclusions?: string | null;
   term_months?: number | null;
@@ -26,12 +27,17 @@ type ProductsRow = {
 };
 
 function toProduct(r: ProductsRow): Product {
+  const pricing = (r.pricing_structure ?? "").toString().trim();
+  const pricingStructure = pricing ? (pricing as PricingStructure) : undefined;
   return {
     id: r.id,
     providerId: r.provider_id,
     name: r.name,
     productType: r.product_type as ProductType,
+    pricingStructure,
     programCode: undefined,
+    keyBenefits: (r as any).key_benefits ?? undefined,
+    coverageMaxLtvPercent: (r as any).coverage_max_ltv_percent ?? undefined,
     coverageDetails: r.coverage_details ?? undefined,
     exclusions: r.exclusions ?? undefined,
     internalNotes: undefined,
@@ -106,6 +112,9 @@ export const supabaseProductsApi: ProductsApi = {
       provider_id: providerId,
       name: input.name,
       product_type: input.productType,
+      pricing_structure: input.pricingStructure,
+      key_benefits: input.keyBenefits,
+      coverage_max_ltv_percent: input.coverageMaxLtvPercent,
       coverage_details: input.coverageDetails,
       exclusions: input.exclusions,
       term_months: input.termMonths,
@@ -136,6 +145,11 @@ export const supabaseProductsApi: ProductsApi = {
     const updateRow: Record<string, unknown> = { updated_at: now };
     if (typeof patch.name === "string") updateRow.name = patch.name;
     if (typeof patch.productType === "string") updateRow.product_type = patch.productType;
+    if (typeof (patch as any).pricingStructure === "string") updateRow.pricing_structure = (patch as any).pricingStructure;
+    if (typeof (patch as any).keyBenefits === "string") updateRow.key_benefits = (patch as any).keyBenefits;
+    if ((patch as any).coverageMaxLtvPercent === null || typeof (patch as any).coverageMaxLtvPercent === "number") {
+      updateRow.coverage_max_ltv_percent = (patch as any).coverageMaxLtvPercent;
+    }
     if (typeof patch.coverageDetails === "string") updateRow.coverage_details = patch.coverageDetails;
     if (typeof patch.exclusions === "string") updateRow.exclusions = patch.exclusions;
     if (typeof patch.termMonths === "number") updateRow.term_months = patch.termMonths;

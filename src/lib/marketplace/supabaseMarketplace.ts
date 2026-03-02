@@ -2,13 +2,16 @@ import { getSupabaseClient } from "../supabase/client";
 
 import type { MarketplaceApi } from "./api";
 import type { MarketplaceProduct } from "./api";
-import type { Product, ProductType } from "../products/types";
+import type { PricingStructure, Product, ProductType } from "../products/types";
 
 type ProductsRow = {
   id: string;
   provider_id: string;
   name: string;
   product_type: string;
+  pricing_structure?: string | null;
+  key_benefits?: string | null;
+  coverage_max_ltv_percent?: number | null;
   coverage_details?: string | null;
   exclusions?: string | null;
   term_months?: number | null;
@@ -42,11 +45,16 @@ type ProductPricingDefaultRow = {
 };
 
 function toProduct(r: ProductsRow): Product {
+  const pricing = (r.pricing_structure ?? "").toString().trim();
+  const pricingStructure = pricing ? (pricing as PricingStructure) : undefined;
   return {
     id: r.id,
     providerId: r.provider_id,
     name: r.name,
     productType: r.product_type as ProductType,
+    pricingStructure,
+    keyBenefits: r.key_benefits ?? undefined,
+    coverageMaxLtvPercent: r.coverage_max_ltv_percent ?? undefined,
     coverageDetails: r.coverage_details ?? undefined,
     exclusions: r.exclusions ?? undefined,
     termMonths: r.term_months ?? undefined,
