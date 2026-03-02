@@ -111,6 +111,38 @@ function accentForIndex(i: number) {
   return accents[i % accents.length];
 }
 
+type PersistedMarketplaceState = {
+  vin?: string;
+  mileageKm?: string;
+  vehicleClass?: string;
+  loanAmount?: string;
+  decoded?: Awaited<ReturnType<typeof decodeVin>> | null;
+  search?: string;
+  providerId?: string;
+  productType?: string;
+  priceSort?: string;
+  showVehicleDetails?: boolean;
+  maxPrice?: string;
+  maxYears?: string;
+  maxKm?: string;
+  minTermMonths?: string;
+  minTermKm?: string;
+  maxDeductible?: string;
+  eligiblePage?: number;
+};
+
+const DEALER_MARKETPLACE_STATE_KEY = "warrantyhub.dealerMarketplace.state";
+
+function readPersistedDealerMarketplaceState(): PersistedMarketplaceState | null {
+  try {
+    const raw = sessionStorage.getItem(DEALER_MARKETPLACE_STATE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as PersistedMarketplaceState;
+  } catch {
+    return null;
+  }
+}
+
 export function DealerMarketplacePage() {
   const marketplaceApi = useMemo(() => getMarketplaceApi(), []);
   const providersApi = useMemo(() => getProvidersApi(), []);
@@ -121,26 +153,31 @@ export function DealerMarketplacePage() {
 
   const [searchParams] = useSearchParams();
 
-  const [vin, setVin] = useState(() => (searchParams.get("vin") ?? ""));
-  const [mileageKm, setMileageKm] = useState(() => (searchParams.get("mileageKm") ?? ""));
-  const [vehicleClass, setVehicleClass] = useState(() => (searchParams.get("vehicleClass") ?? ""));
-  const [decoded, setDecoded] = useState<Awaited<ReturnType<typeof decodeVin>> | null>(null);
+  const persisted = useMemo(() => readPersistedDealerMarketplaceState(), []);
+
+  const [vin, setVin] = useState(() => (searchParams.get("vin") ?? persisted?.vin ?? ""));
+  const [mileageKm, setMileageKm] = useState(() => (searchParams.get("mileageKm") ?? persisted?.mileageKm ?? ""));
+  const [vehicleClass, setVehicleClass] = useState(() => (searchParams.get("vehicleClass") ?? persisted?.vehicleClass ?? ""));
+  const [decoded, setDecoded] = useState<Awaited<ReturnType<typeof decodeVin>> | null>(() => persisted?.decoded ?? null);
   const [decodeError, setDecodeError] = useState<string | null>(null);
 
-  const [search, setSearch] = useState("");
-  const [providerId, setProviderId] = useState("");
-  const [productType, setProductType] = useState<string>("");
-  const [priceSort, setPriceSort] = useState<string>("");
-  const [showVehicleDetails, setShowVehicleDetails] = useState(false);
-  const [maxPrice, setMaxPrice] = useState("");
-  const [maxYears, setMaxYears] = useState("");
-  const [maxKm, setMaxKm] = useState("");
-  const [minTermMonths, setMinTermMonths] = useState("");
-  const [minTermKm, setMinTermKm] = useState("");
-  const [maxDeductible, setMaxDeductible] = useState("");
-  const [loanAmount, setLoanAmount] = useState("");
+  const [search, setSearch] = useState(() => persisted?.search ?? "");
+  const [providerId, setProviderId] = useState(() => persisted?.providerId ?? "");
+  const [productType, setProductType] = useState<string>(() => persisted?.productType ?? "");
+  const [priceSort, setPriceSort] = useState<string>(() => persisted?.priceSort ?? "");
+  const [showVehicleDetails, setShowVehicleDetails] = useState(() => persisted?.showVehicleDetails ?? false);
+  const [maxPrice, setMaxPrice] = useState(() => persisted?.maxPrice ?? "");
+  const [maxYears, setMaxYears] = useState(() => persisted?.maxYears ?? "");
+  const [maxKm, setMaxKm] = useState(() => persisted?.maxKm ?? "");
+  const [minTermMonths, setMinTermMonths] = useState(() => persisted?.minTermMonths ?? "");
+  const [minTermKm, setMinTermKm] = useState(() => persisted?.minTermKm ?? "");
+  const [maxDeductible, setMaxDeductible] = useState(() => persisted?.maxDeductible ?? "");
+  const [loanAmount, setLoanAmount] = useState(() => (searchParams.get("loanAmount") ?? persisted?.loanAmount ?? ""));
 
-  const [eligiblePage, setEligiblePage] = useState(1);
+  const [eligiblePage, setEligiblePage] = useState(() => {
+    const p = persisted?.eligiblePage;
+    return typeof p === "number" && Number.isFinite(p) && p > 0 ? Math.floor(p) : 1;
+  });
 
   const dealerId = (mode === "local" ? (user?.dealerId ?? user?.id ?? "") : (user?.dealerId ?? "")).trim();
   const { markupPct } = useDealerMarkupPct(dealerId);
@@ -176,6 +213,51 @@ export function DealerMarketplacePage() {
     if (decodeMutation.isPending) return;
     void decodeMutation.mutateAsync(vin.trim());
   }, [decoded, decodeMutation, vin]);
+
+  useEffect(() => {
+    try {
+      const next: PersistedMarketplaceState = {
+        vin,
+        mileageKm,
+        vehicleClass,
+        loanAmount,
+        decoded,
+        search,
+        providerId,
+        productType,
+        priceSort,
+        showVehicleDetails,
+        maxPrice,
+        maxYears,
+        maxKm,
+        minTermMonths,
+        minTermKm,
+        maxDeductible,
+        eligiblePage,
+      };
+      sessionStorage.setItem(DEALER_MARKETPLACE_STATE_KEY, JSON.stringify(next));
+    } catch {
+      return;
+    }
+  }, [
+    decoded,
+    eligiblePage,
+    loanAmount,
+    maxDeductible,
+    maxKm,
+    maxPrice,
+    maxYears,
+    mileageKm,
+    minTermKm,
+    minTermMonths,
+    priceSort,
+    productType,
+    providerId,
+    search,
+    showVehicleDetails,
+    vehicleClass,
+    vin,
+  ]);
 
   const resetVinSearch = () => {
     setVin("");
