@@ -522,7 +522,7 @@ export function DealerMarketplacePage() {
     );
   }, [grouped]);
 
-  const ELIGIBLE_PAGE_SIZE = 5;
+  const ELIGIBLE_PAGE_SIZE = 6;
   const eligibleTotalPages = Math.max(1, Math.ceil(eligibleFlat.length / ELIGIBLE_PAGE_SIZE));
 
   useEffect(() => {
