@@ -12,7 +12,7 @@ import { bestPricingRowForVehicleMileage, defaultPricingRow } from "../lib/produ
 import { isPricingEligibleForVehicle } from "../lib/productPricing/eligibility";
 import { resolveFinanceMatrixPricingRow } from "../lib/productPricing/financeMatrix";
 import type { ProductPricing } from "../lib/productPricing/types";
-import type { Product, ProductType } from "../lib/products/types";
+import type { Product } from "../lib/products/types";
 import { getProvidersApi } from "../lib/providers/providers";
 import type { ProviderPublic } from "../lib/providers/types";
 import { costFromProductOrPricing, retailFromCost } from "../lib/dealerPricing";
@@ -20,14 +20,6 @@ import { useDealerMarkupPct } from "../lib/dealerMarkup";
 import { getAppMode } from "../lib/runtime";
 import { useAuth } from "../providers/AuthProvider";
 import type { ProductAddon } from "../lib/productAddons/types";
-
-function productTypeLabel(t: ProductType) {
-  if (t === "EXTENDED_WARRANTY") return "Extended Warranty";
-  if (t === "TIRE_RIM") return "Tire & Rim";
-  if (t === "APPEARANCE") return "Appearance";
-  if (t === "GAP") return "GAP Insurance";
-  return "Other";
-}
 
 function providerLabel(id: string) {
   const trimmed = id.trim();
@@ -57,7 +49,7 @@ function bulletLinesFromText(text: string, max: number) {
   return lines.slice(0, max);
 }
 
-function firstSentenceOrLine(text: string) {
+function firstSentenceOrLine(text?: string) {
   const raw = (text ?? "").replace(/\r\n/g, "\n").trim();
   if (!raw) return "";
   const firstLine = raw.split("\n")[0] ?? "";
@@ -68,7 +60,8 @@ function firstSentenceOrLine(text: string) {
 
 function money(cents?: number) {
   if (typeof cents !== "number") return "—";
-  return `$${(cents / 100).toFixed(2)}`;
+  const dollars = cents / 100;
+  return `$${dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function allowListLabel(items?: string[]) {
@@ -246,6 +239,18 @@ export function DealerMarketplaceProductDetailPage() {
     });
   }, [allAddons, selectedPricingId]);
 
+  const selectedAddonsTotalCents = useMemo(() => {
+    if (activeAddons.length === 0) return 0;
+    let total = 0;
+    for (const a of activeAddons) {
+      if (!selectedAddonIds[a.id]) continue;
+      const cost = costFromProductOrPricing({ dealerCostCents: a.dealerCostCents, basePriceCents: a.basePriceCents });
+      const retail = retailFromCost(cost, markupPct) ?? cost;
+      if (typeof retail === "number" && Number.isFinite(retail) && retail > 0) total += retail;
+    }
+    return total;
+  }, [activeAddons, markupPct, selectedAddonIds]);
+
   useEffect(() => {
     setSelectedAddonIds((current) => {
       if (Object.keys(current).length === 0) return current;
@@ -316,9 +321,23 @@ export function DealerMarketplaceProductDetailPage() {
     }
   }, [primaryRow?.id, selectedPricingId, sortedPricingRows]);
 
+  const onSelectProduct = () => {
+    const params = new URLSearchParams();
+    params.set("productId", productId);
+    const pricingId = selectedPricingId.trim();
+    if (pricingId) params.set("productPricingId", pricingId);
+
+    if (vin) params.set("vin", vin);
+    if (typeof mileageKm === "number" && Number.isFinite(mileageKm)) params.set("mileageKm", String(mileageKm));
+
+    const addonIds = Object.keys(selectedAddonIds).filter((id) => selectedAddonIds[id]);
+    if (addonIds.length > 0) params.set("addonIds", addonIds.join(","));
+    window.location.assign(`/dealer-contracts?${params.toString()}`);
+  };
+
   return (
     <PageShell
-      title={product ? product.name : "Product"}
+      title={""}
       subtitleAsChild
       subtitle={
         product ? (
@@ -326,40 +345,11 @@ export function DealerMarketplaceProductDetailPage() {
             <div className="h-16 w-16 md:h-20 md:w-20 rounded-2xl border bg-white/70 overflow-hidden flex items-center justify-center">
               {provider?.logoUrl ? <img src={provider.logoUrl} alt="" className="h-full w-full object-contain" /> : null}
             </div>
-            <div className="text-sm text-muted-foreground">{providerName} • {productTypeLabel(product.productType)}</div>
+            <div className="text-sm text-muted-foreground">
+              {providerName} • {product.name}
+            </div>
           </div>
         ) : null
-      }
-      actions={
-        <div className="flex gap-2 flex-wrap">
-          <Button
-            variant="outline"
-            type="button"
-            onClick={() => {
-              window.location.assign("/dealer-marketplace");
-            }}
-          >
-            Back
-          </Button>
-          <Button
-            type="button"
-            className="bg-yellow-400 text-black hover:bg-yellow-300"
-            onClick={() => {
-              const params = new URLSearchParams();
-              params.set("productId", productId);
-              const pricingId = selectedPricingId.trim();
-              if (pricingId) params.set("productPricingId", pricingId);
-
-              if (vin) params.set("vin", vin);
-
-              const addonIds = Object.keys(selectedAddonIds).filter((id) => selectedAddonIds[id]);
-              if (addonIds.length > 0) params.set("addonIds", addonIds.join(","));
-              window.location.assign(`/dealer-contracts?${params.toString()}`);
-            }}
-          >
-            Select product
-          </Button>
-        </div>
       }
     >
       {!productsQuery.isLoading && !product ? <div className="text-sm text-muted-foreground">Product not found.</div> : null}
@@ -423,18 +413,25 @@ export function DealerMarketplaceProductDetailPage() {
                       </div>
 
                       <div className="md:col-span-5 rounded-lg border bg-background/70 p-3">
-                        <div className="text-xs font-medium text-foreground">Your price</div>
+                        <div className="text-xs font-medium text-foreground">Total price</div>
                         <div className="mt-2">
                           {(() => {
                             const r = sortedPricingRows.find((x) => x.id === selectedPricingId) ?? primaryRow;
                             if (!r) return <div className="text-sm text-muted-foreground">—</div>;
                             const cost = costFromProductOrPricing({ dealerCostCents: r.dealerCostCents, basePriceCents: r.basePriceCents });
                             const retail = retailFromCost(cost, markupPct) ?? cost;
+                            const baseRetailCents = typeof retail === "number" && Number.isFinite(retail) ? retail : 0;
+                            const totalRetail = baseRetailCents + selectedAddonsTotalCents;
                             return (
                               <>
-                                <div className="text-3xl font-bold text-foreground leading-none">{money(retail)}</div>
+                                <div className="text-3xl font-bold text-foreground leading-none">{money(totalRetail)}</div>
                                 <div className="mt-1 text-[11px] text-muted-foreground">One-time cost</div>
                                 <div className="mt-3 text-[11px] text-muted-foreground">Deductible {money(0)}</div>
+                                <div className="mt-4">
+                                  <Button type="button" className="h-11 w-full bg-yellow-400 text-black hover:bg-yellow-300" onClick={onSelectProduct}>
+                                    Select product
+                                  </Button>
+                                </div>
                               </>
                             );
                           })()}
@@ -449,133 +446,139 @@ export function DealerMarketplaceProductDetailPage() {
                     ) : null}
                   </div>
                 ) : (
-                  <div className="overflow-x-auto rounded-xl border">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b bg-muted/30">
-                          <th className="text-left px-4 py-3 pr-3 text-xs font-medium text-muted-foreground">
-                            {product.pricingStructure === "FINANCE_MATRIX" ? "Finance term" : "Term"}
-                          </th>
-                          <th className="text-left px-4 py-3 pr-3 text-xs font-medium text-muted-foreground">
-                            {product.pricingStructure === "FINANCE_MATRIX" ? "Loan range" : "Class"}
-                          </th>
-                          <th className="text-left px-4 py-3 pr-3 text-xs font-medium text-muted-foreground">
-                            {product.pricingStructure === "FINANCE_MATRIX" ? " " : "Mileage band"}
-                          </th>
-                          <th className="text-left px-4 py-3 pr-3 text-xs font-medium text-muted-foreground">Claim limit</th>
-                          <th className="text-left px-4 py-3 pr-3 text-xs font-medium text-muted-foreground">Deductible</th>
-                          <th className="text-left px-4 py-3 pr-3 text-xs font-medium text-muted-foreground">Price</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {pricingQuery.isLoading ? (
-                          <tr>
-                            <td className="px-4 py-4 text-sm text-muted-foreground" colSpan={6}>
-                              Loading pricing…
-                            </td>
+                  <>
+                    <div className="overflow-x-auto rounded-xl border">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b bg-muted/30">
+                            <th className="text-left px-4 py-3 pr-3 text-xs font-medium text-muted-foreground">Term</th>
+                            <th className="text-left px-4 py-3 pr-3 text-xs font-medium text-muted-foreground">Class</th>
+                            <th className="text-left px-4 py-3 pr-3 text-xs font-medium text-muted-foreground">Mileage band</th>
+                            <th className="text-left px-4 py-3 pr-3 text-xs font-medium text-muted-foreground">Claim limit</th>
+                            <th className="text-left px-4 py-3 pr-3 text-xs font-medium text-muted-foreground">Deductible</th>
+                            <th className="text-left px-4 py-3 pr-3 text-xs font-medium text-muted-foreground">Price</th>
                           </tr>
-                        ) : pricingQuery.isError ? (
-                          <tr>
-                            <td className="px-4 py-4 text-sm text-destructive" colSpan={6}>
-                              Failed to load pricing.
-                            </td>
-                          </tr>
-                        ) : sortedPricingRows.length > 0 ? (
-                          sortedPricingRows.map((r) => {
-                            const isPrimary = primaryRow?.id && r.id === primaryRow.id;
-                            const isSelected = r.id === selectedPricingId;
-                            return (
-                              <tr
-                                key={r.id}
-                                className={
-                                  (isSelected
-                                    ? "bg-blue-600/10"
-                                    : isPrimary
-                                      ? "bg-yellow-400/10"
-                                      : "") + " hover:bg-blue-600/5 cursor-pointer"
-                                }
-                                onClick={() => setSelectedPricingId(r.id)}
-                                tabIndex={0}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" || e.key === " ") {
-                                    e.preventDefault();
-                                    setSelectedPricingId(r.id);
+                        </thead>
+                        <tbody className="divide-y">
+                          {pricingQuery.isLoading ? (
+                            <tr>
+                              <td className="px-4 py-4 text-sm text-muted-foreground" colSpan={6}>
+                                Loading pricing…
+                              </td>
+                            </tr>
+                          ) : pricingQuery.isError ? (
+                            <tr>
+                              <td className="px-4 py-4 text-sm text-destructive" colSpan={6}>
+                                Failed to load pricing.
+                              </td>
+                            </tr>
+                          ) : sortedPricingRows.length > 0 ? (
+                            sortedPricingRows.map((r) => {
+                              const isPrimary = primaryRow?.id && r.id === primaryRow.id;
+                              const isSelected = r.id === selectedPricingId;
+                              return (
+                                <tr
+                                  key={r.id}
+                                  className={
+                                    (isSelected
+                                      ? "bg-blue-600/10"
+                                      : isPrimary
+                                        ? "bg-yellow-400/10"
+                                        : "") + " hover:bg-blue-600/5 cursor-pointer"
                                   }
-                                }}
-                                aria-selected={isSelected}
-                              >
-                                <td className="px-4 py-3 pr-3 text-muted-foreground">
-                                  <div className="flex items-center gap-2">
-                                    <span
-                                      className={
-                                        "inline-flex h-4 w-4 items-center justify-center rounded border transition-colors " +
-                                        (isSelected ? "bg-primary border-primary" : "bg-background border-border")
-                                      }
-                                      aria-hidden="true"
-                                    >
-                                      {isSelected ? <Check className="h-3 w-3 text-primary-foreground" /> : null}
-                                    </span>
-                                    <span>
-                                      {product.pricingStructure === "FINANCE_MATRIX"
-                                        ? `${typeof r.financeTermMonths === "number" ? r.financeTermMonths : "—"} months`
-                                        : `${r.termMonths === null ? "Unlimited" : `${r.termMonths} months`} / ${r.termKm === null ? "Unlimited" : `${r.termKm.toLocaleString()} km`}`}
-                                    </span>
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3 pr-3 text-muted-foreground">
-                                  {product.pricingStructure === "FINANCE_MATRIX" ? (
-                                    <span>
-                                      {typeof r.loanAmountMinCents === "number" ? money(r.loanAmountMinCents) : "—"} – {typeof r.loanAmountMaxCents === "number" ? money(r.loanAmountMaxCents) : "—"}
-                                    </span>
-                                  ) : (
-                                    (r.vehicleClass ?? "").trim() || "—"
-                                  )}
-                                </td>
-                                <td className="px-4 py-3 pr-3 text-muted-foreground">
-                                  {product.pricingStructure === "FINANCE_MATRIX" ? "—" : (
-                                    <>
-                                      {typeof r.vehicleMileageMinKm === "number" ? r.vehicleMileageMinKm.toLocaleString() : "—"}–
-                                      {r.vehicleMileageMaxKm === null
-                                        ? "Unlimited"
-                                        : typeof r.vehicleMileageMaxKm === "number"
-                                          ? r.vehicleMileageMaxKm.toLocaleString()
-                                          : "—"}
-                                    </>
-                                  )}
-                                </td>
-                                <td className="px-4 py-3 pr-3 text-muted-foreground">{money(r.claimLimitCents)}</td>
-                                <td className="px-4 py-3 pr-3 text-muted-foreground">{money(r.deductibleCents)}</td>
-                                <td className="px-4 py-3 pr-3 font-medium text-foreground">
-                                  {(() => {
-                                    const cost = costFromProductOrPricing({ dealerCostCents: r.dealerCostCents, basePriceCents: r.basePriceCents });
-                                    const retail = retailFromCost(cost, markupPct) ?? cost;
-                                    return <div>{money(retail)}</div>;
-                                  })()}
-                                </td>
-                              </tr>
-                            );
-                          })
-                        ) : (
-                          <tr className="hover:bg-muted/20">
-                            <td className="px-4 py-3 pr-3 text-muted-foreground">
-                              {typeof product.termMonths === "number" ? `${product.termMonths} months` : "—"} / {typeof product.termKm === "number" ? `${product.termKm} km` : "—"}
-                            </td>
-                            <td className="px-4 py-3 pr-3 text-muted-foreground">—</td>
-                            <td className="px-4 py-3 pr-3 text-muted-foreground">—</td>
-                            <td className="px-4 py-3 pr-3 text-muted-foreground">—</td>
-                            <td className="px-4 py-3 pr-3 text-muted-foreground">{money(product.deductibleCents)}</td>
-                            <td className="px-4 py-3 pr-3 font-medium text-foreground">
-                              {(() => {
-                                const cost = costFromProductOrPricing({ dealerCostCents: product.dealerCostCents, basePriceCents: product.basePriceCents });
-                                const retail = retailFromCost(cost, markupPct) ?? cost;
-                                return <div>{money(retail)}</div>;
-                              })()}
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                                  onClick={() => setSelectedPricingId(r.id)}
+                                  tabIndex={0}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault();
+                                      setSelectedPricingId(r.id);
+                                    }
+                                  }}
+                                  aria-selected={isSelected}
+                                >
+                                  <td className="px-4 py-3 pr-3 text-muted-foreground">
+                                    <div className="flex items-center gap-2">
+                                      <span
+                                        className={
+                                          "inline-flex h-4 w-4 items-center justify-center rounded border transition-colors " +
+                                          (isSelected ? "bg-primary border-primary" : "bg-background border-border")
+                                        }
+                                        aria-hidden="true"
+                                      >
+                                        {isSelected ? <Check className="h-3 w-3 text-primary-foreground" /> : null}
+                                      </span>
+                                      <span>
+                                        {r.termMonths === null ? "Unlimited" : `${r.termMonths} months`} / {r.termKm === null ? "Unlimited" : `${r.termKm.toLocaleString()} km`}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 pr-3 text-muted-foreground">{(r.vehicleClass ?? "").trim() || "—"}</td>
+                                  <td className="px-4 py-3 pr-3 text-muted-foreground">
+                                    {typeof r.vehicleMileageMinKm === "number" ? r.vehicleMileageMinKm.toLocaleString() : "—"}–
+                                    {r.vehicleMileageMaxKm === null
+                                      ? "Unlimited"
+                                      : typeof r.vehicleMileageMaxKm === "number"
+                                        ? r.vehicleMileageMaxKm.toLocaleString()
+                                        : "—"}
+                                  </td>
+                                  <td className="px-4 py-3 pr-3 text-muted-foreground">{money(r.claimLimitCents)}</td>
+                                  <td className="px-4 py-3 pr-3 text-muted-foreground">{money(r.deductibleCents)}</td>
+                                  <td className="px-4 py-3 pr-3 font-medium text-foreground">
+                                    {(() => {
+                                      const cost = costFromProductOrPricing({ dealerCostCents: r.dealerCostCents, basePriceCents: r.basePriceCents });
+                                      const retail = retailFromCost(cost, markupPct) ?? cost;
+                                      return <div>{money(retail)}</div>;
+                                    })()}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          ) : (
+                            <tr className="hover:bg-muted/20">
+                              <td className="px-4 py-3 pr-3 text-muted-foreground">
+                                {typeof product.termMonths === "number" ? `${product.termMonths} months` : "—"} / {typeof product.termKm === "number" ? `${product.termKm} km` : "—"}
+                              </td>
+                              <td className="px-4 py-3 pr-3 text-muted-foreground">—</td>
+                              <td className="px-4 py-3 pr-3 text-muted-foreground">—</td>
+                              <td className="px-4 py-3 pr-3 text-muted-foreground">—</td>
+                              <td className="px-4 py-3 pr-3 text-muted-foreground">{money(product.deductibleCents)}</td>
+                              <td className="px-4 py-3 pr-3 font-medium text-foreground">
+                                {(() => {
+                                  const cost = costFromProductOrPricing({ dealerCostCents: product.dealerCostCents, basePriceCents: product.basePriceCents });
+                                  const retail = retailFromCost(cost, markupPct) ?? cost;
+                                  return <div>{money(retail)}</div>;
+                                })()}
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="mt-4 rounded-lg border bg-muted/10 p-3">
+                      {(() => {
+                        const r = sortedPricingRows.find((x) => x.id === selectedPricingId) ?? primaryRow;
+                        if (!r) {
+                          return <div className="text-sm text-muted-foreground">Select a pricing option to continue.</div>;
+                        }
+                        const cost = costFromProductOrPricing({ dealerCostCents: r.dealerCostCents, basePriceCents: r.basePriceCents });
+                        const retail = retailFromCost(cost, markupPct) ?? cost;
+                        const baseRetailCents = typeof retail === "number" && Number.isFinite(retail) ? retail : 0;
+                        const totalRetail = baseRetailCents + selectedAddonsTotalCents;
+                        return (
+                          <div className="flex items-center justify-between gap-3 flex-wrap">
+                            <div>
+                              <div className="text-xs font-medium text-foreground">Total price</div>
+                              <div className="mt-1 text-2xl font-bold text-foreground leading-none">{money(totalRetail)}</div>
+                            </div>
+                            <Button type="button" className="h-11 bg-yellow-400 text-black hover:bg-yellow-300" onClick={onSelectProduct}>
+                              Select product
+                            </Button>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </>
                 )}
               </div>
             </div>

@@ -40,6 +40,7 @@ export function RegisterDealershipPage() {
   const [hstNumber, setHstNumber] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [acceptedDealerTerms, setAcceptedDealerTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resetSent, setResetSent] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
@@ -87,6 +88,10 @@ export function RegisterDealershipPage() {
     try {
       const stepErr = validateStep(3);
       if (stepErr) return setError(stepErr);
+
+      if (!acceptedDealerTerms) {
+        return setError("You must agree to the Bridge Warranty Dealership Platform Terms & Conditions");
+      }
 
       const bn = dealershipName.trim();
       const ph = phone.trim();
@@ -375,6 +380,143 @@ export function RegisterDealershipPage() {
                         required
                       />
                     </div>
+
+                    <div className="rounded-xl border bg-white p-4">
+                      <div className="text-sm font-semibold">Bridge Warranty Dealership Platform Terms & Conditions</div>
+                      <div
+                        className="mt-3 max-h-[260px] overflow-y-auto rounded-lg border bg-slate-50 p-4 text-[13px] leading-relaxed text-slate-800"
+                        style={{ fontFamily: "Arial, sans-serif" }}
+                      >
+                        <div className="font-semibold">Bridge Warranty Dealership Platform Terms & Conditions</div>
+                        <div className="mt-3">
+                          These Dealer Platform Terms & Conditions ("Agreement") govern access to and use of the Bridge Warranty platform by dealerships and their authorized representatives.
+                        </div>
+                        <div className="mt-3">By creating an account on the Bridge Warranty platform, you agree to be bound by the terms of this Agreement.</div>
+
+                        <div className="mt-4 font-semibold">1. Platform Overview</div>
+                        <div className="mt-1">Bridge Warranty Inc. operates a technology platform that connects dealerships with independent providers offering vehicle protection products, including but not limited to:</div>
+                        <div className="mt-2 pl-4">
+                          <div>Vehicle Service Contracts (Warranty Products)</div>
+                          <div>Guaranteed Asset Protection (GAP) Products</div>
+                          <div>Other vehicle protection services offered by participating providers.</div>
+                        </div>
+                        <div className="mt-2">
+                          Bridge Warranty is a technology marketplace and is not the obligor, insurer, administrator, or underwriter of any protection product sold through the platform.
+                        </div>
+                        <div className="mt-2">All coverage obligations remain the responsibility of the individual product provider.</div>
+
+                        <div className="mt-4 font-semibold">2. Dealer Eligibility</div>
+                        <div className="mt-1">To create and maintain an account on the platform, the dealership must:</div>
+                        <div className="mt-2 pl-4">
+                          <div>Be a legally registered business.</div>
+                          <div>Provide accurate dealership and contact information.</div>
+                          <div>Comply with all applicable federal, provincial, and local regulations governing the sale of vehicle protection products.</div>
+                          <div>Maintain any licenses required by law for selling finance or protection products.</div>
+                        </div>
+                        <div className="mt-2">Bridge Warranty reserves the right to verify dealership information prior to activating or maintaining an account.</div>
+
+                        <div className="mt-4 font-semibold">3. Dealer Responsibilities</div>
+                        <div className="mt-1">Dealerships using the Bridge Warranty platform agree to:</div>
+                        <div className="mt-2 pl-4">
+                          <div>Provide accurate customer and vehicle information when submitting applications.</div>
+                          <div>Present protection products truthfully and without misleading statements.</div>
+                          <div>Ensure customers understand the product being purchased.</div>
+                          <div>Not alter, modify, or misrepresent provider contracts.</div>
+                          <div>Follow all product eligibility rules defined by the provider.</div>
+                        </div>
+                        <div className="mt-2">Dealerships are responsible for ensuring all employees using the platform are properly trained and authorized.</div>
+
+                        <div className="mt-4 font-semibold">4. Product Sales and Representations</div>
+                        <div className="mt-1">Dealerships may only offer products that are available through the Bridge Warranty platform and approved by the product provider.</div>
+                        <div className="mt-2">Dealerships must not:</div>
+                        <div className="mt-2 pl-4">
+                          <div>Promise coverage outside the provider’s contract.</div>
+                          <div>Guarantee claim approvals.</div>
+                          <div>Modify product terms or pricing without authorization.</div>
+                        </div>
+                        <div className="mt-2">All product terms are governed by the provider’s official contract documentation.</div>
+
+                        <div className="mt-4 font-semibold">5. Customer Data and Privacy</div>
+                        <div className="mt-1">Dealerships agree to:</div>
+                        <div className="mt-2 pl-4">
+                          <div>Provide accurate customer data required to generate protection contracts.</div>
+                          <div>Obtain appropriate consent from customers before submitting personal information through the platform.</div>
+                          <div>Comply with applicable privacy laws, including Canadian privacy regulations.</div>
+                        </div>
+                        <div className="mt-2">Bridge Warranty will handle platform data in accordance with its Privacy Policy.</div>
+
+                        <div className="mt-4 font-semibold">6. Platform Access and Security</div>
+                        <div className="mt-1">Dealership accounts are responsible for maintaining the confidentiality of their login credentials.</div>
+                        <div className="mt-2">Dealerships must not:</div>
+                        <div className="mt-2 pl-4">
+                          <div>Share login credentials with unauthorized individuals.</div>
+                          <div>Use the platform for fraudulent activities.</div>
+                          <div>Attempt to access restricted areas of the platform.</div>
+                        </div>
+                        <div className="mt-2">Bridge Warranty reserves the right to suspend accounts suspected of misuse.</div>
+
+                        <div className="mt-4 font-semibold">7. Fees and Payments</div>
+                        <div className="mt-1">Certain services or product transactions may involve platform fees, provider fees, or commissions.</div>
+                        <div className="mt-2">Dealerships agree to comply with any applicable payment terms associated with the sale of protection products offered through the platform.</div>
+                        <div className="mt-2">Bridge Warranty does not control provider pricing or coverage terms.</div>
+
+                        <div className="mt-4 font-semibold">8. Provider Responsibility</div>
+                        <div className="mt-1">All product coverage obligations, claims decisions, and benefit payments are the sole responsibility of the product provider.</div>
+                        <div className="mt-2">Bridge Warranty does not:</div>
+                        <div className="mt-2 pl-4">
+                          <div>Approve or deny claims</div>
+                          <div>Guarantee coverage outcomes</div>
+                          <div>Act as an insurance provider or administrator</div>
+                        </div>
+                        <div className="mt-2">Dealerships acknowledge that customers enter into contracts directly with the provider.</div>
+
+                        <div className="mt-4 font-semibold">9. Limitation of Liability</div>
+                        <div className="mt-1">To the fullest extent permitted by law, Bridge Warranty shall not be liable for:</div>
+                        <div className="mt-2 pl-4">
+                          <div>Claim denials by providers</div>
+                          <div>Coverage disputes between customers and providers</div>
+                          <div>Losses arising from provider insolvency or service failure</div>
+                          <div>Indirect or consequential damages resulting from platform use.</div>
+                        </div>
+
+                        <div className="mt-4 font-semibold">10. Suspension or Termination</div>
+                        <div className="mt-1">Bridge Warranty reserves the right to suspend or terminate dealership access to the platform if:</div>
+                        <div className="mt-2 pl-4">
+                          <div>The dealership violates this Agreement</div>
+                          <div>Fraudulent activity is detected</div>
+                          <div>Misrepresentation of products occurs</div>
+                          <div>Regulatory compliance issues arise</div>
+                        </div>
+                        <div className="mt-2">Termination may occur without prior notice where necessary to protect customers or providers.</div>
+
+                        <div className="mt-4 font-semibold">11. Modifications to the Platform</div>
+                        <div className="mt-1">Bridge Warranty may modify platform features, products, or services at any time.</div>
+                        <div className="mt-2">Continued use of the platform after updates constitutes acceptance of any revised terms.</div>
+
+                        <div className="mt-4 font-semibold">12. Governing Law</div>
+                        <div className="mt-1">This Agreement shall be governed by and interpreted in accordance with the laws of the Province of Ontario, Canada.</div>
+
+                        <div className="mt-4 font-semibold">13. Entire Agreement</div>
+                        <div className="mt-1">This Agreement constitutes the entire understanding between the dealership and Bridge Warranty regarding the use of the platform.</div>
+                        <div className="mt-2">No dealership employee or representative may modify this Agreement without written authorization from Bridge Warranty.</div>
+
+                        <div className="mt-4 font-semibold">Dealer Acknowledgement</div>
+                        <div className="mt-1">By creating an account on the Bridge Warranty platform, the dealership acknowledges that it has read, understood, and agrees to comply with these Terms & Conditions.</div>
+                      </div>
+
+                      <label className="mt-4 flex items-start gap-3 text-sm" style={{ fontFamily: "Arial, sans-serif" }}>
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4"
+                          checked={acceptedDealerTerms}
+                          onChange={(e) => setAcceptedDealerTerms(e.target.checked)}
+                          disabled={isLoading}
+                        />
+                        <span>
+                          I agree to the <span className="font-semibold">Bridge Warranty Dealership Platform Terms & Conditions</span>
+                        </span>
+                      </label>
+                    </div>
                   </div>
                 ) : null}
 
@@ -447,7 +589,7 @@ export function RegisterDealershipPage() {
                     <Button
                       type="submit"
                       className="bg-yellow-300 text-slate-900 hover:bg-yellow-200"
-                      disabled={isLoading}
+                      disabled={isLoading || !acceptedDealerTerms}
                     >
                       Create Account
                     </Button>

@@ -109,6 +109,11 @@ export function ProviderDashboardPage() {
   const [displayName, setDisplayName] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [termsText, setTermsText] = useState("");
+  const [termsConditionsText, setTermsConditionsText] = useState("");
+  const [claimsRepairsText, setClaimsRepairsText] = useState("");
+  const [providerResponsibilityText, setProviderResponsibilityText] = useState("");
+  const [limitationLiabilityText, setLimitationLiabilityText] = useState("");
+  const [customerAcknowledgementText, setCustomerAcknowledgementText] = useState("");
 
   const saveProfileMutation = useMutation({
     mutationFn: async () => {
@@ -116,12 +121,22 @@ export function ProviderDashboardPage() {
         displayName,
         companyName,
         termsText,
+        termsConditionsText,
+        claimsRepairsText,
+        providerResponsibilityText,
+        limitationLiabilityText,
+        customerAcknowledgementText,
       });
     },
     onSuccess: async (next) => {
       setDisplayName(next.displayName ?? "");
       setCompanyName(next.companyName ?? "");
       setTermsText(next.termsText ?? "");
+      setTermsConditionsText(next.termsConditionsText ?? "");
+      setClaimsRepairsText(next.claimsRepairsText ?? "");
+      setProviderResponsibilityText(next.providerResponsibilityText ?? "");
+      setLimitationLiabilityText(next.limitationLiabilityText ?? "");
+      setCustomerAcknowledgementText(next.customerAcknowledgementText ?? "");
     },
   });
 
@@ -134,6 +149,11 @@ export function ProviderDashboardPage() {
     setDisplayName((p.displayName ?? "").toString());
     setCompanyName((p.companyName ?? "").toString());
     setTermsText((p.termsText ?? "").toString());
+    setTermsConditionsText((p.termsConditionsText ?? "").toString());
+    setClaimsRepairsText((p.claimsRepairsText ?? "").toString());
+    setProviderResponsibilityText((p.providerResponsibilityText ?? "").toString());
+    setLimitationLiabilityText((p.limitationLiabilityText ?? "").toString());
+    setCustomerAcknowledgementText((p.customerAcknowledgementText ?? "").toString());
   }, [myProfileQuery.data]);
 
   const profileLoaded = myProfileQuery.data;
@@ -421,6 +441,65 @@ export function ProviderDashboardPage() {
                   className="mt-3 w-full min-h-[220px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   disabled={busy}
                 />
+              </div>
+
+              <div className="md:col-span-2">
+                <div className="text-sm font-medium text-foreground">Warranty Terms Sections</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  These sections appear on the customer printable contract. Tokens are supported.
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-3">
+                  <div>
+                    <div className="text-sm font-medium text-foreground">Terms & Conditions</div>
+                    <textarea
+                      value={termsConditionsText}
+                      onChange={(e) => setTermsConditionsText(e.target.value)}
+                      placeholder="Enter Terms & Conditions..."
+                      className="mt-2 w-full min-h-[110px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      disabled={busy}
+                    />
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-foreground">Claims / Repairs</div>
+                    <textarea
+                      value={claimsRepairsText}
+                      onChange={(e) => setClaimsRepairsText(e.target.value)}
+                      placeholder="Enter Claims / Repairs instructions..."
+                      className="mt-2 w-full min-h-[110px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      disabled={busy}
+                    />
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-foreground">Provider Responsibility</div>
+                    <textarea
+                      value={providerResponsibilityText}
+                      onChange={(e) => setProviderResponsibilityText(e.target.value)}
+                      placeholder="Enter Provider Responsibility..."
+                      className="mt-2 w-full min-h-[110px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      disabled={busy}
+                    />
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-foreground">Limitation of Liability</div>
+                    <textarea
+                      value={limitationLiabilityText}
+                      onChange={(e) => setLimitationLiabilityText(e.target.value)}
+                      placeholder="Enter Limitation of Liability..."
+                      className="mt-2 w-full min-h-[110px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      disabled={busy}
+                    />
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-foreground">Customer Acknowledgement</div>
+                    <textarea
+                      value={customerAcknowledgementText}
+                      onChange={(e) => setCustomerAcknowledgementText(e.target.value)}
+                      placeholder="Enter Customer Acknowledgement..."
+                      className="mt-2 w-full min-h-[110px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      disabled={busy}
+                    />
+                  </div>
+                </div>
               </div>
 
               {myProfileQuery.isLoading ? <div className="text-sm text-muted-foreground">Loading…</div> : null}

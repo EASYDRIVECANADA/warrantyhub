@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useMutation } from "@tanstack/react-query";
@@ -7,7 +7,9 @@ import {
   BadgeDollarSign,
   Building2,
   Car,
+  ChevronDown,
   CircleCheck,
+  DollarSign,
   Gauge,
   Search as SearchIcon,
   SlidersHorizontal,
@@ -80,7 +82,8 @@ function providerDisplayName(p: ProviderPublic | undefined, id: string) {
 
 function money(cents?: number) {
   if (typeof cents !== "number") return "—";
-  return `$${(cents / 100).toFixed(2)}`;
+  const dollars = cents / 100;
+  return `$${dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function norm(s: string) {
@@ -153,7 +156,7 @@ export function DealerMarketplacePage() {
 
   const [searchParams] = useSearchParams();
 
-  const persisted = useMemo(() => readPersistedDealerMarketplaceState(), []);
+  const persisted = readPersistedDealerMarketplaceState();
 
   const [vin, setVin] = useState(() => (searchParams.get("vin") ?? persisted?.vin ?? ""));
   const [mileageKm, setMileageKm] = useState(() => (searchParams.get("mileageKm") ?? persisted?.mileageKm ?? ""));
@@ -259,25 +262,6 @@ export function DealerMarketplacePage() {
     vin,
   ]);
 
-  const resetVinSearch = () => {
-    setVin("");
-    setMileageKm("");
-    setVehicleClass("");
-    setDecoded(null);
-    setDecodeError(null);
-    setSearch("");
-    setProviderId("");
-    setProductType("");
-    setPriceSort("");
-    setMaxPrice("");
-    setMaxYears("");
-    setMaxKm("");
-    setMinTermMonths("");
-    setMinTermKm("");
-    setMaxDeductible("");
-    setLoanAmount("");
-  };
-
   const productsQuery = useQuery({
     queryKey: ["marketplace-products"],
     queryFn: () => marketplaceApi.listPublishedProducts(),
@@ -319,34 +303,6 @@ export function DealerMarketplacePage() {
     if (!pid) return null;
     return providerItems.find((p) => p.id === pid) ?? null;
   }, [providerId, providerItems]);
-
-  const [providerOpen, setProviderOpen] = useState(false);
-  const [providerQuery, setProviderQuery] = useState("");
-  const [providerActiveIndex, setProviderActiveIndex] = useState(0);
-  const providerComboboxRef = useRef<HTMLDivElement | null>(null);
-
-  const filteredProviderItems = useMemo(() => {
-    const q = providerQuery.trim().toLowerCase();
-    if (!q) return providerItems;
-    return providerItems.filter((p) => p.name.toLowerCase().includes(q));
-  }, [providerItems, providerQuery]);
-
-  useEffect(() => {
-    if (!providerOpen) return;
-    setProviderActiveIndex(0);
-  }, [providerOpen, providerQuery]);
-
-  useEffect(() => {
-    if (!providerOpen) return;
-    const onDown = (e: MouseEvent) => {
-      const el = providerComboboxRef.current;
-      if (!el) return;
-      if (e.target instanceof Node && el.contains(e.target)) return;
-      setProviderOpen(false);
-    };
-    window.addEventListener("mousedown", onDown);
-    return () => window.removeEventListener("mousedown", onDown);
-  }, [providerOpen]);
 
   const q = norm(search);
 
@@ -425,6 +381,11 @@ export function DealerMarketplacePage() {
   const filtered = (decoded ? products.filter((p) => eligibleByVehicle(p)) : [])
     .filter((p) => (!providerId.trim() ? true : p.providerId === providerId.trim()))
     .filter((p) => (!productType.trim() ? true : p.productType === (productType.trim() as ProductType)))
+    .filter((p) => {
+      const mp = p as MarketplaceProduct;
+      if (isGapProduct(mp) && mp.pricingStructure === "FINANCE_MATRIX" && !loanAmountCents) return false;
+      return true;
+    })
     .filter((p) => {
       if (!q) return true;
       const hay = norm(`${p.name} ${p.coverageDetails ?? ""} ${p.exclusions ?? ""}`);
@@ -542,6 +503,16 @@ export function DealerMarketplacePage() {
 
   const canUseFilters = Boolean(decoded);
 
+  const resetVehicleAndDealInfo = () => {
+    setVin("");
+    setMileageKm("");
+    setVehicleClass("");
+    setProviderId("");
+    setLoanAmount("");
+    setDecoded(null);
+    setDecodeError(null);
+  };
+
   const filteredByVariant = useMemo(() => {
     if (!decoded) return [] as Product[];
     if (typeof parsedMileage !== "number") return [] as Product[];
@@ -642,12 +613,7 @@ export function DealerMarketplacePage() {
 
   return (
     <PageShell
-      title="Find Products"
-      actions={
-        <Button variant="outline" asChild>
-          <Link to={compareHref}>Compare Plans</Link>
-        </Button>
-      }
+      title=""
     >
       <div className="relative">
         <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-yellow-400/10 blur-2xl" />
@@ -662,25 +628,27 @@ export function DealerMarketplacePage() {
               <div className="lg:col-span-8 space-y-6">
                 <div className="rounded-2xl border bg-background/40 overflow-hidden">
                   <div className="px-5 py-4 border-b">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                      <Car className="h-4 w-4" />
+                    <div className="flex items-center gap-2 text-base font-semibold text-foreground">
+                      <Car className="h-5 w-5" />
                       Vehicle &amp; Deal Information
                     </div>
                   </div>
 
                   <div className="p-5">
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-                      <div className="md:col-span-6">
-                        <div className="text-xs text-muted-foreground mb-1">VIN</div>
-                        <div className="flex gap-2">
-                          <Input value={vin} onChange={(e) => setVin(e.target.value)} placeholder="Enter VIN" className="h-10 text-sm" />
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                      <div className="md:col-span-7">
+                        <div className="text-xs font-semibold text-foreground">VIN</div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <Input
+                            value={vin}
+                            onChange={(e) => setVin(e.target.value)}
+                            placeholder="Enter VIN"
+                            className="h-10 text-sm flex-1 min-w-[240px]"
+                          />
                           <Button
-                            className="h-10 whitespace-nowrap"
+                            className="h-10 whitespace-nowrap bg-blue-600 text-white hover:bg-blue-700"
                             disabled={!vin.trim() || decodeMutation.isPending}
-                            onClick={() => {
-                              setDecodeError(null);
-                              void decodeMutation.mutateAsync(vin);
-                            }}
+                            onClick={() => void decodeMutation.mutateAsync(vin.trim())}
                           >
                             Decode
                           </Button>
@@ -688,153 +656,56 @@ export function DealerMarketplacePage() {
                             variant="outline"
                             className="h-10 whitespace-nowrap"
                             disabled={decodeMutation.isPending && !decoded}
-                            onClick={() => resetVinSearch()}
+                            onClick={() => resetVehicleAndDealInfo()}
                           >
                             Reset
                           </Button>
                         </div>
                       </div>
 
-                      <div className="md:col-span-3">
-                        <div className="text-xs text-muted-foreground mb-1">Mileage (km)</div>
-                        <div className="relative">
+                      <div className="md:col-span-2">
+                        <div className="text-xs font-semibold text-foreground">Mileage (km)</div>
+                        <div className="mt-2 relative">
                           <Input
                             value={mileageKm}
                             onChange={(e) => setMileageKm(e.target.value)}
-                            placeholder="55,555"
+                            placeholder="e.g. 50000"
                             inputMode="numeric"
-                            className={"h-10 text-sm pr-10 " + (decoded && !mileageKm.trim() ? "border-yellow-500" : "")}
-                            disabled={!canUseFilters}
+                            className="h-10 text-sm pr-12"
                           />
-                          <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">km</div>
+                          <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">km</div>
                         </div>
                       </div>
 
                       <div className="md:col-span-3">
-                        <div className="text-xs text-muted-foreground mb-1">Provider</div>
-                        <div ref={providerComboboxRef} className="relative">
-                          <button
-                            type="button"
+                        <div className="text-xs font-semibold text-foreground">Provider</div>
+                        <div className="mt-2 relative">
+                          <Building2 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <select
+                            value={providerId}
+                            onChange={(e) => setProviderId(e.target.value)}
                             disabled={!canUseFilters}
-                            onClick={() => setProviderOpen((v) => !v)}
-                            onKeyDown={(e) => {
-                              if (!canUseFilters) return;
-                              if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
-                                e.preventDefault();
-                                setProviderOpen(true);
-                              }
-                            }}
-                            className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-xs shadow-sm disabled:opacity-60 flex items-center justify-between gap-2"
+                            className="h-10 w-full appearance-none rounded-md border border-input bg-transparent pl-10 pr-10 text-sm shadow-sm disabled:opacity-60"
                           >
-                            <span className="min-w-0 flex items-center gap-2">
-                              <span className="h-6 w-6 rounded border bg-white/70 overflow-hidden flex items-center justify-center shrink-0">
-                                {selectedProviderItem?.logoUrl ? (
-                                  <img src={selectedProviderItem.logoUrl} alt="" className="h-full w-full object-contain" />
-                                ) : (
-                                  <Building2 className="h-4 w-4 text-muted-foreground" />
-                                )}
-                              </span>
-                              <span className="truncate">{selectedProviderItem ? selectedProviderItem.name : "All providers"}</span>
-                            </span>
-                            <span className="text-muted-foreground">▾</span>
-                          </button>
-
-                          {providerOpen ? (
-                            <div className="absolute z-30 mt-1 w-full rounded-md border bg-background shadow-md">
-                              <div className="p-2 border-b">
-                                <Input
-                                  value={providerQuery}
-                                  onChange={(e) => setProviderQuery(e.target.value)}
-                                  placeholder="Search provider"
-                                  className="h-8 text-xs"
-                                  autoFocus
-                                  onKeyDown={(e) => {
-                                    const max = filteredProviderItems.length;
-                                    if (e.key === "Escape") {
-                                      e.preventDefault();
-                                      setProviderOpen(false);
-                                      return;
-                                    }
-                                    if (e.key === "ArrowDown") {
-                                      e.preventDefault();
-                                      setProviderActiveIndex((i) => Math.min(i + 1, max));
-                                      return;
-                                    }
-                                    if (e.key === "ArrowUp") {
-                                      e.preventDefault();
-                                      setProviderActiveIndex((i) => Math.max(i - 1, 0));
-                                      return;
-                                    }
-                                    if (e.key === "Enter") {
-                                      e.preventDefault();
-                                      if (providerActiveIndex === 0) {
-                                        setProviderId("");
-                                      } else {
-                                        const item = filteredProviderItems[providerActiveIndex - 1];
-                                        if (item) setProviderId(item.id);
-                                      }
-                                      setProviderOpen(false);
-                                    }
-                                  }}
-                                />
-                              </div>
-
-                              <div className="max-h-64 overflow-auto p-1">
-                                <button
-                                  type="button"
-                                  className={
-                                    "w-full text-left px-2 py-2 rounded-sm text-xs flex items-center gap-2 hover:bg-muted " +
-                                    (providerActiveIndex === 0 ? "bg-muted" : "")
-                                  }
-                                  onMouseEnter={() => setProviderActiveIndex(0)}
-                                  onClick={() => {
-                                    setProviderId("");
-                                    setProviderOpen(false);
-                                  }}
-                                >
-                                  <span className="h-5 w-5 rounded border bg-white/70 overflow-hidden flex items-center justify-center shrink-0">
-                                    <Building2 className="h-4 w-4 text-muted-foreground" />
-                                  </span>
-                                  <span className="truncate">All providers</span>
-                                </button>
-
-                                {filteredProviderItems.map((p, idx) => (
-                                  <button
-                                    key={p.id}
-                                    type="button"
-                                    className={
-                                      "w-full text-left px-2 py-2 rounded-sm text-xs flex items-center gap-2 hover:bg-muted " +
-                                      (providerActiveIndex === idx + 1 ? "bg-muted" : "")
-                                    }
-                                    onMouseEnter={() => setProviderActiveIndex(idx + 1)}
-                                    onClick={() => {
-                                      setProviderId(p.id);
-                                      setProviderOpen(false);
-                                    }}
-                                  >
-                                    <span className="h-5 w-5 rounded border bg-white/70 overflow-hidden flex items-center justify-center shrink-0">
-                                      {p.logoUrl ? <img src={p.logoUrl} alt="" className="h-full w-full object-contain" /> : <Building2 className="h-4 w-4 text-muted-foreground" />}
-                                    </span>
-                                    <span className="truncate">{p.name}</span>
-                                  </button>
-                                ))}
-
-                                {filteredProviderItems.length === 0 ? (
-                                  <div className="px-2 py-2 text-xs text-muted-foreground">No providers found.</div>
-                                ) : null}
-                              </div>
-                            </div>
-                          ) : null}
+                            <option value="">All providers</option>
+                            {providerItems.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       </div>
                     </div>
 
                     {decoded ? (
-                      <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-                        <CircleCheck className="h-4 w-4 text-green-600" />
-                        <span className="truncate">
-                          {decoded.vehicleYear ?? "—"} {decoded.vehicleMake ?? ""} {decoded.vehicleModel ?? ""} {decoded.vehicleTrim ?? ""}
-                        </span>
+                      <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+                        <CircleCheck className="h-4 w-4 text-emerald-600" />
+                        <div className="truncate">
+                          {decoded.vehicleYear ?? "—"} {decoded.vehicleMake ?? ""} {decoded.vehicleModel ?? ""}
+                          {decoded.vehicleTrim ? ` ${decoded.vehicleTrim}` : ""}
+                        </div>
                       </div>
                     ) : null}
                   </div>
@@ -843,43 +714,50 @@ export function DealerMarketplacePage() {
                 <div className="rounded-2xl border bg-background/40 overflow-hidden">
                   <div className="px-5 py-4 border-b">
                     <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                      <BadgeDollarSign className="h-4 w-4" />
+                      <DollarSign className="h-4 w-4" />
                       Deal Finance
                     </div>
                   </div>
 
-                  <div className="p-5 grid grid-cols-1 md:grid-cols-12 gap-4">
-                    <div className="md:col-span-7 rounded-xl border bg-background/70 p-4">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                        <Gauge className="h-4 w-4" />
-                        Loan Details (GAP only)
+                  <div className="p-5">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                      <div className="md:col-span-6 rounded-xl border bg-background/70 p-4">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                          <Gauge className="h-4 w-4" />
+                          Loan Details (GAP only)
+                        </div>
+
+                        <div className="mt-3">
+                          <div className="text-xs text-muted-foreground mb-1">Loan Amount</div>
+                          {showGapQuoteFields ? (
+                            <Input
+                              value={loanAmount}
+                              onChange={(e) => setLoanAmount(e.target.value)}
+                              placeholder="e.g. 12000"
+                              inputMode="decimal"
+                              className={"h-10 text-sm " + (!canUseFilters ? "opacity-60 pointer-events-none" : "")}
+                            />
+                          ) : (
+                            <div className="h-10 rounded-md border border-input bg-transparent px-3 text-xs shadow-sm flex items-center text-muted-foreground/70">
+                              —
+                            </div>
+                          )}
+                          <div className="mt-2 text-xs text-muted-foreground">Finance term will be selected on the GAP plan page.</div>
+                        </div>
                       </div>
 
-                      <div className="mt-3">
-                        <div className="text-xs text-muted-foreground mb-1">Loan Amount</div>
-                        {showGapQuoteFields ? (
-                          <Input
-                            value={loanAmount}
-                            onChange={(e) => setLoanAmount(e.target.value)}
-                            placeholder="e.g. 12000"
-                            inputMode="decimal"
-                            className={"h-10 text-sm " + (!canUseFilters ? "opacity-60 pointer-events-none" : "")}
-                          />
-                        ) : (
-                          <div className="h-10 rounded-md border border-input bg-transparent px-3 text-xs shadow-sm flex items-center text-muted-foreground/70">
-                            —
-                          </div>
-                        )}
-                        <div className="mt-2 text-xs text-muted-foreground">Finance term will be selected on the GAP plan page.</div>
+                      <div className="md:col-span-5 rounded-xl border bg-background/70 p-4">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                          <Shapes className="h-4 w-4" />
+                          Compare Plans
+                        </div>
+                        <div className="mt-3 text-sm text-muted-foreground">Compare multiple plans side-by-side.</div>
+                        <div className="mt-4">
+                          <Button asChild className="w-full h-11 bg-yellow-400 text-black hover:bg-yellow-300">
+                            <Link to={compareHref}>Compare Plans</Link>
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-
-                    <div className="md:col-span-5 rounded-xl border bg-background/70 p-4">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                        <Shapes className="h-4 w-4" />
-                        Other Products
-                      </div>
-                      <div className="mt-3 text-sm text-muted-foreground">Loan amount not required.</div>
                     </div>
                   </div>
                 </div>

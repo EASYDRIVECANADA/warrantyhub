@@ -372,33 +372,18 @@ export function DealerReportingPage() {
 
   return (
     <PageShell
-      title="Reporting"
-      subtitle="Track dealership performance by date range."
+      title=""
       actions={
         <div className="flex items-center gap-2 flex-wrap">
-          <button
+          <Button
             type="button"
-            className="inline-flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm"
+            size="sm"
+            variant="outline"
             onClick={() => setShowProfitability((v) => !v)}
-            aria-pressed={effectiveShowProfitability}
-            title="Show provider amount and profit columns"
+            className="whitespace-nowrap"
           >
-            <span className="text-sm text-muted-foreground">Show profitability</span>
-            <span
-              className={
-                "relative inline-flex h-5 w-10 items-center rounded-full transition-colors " +
-                (effectiveShowProfitability ? "bg-primary" : "bg-muted")
-              }
-              aria-hidden
-            >
-              <span
-                className={
-                  "inline-block h-4 w-4 transform rounded-full bg-background shadow transition-transform " +
-                  (effectiveShowProfitability ? "translate-x-5" : "translate-x-1")
-                }
-              />
-            </span>
-          </button>
+            {showProfitability ? "Hide" : "Show"} Profit
+          </Button>
 
           <details className="relative">
             <summary className="list-none">

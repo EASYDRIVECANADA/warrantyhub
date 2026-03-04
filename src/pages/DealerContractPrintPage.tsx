@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getContractsApi } from "../lib/contracts/contracts";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
 import { getProvidersApi } from "../lib/providers/providers";
+import { getProductPricingApi } from "../lib/productPricing/productPricing";
 import type { Contract } from "../lib/contracts/types";
 import type { MarketplaceProduct } from "../lib/marketplace/api";
 import type { ProviderPublic } from "../lib/providers/types";
@@ -65,6 +66,11 @@ function CustomerCopyTerms(props: {
   deductibleLabel: string;
   coverageDetailsText: string;
   exclusionsText: string;
+  termsConditionsText?: string;
+  claimsRepairsText?: string;
+  providerResponsibilityText?: string;
+  limitationLiabilityText?: string;
+  customerAcknowledgementText?: string;
 }) {
   const coverage =
     props.coverageDetailsText.trim() ||
@@ -72,6 +78,23 @@ function CustomerCopyTerms(props: {
   const exclusions =
     props.exclusionsText.trim() ||
     "Exclusions are set by the Provider and may include normal wear and tear, routine maintenance, cosmetic items, and damage caused by misuse or neglect.";
+
+  const applyTokens = (raw: string) => {
+    return raw
+      .replaceAll("{{product_name}}", props.productName)
+      .replaceAll("{{term_months}}", props.termMonthsLabel)
+      .replaceAll("{{term_km}}", props.termKmLabel)
+      .replaceAll("{{deductible}}", props.deductibleLabel)
+      .replaceAll("{{coverage_details}}", coverage)
+      .replaceAll("{{exclusions}}", exclusions)
+      .replaceAll("{{provider_name}}", props.providerName);
+  };
+
+  const sectionText = (raw?: string) => {
+    const t = (raw ?? "").trim();
+    if (!t) return "";
+    return applyTokens(t).trim();
+  };
 
   const Section = (p: { title: string; children: React.ReactNode }) => (
     <section className="mt-4">
@@ -110,29 +133,39 @@ function CustomerCopyTerms(props: {
       <Section title="Coverage Details">{coverage}</Section>
       <Section title="Exclusions">{exclusions}</Section>
 
-      <Section title="Terms & Conditions">
-        This Vehicle Service Contract is offered by the Provider identified above. Coverage is subject to the Provider’s terms, conditions, exclusions, and limitations.
-      </Section>
+      {(() => {
+        const t = sectionText(props.termsConditionsText);
+        if (!t) return null;
+        return <Section title="Terms & Conditions">{t}</Section>;
+      })()}
 
-      <Section title="Claims / Repairs">
-        In the event of a covered failure, you must contact the Provider (or the Provider’s administrator) for instructions and authorization before repairs are performed. You may be required to provide vehicle and contract information and obtain a claim authorization number.
-      </Section>
+      {(() => {
+        const t = sectionText(props.claimsRepairsText);
+        if (!t) return null;
+        return <Section title="Claims / Repairs">{t}</Section>;
+      })()}
 
       <Section title="Platform Disclaimer">
         {props.platformName} is a technology platform that markets and facilitates the sale of products and services on behalf of independent providers. Unless expressly stated otherwise in writing, {props.platformName} is not the obligor, administrator, insurer, or underwriter of any vehicle service contract.
       </Section>
 
-      <Section title="Provider Responsibility">
-        All coverage obligations, claim decisions, and benefit payments are the sole responsibility of the Provider (and/or the Provider’s administrator, insurer, or underwriter, if applicable).
-      </Section>
+      {(() => {
+        const t = sectionText(props.providerResponsibilityText);
+        if (!t) return null;
+        return <Section title="Provider Responsibility">{t}</Section>;
+      })()}
 
-      <Section title="Limitation of Liability">
-        To the fullest extent permitted by law, {props.platformName} is not responsible for the performance of the Provider, denial of claims, coverage interpretations, cancellations, refunds, or any damages arising from the Provider’s products or services.
-      </Section>
+      {(() => {
+        const t = sectionText(props.limitationLiabilityText);
+        if (!t) return null;
+        return <Section title="Limitation of Liability">{t}</Section>;
+      })()}
 
-      <Section title="Customer Acknowledgement">
-        By purchasing or accepting this contract, you acknowledge that you have reviewed this Customer Copy and understand that the Provider’s contract terms govern your rights and benefits.
-      </Section>
+      {(() => {
+        const t = sectionText(props.customerAcknowledgementText);
+        if (!t) return null;
+        return <Section title="Customer Acknowledgement">{t}</Section>;
+      })()}
     </div>
   );
 }
@@ -151,17 +184,11 @@ function dealershipUserIds(dealerId: string) {
 
 type CopyType = "dealer" | "provider" | "customer";
 
-function titleForCopyType(t: CopyType) {
-  if (t === "dealer") return "Dealer Copy";
-  if (t === "provider") return "Provider Copy";
+function titleForCopyType(t: string) {
+  const s = (t ?? "").trim().toLowerCase();
+  if (s === "dealer") return "Dealer Copy";
+  if (s === "provider") return "Provider Copy";
   return "Customer Copy";
-}
-
-function addonPricingTypeLabel(raw: unknown) {
-  const t = typeof raw === "string" ? raw.trim().toUpperCase() : "";
-  if (t === "PER_TERM") return "Per term";
-  if (t === "PER_CLAIM") return "Per claim";
-  return "Fixed";
 }
 
 export function DealerContractPrintPage() {
@@ -176,6 +203,7 @@ export function DealerContractPrintPage() {
   const api = useMemo(() => getContractsApi(), []);
   const marketplaceApi = useMemo(() => getMarketplaceApi(), []);
   const providersApi = useMemo(() => getProvidersApi(), []);
+  const productPricingApi = useMemo(() => getProductPricingApi(), []);
 
   const contractQuery = useQuery({
     queryKey: ["contract", contractId],
@@ -228,6 +256,21 @@ export function DealerContractPrintPage() {
   const providerForContract = (() => {
     const pid = (selectedProduct?.providerId ?? contract?.providerId ?? "").trim();
     return pid ? providerById.get(pid) : undefined;
+  })();
+
+  const isGap = selectedProduct?.productType === "GAP";
+
+  const pricingOptionsQuery = useQuery({
+    queryKey: ["product-pricing-public", contract?.productId ?? ""],
+    enabled: Boolean(contract?.productId),
+    queryFn: () => productPricingApi.list({ productId: (contract?.productId ?? "").trim() }),
+  });
+
+  const pricingOptions = (pricingOptionsQuery.data ?? []) as Array<{ id: string; claimLimitCents?: number; termMonths: number | null }>;
+  const selectedPricing = (() => {
+    const pid = (contract?.productPricingId ?? "").trim();
+    if (!pid) return undefined;
+    return pricingOptions.find((p) => (p?.id ?? "").trim() === pid);
   })();
 
   const money = (cents?: number) => {
@@ -317,13 +360,163 @@ export function DealerContractPrintPage() {
     exclusionsText,
   });
 
+  const gapLtv = typeof selectedProduct?.coverageMaxLtvPercent === "number" ? selectedProduct?.coverageMaxLtvPercent : null;
+  const gapMaxBenefitText = (() => {
+    const t = (selectedProduct?.keyBenefits ?? "").trim();
+    return t ? t : null;
+  })();
+
+  const GapRow = (p: { label: string; value?: string | null }) => {
+    const v = (p.value ?? "").toString().trim();
+    if (!v || v === "—") return null;
+    const isLong = v.length > 40 || v.includes("\n");
+    return (
+      <div
+        className={
+          isLong
+            ? "grid grid-cols-[max-content_1fr] items-start gap-2 text-sm leading-tight"
+            : "grid grid-cols-[max-content_1fr] items-start gap-2 text-sm leading-tight"
+        }
+      >
+        <div className="text-slate-700 whitespace-nowrap">{p.label}:</div>
+        <div
+          className={
+            isLong
+              ? "font-medium text-slate-900 text-left whitespace-pre-line break-words min-w-0"
+              : "font-medium text-slate-900 text-left whitespace-nowrap min-w-0"
+          }
+        >
+          {v}
+        </div>
+      </div>
+    );
+  };
+
+  const GapBlock = (p: { title: string; rows: Array<React.ReactNode> }) => {
+    const rows = (p.rows ?? []).filter(Boolean);
+    if (rows.length === 0) return null;
+    return (
+      <div className="gap-block border border-slate-200">
+        <div className="gap-block-title px-3 py-2 border-b border-slate-200">
+          <div className="text-[11px] font-bold uppercase tracking-widest text-slate-800">{p.title}</div>
+        </div>
+        <div className="gap-block-body px-2 py-2 space-y-2">{rows}</div>
+      </div>
+    );
+  };
+
+  const gapHeaderTitle = "GAP Waiver Agreement";
+  const gapContractId = (contract.contractNumber || contract.warrantyId || "").trim();
+
+  const providerBlock = GapBlock({
+    title: "Provider (Obligor)",
+    rows: [<GapRow key="provider-name" label="Provider Name" value={providerDisplay(selectedProduct?.providerId ?? contract.providerId)} />],
+  });
+
+  const customerBlock = GapBlock({
+    title: "Contract Holder / Customer",
+    rows: [
+      <GapRow key="customer-name" label="Full Name" value={contract.customerName} />,
+      <GapRow key="customer-address" label="Address" value={addressLine} />,
+      <GapRow key="customer-phone" label="Phone" value={contract.customerPhone} />,
+      <GapRow key="customer-email" label="Email" value={contract.customerEmail} />,
+      <GapRow
+        key="application-date"
+        label="Application Date"
+        value={contract.createdAt ? new Date(contract.createdAt).toLocaleDateString() : null}
+      />,
+    ],
+  });
+
+  const registeredVehicleBlock = GapBlock({
+    title: "Vehicle Information",
+    rows: [
+      <GapRow key="vehicle-year" label="Year" value={(contract.vehicleYear ?? "").trim() || null} />,
+      <GapRow key="vehicle-make" label="Make" value={(contract.vehicleMake ?? "").trim() || null} />,
+      <GapRow key="vehicle-model" label="Model" value={(contract.vehicleModel ?? "").trim() || null} />,
+      <GapRow key="vehicle-trim" label="Trim" value={(contract.vehicleTrim ?? "").trim() || null} />,
+      <GapRow key="vehicle-vin" label="VIN" value={(contract.vin ?? "").trim() || null} />,
+      typeof contract.vehicleMileageKm === "number" && Number.isFinite(contract.vehicleMileageKm) ? (
+        <GapRow key="vehicle-odo" label="Current Odometer" value={`${contract.vehicleMileageKm.toLocaleString()} KM`} />
+      ) : null,
+    ],
+  });
+
+  const gapCoverageBlock = GapBlock({
+    title: "GAP Coverage Details",
+    rows: [
+      gapLtv !== null ? <GapRow key="gap-ltv" label="Maximum Loan To Value (LTV)" value={`${gapLtv}%`} /> : null,
+      typeof selectedPricing?.claimLimitCents === "number" ? (
+        <GapRow key="gap-max-benefit" label="Maximum Benefit" value={money(selectedPricing.claimLimitCents)} />
+      ) : null,
+      typeof contract.pricingDeductibleCents === "number" ? (
+        <GapRow key="gap-deductible" label="Deductible Coverage" value={money(contract.pricingDeductibleCents)} />
+      ) : null,
+      typeof contract.pricingTermMonths === "number" ? (
+        <GapRow key="gap-term-months" label="Coverage Term" value={`${contract.pricingTermMonths} Months`} />
+      ) : null,
+      typeof contract.pricingTermKm === "number" ? (
+        <GapRow key="gap-term-km" label="Coverage Term (KM)" value={`${contract.pricingTermKm.toLocaleString()} KM`} />
+      ) : null,
+      (() => {
+        if (typeof contract.pricingTermMonths !== "number") return null;
+        const base = contract.soldAt ?? contract.createdAt;
+        if (!base) return null;
+        const d = new Date(base);
+        if (Number.isNaN(d.getTime())) return null;
+        const end = new Date(d);
+        end.setMonth(end.getMonth() + contract.pricingTermMonths);
+        return <GapRow key="gap-exp" label="Expiration Date" value={end.toLocaleDateString()} />;
+      })(),
+      gapMaxBenefitText ? <GapRow key="gap-notes" label="Notes" value={gapMaxBenefitText} /> : null,
+    ],
+  });
+
+  const eligibleClaimBlock = GapBlock({
+    title: "Eligible Claim Event",
+    rows: [
+      <div key="eligible-claim" className="text-sm text-slate-800 leading-relaxed">
+        Coverage applies when the vehicle is declared a <span className="font-semibold">Total Loss</span> by the primary auto insurance provider due to:
+        <div className="mt-2">
+          <div>✓ Collision</div>
+          <div>✓ Theft</div>
+          <div>✓ Comprehensive loss</div>
+        </div>
+      </div>,
+    ],
+  });
+
+  const exclusionsBlock = GapBlock({
+    title: "Exclusions Summary",
+    rows: [
+      exclusionsText ? (
+        <div key="exclusions" className="text-sm text-slate-800 leading-relaxed whitespace-pre-line">
+          {exclusionsText}
+        </div>
+      ) : null,
+    ],
+  });
+
+  const importantNoticeBlock = GapBlock({
+    title: "Important Notice",
+    rows: [
+      <div key="important-notice" className="text-sm text-slate-700 leading-relaxed">
+        Bridge Warranty Inc. operates solely as a technology marketplace facilitating the sale of financial protection products.
+        <div className="mt-2">Bridge Warranty is NOT the obligor, insurer, or claims administrator under this contract.</div>
+      </div>,
+    ],
+  });
+
   return (
-    <div className="print-contract-root min-h-screen bg-slate-50 text-slate-900">
+    <div
+      className="print-contract-root min-h-screen bg-white text-slate-900"
+      style={{ fontFamily: '"Times New Roman", Times, serif' }}
+    >
       <style>{`
         @media print {
           @page {
             size: A4;
-            margin: 6mm;
+            margin: 3mm;
           }
 
           body {
@@ -333,6 +526,7 @@ export function DealerContractPrintPage() {
 
           .print-contract-root {
             background: white !important;
+            font-family: "Times New Roman", Times, serif !important;
           }
 
           .contract-print-container {
@@ -352,20 +546,27 @@ export function DealerContractPrintPage() {
 
           .contract-print-body {
             padding: 3mm 5mm 5mm 5mm !important;
-            font-size: 9.75px !important;
+            font-size: 9px !important;
           }
 
-          .contract-print-card {
-            padding: 6px !important;
+          .gap-block-title {
+            padding: 2mm 3mm !important;
           }
 
-          .contract-print-gap {
-            margin-top: 4px !important;
+          .gap-block-body {
+            padding: 2mm 3mm !important;
           }
 
-          .contract-print-terms {
+          .gap-block-body .space-y-2 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 3px !important;
+          }
+
+          .gap-agreement-container .mt-4 {
             margin-top: 6px !important;
-            padding: 5mm !important;
+          }
+
+          .gap-agreement-container .mt-3 {
+            margin-top: 4px !important;
           }
 
           .contract-print-body .grid {
@@ -382,7 +583,7 @@ export function DealerContractPrintPage() {
           }
 
           .contract-print-body .text-sm {
-            font-size: 8.5px !important;
+            font-size: 8.25px !important;
           }
 
           .contract-print-body .mt-4 {
@@ -405,6 +606,35 @@ export function DealerContractPrintPage() {
             margin-top: 4px !important;
           }
 
+          .contract-section {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+
+          .contract-hr {
+            border-color: #e2e8f0 !important;
+          }
+
+          .print-grid-2 {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            column-gap: 24px !important;
+          }
+
+          .print-col-divider {
+            border-left: 1px solid #e2e8f0 !important;
+            padding-left: 24px !important;
+          }
+
+          .print-no-stack {
+            margin-top: 0 !important;
+          }
+
+          .gap-agreement-container {
+            max-width: 820px;
+            margin: 0 auto;
+          }
+
           .print-break-after {
             break-after: page;
             page-break-after: always;
@@ -419,196 +649,309 @@ export function DealerContractPrintPage() {
           }
         }
       `}</style>
-      <div className="contract-print-container max-w-5xl mx-auto p-10">
-        <div className="contract-print-sheet border border-slate-200 rounded-2xl overflow-hidden bg-white">
-          <div className="contract-print-header px-8 py-6 border-b border-slate-200">
+      {isGap ? (
+        <div className="contract-print-container gap-agreement-container mx-auto p-4 md:p-8">
+          <div className="border border-slate-200 bg-white px-4 py-4 md:px-6 md:py-6">
             <div className="flex items-start justify-between gap-6">
               <div>
-                <div className="flex items-center gap-3">
-                  <img src={bridgeWarrantyLogoUrl} alt={BRAND.name} className="h-10 w-auto object-contain" />
-                  {providerForContract?.logoUrl ? (
-                    <img src={providerForContract.logoUrl} alt="" className="h-10 w-auto object-contain" />
-                  ) : null}
-                </div>
-                <div className="text-[10px] uppercase tracking-widest text-slate-500 mt-3">{BRAND.name}</div>
-                <h1 className="text-xl font-bold font-display mt-1">Warranty Contract • {titleForCopyType(type)}</h1>
-                <div className="text-sm text-slate-500 mt-1">Printed copy for records and audit trail.</div>
+                <img src={bridgeWarrantyLogoUrl} alt={BRAND.name} className="h-10 w-auto object-contain" />
+                <div className="text-[11px] uppercase tracking-widest text-slate-600 mt-3">{BRAND.name} Marketplace</div>
               </div>
               <div className="text-right">
-                <div className="text-[10px] uppercase tracking-widest text-slate-500">
-                  {providerDisplay(selectedProduct?.providerId ?? contract.providerId)}
+                <div className="text-[11px] uppercase tracking-widest text-slate-600">{gapHeaderTitle}</div>
+                {gapContractId ? (
+                  <div className="mt-1 text-[12px] text-slate-800">
+                    <span className="text-slate-500">Contract ID:</span> <span className="font-semibold">{gapContractId}</span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <div className="border-t contract-hr" />
+            </div>
+
+            {providerBlock ? <div className="mt-4">{providerBlock}</div> : null}
+
+            {customerBlock || gapCoverageBlock || registeredVehicleBlock || eligibleClaimBlock ? (
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-0 print-grid-2">
+                <div className="pr-0 md:pr-4">
+                  {customerBlock ? <div>{customerBlock}</div> : null}
+                  {registeredVehicleBlock ? <div className="mt-3">{registeredVehicleBlock}</div> : null}
                 </div>
-                <div className="text-[10px] uppercase tracking-widest text-slate-500">Warranty ID</div>
-                <div className="text-lg font-semibold tracking-wide">{contract.warrantyId}</div>
-                <div className="text-[11px] text-slate-500 mt-1">Contract #{contract.contractNumber}</div>
+                <div className="mt-3 md:mt-0 print-col-divider print-no-stack">
+                  {gapCoverageBlock ? <div>{gapCoverageBlock}</div> : null}
+                  {eligibleClaimBlock ? <div className="mt-3">{eligibleClaimBlock}</div> : null}
+                </div>
+              </div>
+            ) : null}
+
+            {exclusionsBlock || importantNoticeBlock ? (
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-0 print-grid-2">
+                {exclusionsBlock ? <div className={importantNoticeBlock ? "pr-0 md:pr-4" : undefined}>{exclusionsBlock}</div> : null}
+                {importantNoticeBlock ? (
+                  <div className={exclusionsBlock ? "mt-3 md:mt-0 print-col-divider print-no-stack" : undefined}>{importantNoticeBlock}</div>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="mt-4 border-t contract-hr pt-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-widest text-slate-800">Signatures</div>
+                  <div className="mt-3 space-y-2 text-sm text-slate-700">
+                    <div className="flex items-center gap-3">
+                      <div className="w-44">Customer Signature:</div>
+                      <div className="flex-1 border-b contract-hr" />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-44">Dealer Representative:</div>
+                      <div className="flex-1 border-b contract-hr" />
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right text-[11px] text-slate-500">
+                  <div>Document Version: BW-GAP-2026-V1</div>
+                  <div className="mt-1">{titleForCopyType(type)}</div>
+                </div>
               </div>
             </div>
           </div>
+        </div>
+      ) : (
+        <div className="contract-print-container max-w-4xl mx-auto p-10">
+          <div className="contract-print-sheet border border-slate-200 rounded-none overflow-hidden bg-white">
+            <div className="contract-print-header px-8 pt-8 pb-5">
+              <div className="flex items-start justify-between gap-8">
+                <div>
+                  <div className="flex items-center gap-4">
+                    <img src={bridgeWarrantyLogoUrl} alt={BRAND.name} className="h-12 w-auto object-contain" />
+                    {providerForContract?.logoUrl ? <img src={providerForContract.logoUrl} alt="" className="h-12 w-auto object-contain" /> : null}
+                  </div>
+                  <div className="text-[11px] uppercase tracking-widest text-slate-500 mt-5">{BRAND.name}</div>
+                  <h1 className="text-2xl font-semibold tracking-tight mt-2">Warranty Contract • {titleForCopyType(type)}</h1>
+                  <div className="text-sm text-slate-500 mt-2">Printed copy for records and audit trail.</div>
+                </div>
 
-          <div className="contract-print-body px-8 py-8">
-            <div className="print-break-after">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-7">
-                <div className="contract-print-card rounded-xl border border-slate-200 p-5">
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-600">Contract Details</div>
-                  <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <div className="text-[11px] text-slate-500">Status</div>
-                      <div className="font-medium">{contract.status}</div>
+                <div className="text-right">
+                  <div className="text-[11px] uppercase tracking-widest text-slate-500">Warranty ID</div>
+                  <div className="text-xl font-semibold tracking-wide mt-1">{contract.warrantyId}</div>
+                  <div className="text-[12px] text-slate-500 mt-2">Contract #{contract.contractNumber}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="contract-print-body px-8 pb-8">
+              <div>
+                <div className="contract-section border-t contract-hr pt-5">
+                  <div className="text-[11px] font-bold uppercase tracking-widest text-slate-700">Contract Details</div>
+                  <div className="mt-3 border-b contract-hr" />
+                  <div className="mt-4 grid grid-cols-2 gap-x-12 gap-y-2 text-sm">
+                    <div className="flex items-center justify-between gap-6">
+                      <div className="text-slate-600">Status</div>
+                      <div className="font-medium uppercase">{contract.status}</div>
                     </div>
-                    <div>
-                      <div className="text-[11px] text-slate-500">Created</div>
+                    <div className="flex items-center justify-between gap-6">
+                      <div className="text-slate-600">Created</div>
                       <div className="font-medium">{new Date(contract.createdAt).toLocaleDateString()}</div>
                     </div>
-                    <div>
-                      <div className="text-[11px] text-slate-500">Last Updated</div>
+                    <div className="flex items-center justify-between gap-6">
+                      <div className="text-slate-600">Last Updated</div>
                       <div className="font-medium">{new Date(contract.updatedAt).toLocaleDateString()}</div>
                     </div>
-                    <div>
-                      <div className="text-[11px] text-slate-500">Copy Type</div>
+                    <div className="flex items-center justify-between gap-6">
+                      <div className="text-slate-600">Copy Type</div>
                       <div className="font-medium">{titleForCopyType(type)}</div>
                     </div>
                   </div>
                 </div>
 
-                <div className="contract-print-card rounded-xl border border-slate-200 p-5">
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-600">Customer Information</div>
-                  <div className="mt-4 space-y-3 text-sm">
-                    <div>
-                      <div className="text-[11px] text-slate-500">Name</div>
-                      <div className="font-medium">{contract.customerName || "—"}</div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="contract-section border-t contract-hr pt-5 mt-6">
+                  <div className="text-[11px] font-bold uppercase tracking-widest text-slate-700">Customer Information</div>
+                  <div className="mt-3 border-b contract-hr" />
+                  <div className="mt-4 grid grid-cols-2 gap-0 text-sm print-grid-2">
+                    <div className="space-y-4 pr-8">
                       <div>
-                        <div className="text-[11px] text-slate-500">Email</div>
+                        <div className="text-slate-600">Name</div>
+                        <div className="font-medium">{contract.customerName || "—"}</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-600">Email</div>
                         <div className="font-medium">{contract.customerEmail || "—"}</div>
                       </div>
+                    </div>
+                    <div className="space-y-4 print-col-divider print-no-stack">
                       <div>
-                        <div className="text-[11px] text-slate-500">Phone</div>
+                        <div className="text-slate-600">Phone</div>
                         <div className="font-medium">{contract.customerPhone || "—"}</div>
                       </div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] text-slate-500">Address</div>
-                      <div className="font-medium">{addressLine || "—"}</div>
+                      <div>
+                        <div className="text-slate-600">Address</div>
+                        <div className="font-medium">{addressLine || "—"}</div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-
-              <div className="contract-print-gap mt-7 contract-print-card rounded-xl border border-slate-200 p-5">
-                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-600">Plan & Pricing</div>
-                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-7 text-sm">
-                  <div>
-                    <div className="text-[11px] text-slate-500">Product</div>
-                    <div className="font-medium">{selectedProduct?.name ?? "—"}</div>
-                    <div className="text-[11px] text-slate-500 mt-1">Provider: {providerDisplay(selectedProduct?.providerId ?? contract.providerId)}</div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-slate-500">Price</div>
-                    <div className="font-medium">
-                      {type === "provider"
-                        ? money((contract.pricingDealerCostCents ?? 0) + (contract.addonTotalCostCents ?? 0))
-                        : money((contract.pricingBasePriceCents ?? 0) + (contract.addonTotalRetailCents ?? 0))}
-                    </div>
-                    <div className="text-[11px] text-slate-500 mt-1">Deductible: {money(contract.pricingDeductibleCents ?? undefined)}</div>
-                  </div>
-                </div>
-                <div className="mt-3 text-[11px] text-slate-500">
-                  Term: {contract.pricingTermMonths === null ? "Unlimited" : typeof contract.pricingTermMonths === "number" ? `${contract.pricingTermMonths} mo` : "—"} / {contract.pricingTermKm === null ? "Unlimited" : typeof contract.pricingTermKm === "number" ? `${contract.pricingTermKm} km` : "—"}
                 </div>
 
-                {Array.isArray((contract as any).addonSnapshot) && ((contract as any).addonSnapshot as any[]).length > 0 ? (
-                  <div className="mt-3 text-[11px] text-slate-500">
-                    Add-ons:
-                    <div className="mt-1">
-                      {(((contract as any).addonSnapshot as any[]) || []).map((a) => (
-                        <div key={(a?.id ?? a?.name ?? Math.random()).toString()} className="flex items-center justify-between gap-3">
-                          <div>
-                            {(a?.name ?? "—").toString()}
-                            <span className="text-slate-400"> • {addonPricingTypeLabel(a?.pricingType)}</span>
-                          </div>
-                          <div>
-                            {money(type === "provider" ? ((a?.chosenPriceCents ?? a?.dealerCostCents ?? a?.basePriceCents ?? 0) as number) : ((a?.chosenPriceCents ?? a?.basePriceCents ?? 0) as number))}
-                          </div>
+                <div className="contract-section border-t contract-hr pt-5 mt-6">
+                  <div className="text-[11px] font-bold uppercase tracking-widest text-slate-700">Plan & Pricing</div>
+                  <div className="mt-3 border-b contract-hr" />
+                  <div className="mt-4 grid grid-cols-2 gap-0 text-sm print-grid-2">
+                    <div className="space-y-3 pr-8">
+                      <div>
+                        <div className="text-slate-600">Product</div>
+                        <div className="font-medium">{selectedProduct?.name ?? "—"}</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-600">Price</div>
+                        <div className="font-medium">
+                          {type === "provider"
+                            ? money((contract.pricingDealerCostCents ?? 0) + (contract.addonTotalCostCents ?? 0))
+                            : money((contract.pricingBasePriceCents ?? 0) + (contract.addonTotalRetailCents ?? 0))}
                         </div>
-                      ))}
+                      </div>
+                      <div>
+                        <div className="text-slate-600">Deductible</div>
+                        <div className="font-medium">{money(contract.pricingDeductibleCents ?? undefined)}</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-600">Term</div>
+                        <div className="font-medium">
+                          {contract.pricingTermMonths === null
+                            ? "Unlimited"
+                            : typeof contract.pricingTermMonths === "number"
+                              ? `${contract.pricingTermMonths} mo`
+                              : "—"} / {contract.pricingTermKm === null
+                            ? "Unlimited"
+                            : typeof contract.pricingTermKm === "number"
+                              ? `${contract.pricingTermKm} km`
+                              : "—"}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-3 print-col-divider print-no-stack">
+                      <div>
+                        <div className="text-slate-600">Provider</div>
+                        <div className="font-medium">{providerDisplay(selectedProduct?.providerId ?? contract.providerId)}</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-600">Warranty ID</div>
+                        <div className="font-medium">{contract.warrantyId || "—"}</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-600">Contract #</div>
+                        <div className="font-medium">{contract.contractNumber || "—"}</div>
+                      </div>
                     </div>
                   </div>
-                ) : null}
+                </div>
+
+                <div className="contract-section border-t contract-hr pt-5 mt-6">
+                  <div className="text-[11px] font-bold uppercase tracking-widest text-slate-700">Vehicle Information</div>
+                  <div className="mt-3 border-b contract-hr" />
+
+                  <div className="mt-4 grid grid-cols-2 gap-0 text-sm print-grid-2">
+                    <div className="space-y-3 pr-8">
+                      <div>
+                        <div className="text-slate-600">VIN</div>
+                        <div className="font-semibold text-slate-900">{contract.vin || "—"}</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-600">Year/Make/Model</div>
+                        <div className="font-medium">{vehicleLine || "—"}</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-600">Body/Class</div>
+                        <div className="font-medium">{contract.vehicleBodyClass || "—"}</div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 print-col-divider print-no-stack">
+                      <div>
+                        <div className="text-slate-600">Mileage (km)</div>
+                        <div className="font-medium">
+                          {typeof contract.vehicleMileageKm === "number" && Number.isFinite(contract.vehicleMileageKm)
+                            ? contract.vehicleMileageKm.toLocaleString()
+                            : "—"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-slate-600">Engine</div>
+                        <div className="font-medium">{contract.vehicleEngine || "—"}</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-600">Transmission</div>
+                        <div className="font-medium">{contract.vehicleTransmission || "—"}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="contract-section border-t contract-hr pt-5 mt-6 grid grid-cols-1 md:grid-cols-2 gap-12">
+                  <div>
+                    <div className="text-[11px] font-bold uppercase tracking-widest text-slate-700">Dealer Signature</div>
+                    <div className="mt-3 border-b contract-hr" />
+                    <div className="mt-4 text-sm text-slate-600">
+                      <div className="flex items-center justify-between gap-6">
+                        <div className="min-w-0">Name / Title:</div>
+                        <div className="flex-1 border-b contract-hr" />
+                      </div>
+                      <div className="mt-4 flex items-center justify-between gap-6">
+                        <div className="min-w-0">Signature:</div>
+                        <div className="flex-1 border-b contract-hr" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-[11px] font-bold uppercase tracking-widest text-slate-700">Customer Signature</div>
+                    <div className="mt-3 border-b contract-hr" />
+                    <div className="mt-4 text-sm text-slate-600">
+                      <div className="flex items-center justify-between gap-6">
+                        <div className="min-w-0">Signature:</div>
+                        <div className="flex-1 border-b contract-hr" />
+                      </div>
+                      <div className="mt-4 flex items-center justify-between gap-6">
+                        <div className="min-w-0">Date:</div>
+                        <div className="flex-1 border-b contract-hr" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="contract-print-gap mt-7 contract-print-card rounded-xl border border-slate-200 p-5">
-                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-600">Vehicle Information</div>
-                <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-5 text-sm">
-                  <div>
-                    <div className="text-[11px] text-slate-500">VIN</div>
-                    <div className="font-medium">{contract.vin || "—"}</div>
+              <div className="contract-print-terms print-break-before print-avoid-break border border-slate-200 p-5 mt-7">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-600">Terms & Conditions</div>
+                {type === "customer" ? (
+                  <div className="mt-4">
+                    <CustomerCopyTerms
+                      platformName={BRAND.name}
+                      providerName={providerDisplay(selectedProduct?.providerId ?? contract.providerId)}
+                      productName={productName}
+                      termMonthsLabel={termMonthsLabel}
+                      termKmLabel={termKmLabel}
+                      deductibleLabel={deductibleLabel}
+                      coverageDetailsText={coverageDetailsText}
+                      exclusionsText={exclusionsText}
+                      termsConditionsText={providerForContract?.termsConditionsText}
+                      claimsRepairsText={providerForContract?.claimsRepairsText}
+                      providerResponsibilityText={providerForContract?.providerResponsibilityText}
+                      limitationLiabilityText={providerForContract?.limitationLiabilityText}
+                      customerAcknowledgementText={providerForContract?.customerAcknowledgementText}
+                    />
                   </div>
-                  <div className="md:col-span-2">
-                    <div className="text-[11px] text-slate-500">Vehicle</div>
-                    <div className="font-medium">{vehicleLine || "—"}</div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-slate-500">Body Class</div>
-                    <div className="font-medium">{contract.vehicleBodyClass || "—"}</div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-slate-500">Engine</div>
-                    <div className="font-medium">{contract.vehicleEngine || "—"}</div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-slate-500">Transmission</div>
-                    <div className="font-medium">{contract.vehicleTransmission || "—"}</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="contract-print-gap mt-7 grid grid-cols-1 md:grid-cols-2 gap-7">
-                <div className="contract-print-card rounded-xl border border-slate-200 p-5">
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-600">Dealer Signature</div>
-                  <div className="mt-6 border-b border-slate-300" />
-                  <div className="mt-2 grid grid-cols-2 gap-3 text-[11px] text-slate-500">
-                    <div>Name / Title</div>
-                    <div>Date</div>
-                  </div>
-                </div>
-                <div className="contract-print-card rounded-xl border border-slate-200 p-5">
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-600">Customer Signature</div>
-                  <div className="mt-6 border-b border-slate-300" />
-                  <div className="mt-2 grid grid-cols-2 gap-3 text-[11px] text-slate-500">
-                    <div>Signature</div>
-                    <div>Date</div>
-                  </div>
-                </div>
+                ) : (
+                  <div className="mt-4 text-sm whitespace-pre-wrap leading-relaxed">{providerTerms}</div>
+                )}
               </div>
             </div>
 
-            <div className="contract-print-terms print-break-before print-avoid-break rounded-xl border border-slate-200 p-5 mt-7">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-600">Terms & Conditions</div>
-              {type === "customer" ? (
-                <div className="mt-4">
-                  <CustomerCopyTerms
-                    platformName={BRAND.name}
-                    providerName={providerDisplay(selectedProduct?.providerId ?? contract.providerId)}
-                    productName={productName}
-                    termMonthsLabel={termMonthsLabel}
-                    termKmLabel={termKmLabel}
-                    deductibleLabel={deductibleLabel}
-                    coverageDetailsText={coverageDetailsText}
-                    exclusionsText={exclusionsText}
-                  />
-                </div>
-              ) : (
-                <div className="mt-4 text-sm whitespace-pre-wrap leading-relaxed">{providerTerms}</div>
-              )}
+            <div className="px-8 py-5 border-t border-slate-200 text-[11px] text-slate-500">
+              Generated by {BRAND.name} • Keep this copy for your records.
             </div>
-          </div>
-
-          <div className="px-8 py-5 border-t border-slate-200 text-[11px] text-slate-500">
-            Generated by {BRAND.name} • Keep this copy for your records.
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

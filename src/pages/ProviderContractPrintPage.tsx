@@ -17,6 +17,115 @@ function money(cents?: number) {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function ProviderTermsSections(props: {
+  platformName: string;
+  providerName: string;
+  productName: string;
+  termMonthsLabel: string;
+  termKmLabel: string;
+  deductibleLabel: string;
+  coverageDetailsText: string;
+  exclusionsText: string;
+  termsConditionsText?: string;
+  claimsRepairsText?: string;
+  providerResponsibilityText?: string;
+  limitationLiabilityText?: string;
+  customerAcknowledgementText?: string;
+}) {
+  const coverage =
+    props.coverageDetailsText.trim() ||
+    "Coverage details are provided by the Provider and may vary by plan. Refer to the Provider documentation for the complete schedule of coverages.";
+  const exclusions =
+    props.exclusionsText.trim() ||
+    "Exclusions are set by the Provider and may include normal wear and tear, routine maintenance, cosmetic items, and damage caused by misuse or neglect.";
+
+  const applyTokens = (raw: string) => {
+    return raw
+      .replaceAll("{{product_name}}", props.productName)
+      .replaceAll("{{term_months}}", props.termMonthsLabel)
+      .replaceAll("{{term_km}}", props.termKmLabel)
+      .replaceAll("{{deductible}}", props.deductibleLabel)
+      .replaceAll("{{coverage_details}}", coverage)
+      .replaceAll("{{exclusions}}", exclusions)
+      .replaceAll("{{provider_name}}", props.providerName);
+  };
+
+  const sectionText = (raw?: string) => {
+    const t = (raw ?? "").trim();
+    if (!t) return "";
+    return applyTokens(t).trim();
+  };
+
+  const Section = (p: { title: string; children: React.ReactNode }) => (
+    <section className="mt-4">
+      <div className="text-[12px] font-semibold text-slate-900">{p.title}</div>
+      <div className="mt-1 text-[13px] leading-relaxed text-slate-700 whitespace-pre-wrap">{p.children}</div>
+    </section>
+  );
+
+  return (
+    <div className="text-slate-800">
+      <div className="text-[12px] font-semibold">BRIDGE WARRANTY</div>
+      <div className="text-[13px]">Vehicle Service Contract</div>
+
+      <Section title="Contract Schedule (Provider Copy)">
+        <div className="space-y-1">
+          <div>
+            <span className="text-slate-600">Product:</span> <span className="font-medium">{props.productName}</span>
+          </div>
+          <div>
+            <span className="text-slate-600">Provider:</span> <span className="font-medium">{props.providerName}</span>
+          </div>
+          <div>
+            <span className="text-slate-600">Term:</span> <span className="font-medium">{props.termMonthsLabel}</span> /{" "}
+            <span className="font-medium">{props.termKmLabel}</span>
+          </div>
+          <div>
+            <span className="text-slate-600">Deductible:</span> <span className="font-medium">{props.deductibleLabel}</span>
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Coverage Details">{coverage}</Section>
+      <Section title="Exclusions">{exclusions}</Section>
+
+      {(() => {
+        const t = sectionText(props.termsConditionsText);
+        if (!t) return null;
+        return <Section title="Terms & Conditions">{t}</Section>;
+      })()}
+
+      {(() => {
+        const t = sectionText(props.claimsRepairsText);
+        if (!t) return null;
+        return <Section title="Claims / Repairs">{t}</Section>;
+      })()}
+
+      <Section title="Platform Disclaimer">
+        {props.platformName} is a technology platform that markets and facilitates the sale of products and services on behalf of independent providers. Unless expressly stated otherwise in writing, {props.platformName} is not the obligor, administrator, insurer, or underwriter of any vehicle service contract.
+      </Section>
+
+      {(() => {
+        const t = sectionText(props.providerResponsibilityText);
+        if (!t) return null;
+        return <Section title="Provider Responsibility">{t}</Section>;
+      })()}
+
+      {(() => {
+        const t = sectionText(props.limitationLiabilityText);
+        if (!t) return null;
+        return <Section title="Limitation of Liability">{t}</Section>;
+      })()}
+
+      {(() => {
+        const t = sectionText(props.customerAcknowledgementText);
+        if (!t) return null;
+        return <Section title="Customer Acknowledgement">{t}</Section>;
+      })()}
+    </div>
+  );
+}
+
 function renderProviderTerms(input: {
   providerTermsText?: string;
   productName: string;
@@ -240,7 +349,31 @@ export function ProviderContractPrintPage() {
 
             <div className="mt-6 rounded-lg border p-4">
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Terms & Conditions</div>
-              <div className="mt-3 text-sm whitespace-pre-wrap leading-relaxed">{providerTerms}</div>
+              {(provider?.termsConditionsText ||
+                provider?.claimsRepairsText ||
+                provider?.providerResponsibilityText ||
+                provider?.limitationLiabilityText ||
+                provider?.customerAcknowledgementText) ? (
+                <div className="mt-3">
+                  <ProviderTermsSections
+                    platformName={BRAND.name}
+                    providerName={(provider?.companyName ?? provider?.displayName ?? "").trim() || "Provider"}
+                    productName={productName}
+                    termMonthsLabel={termMonthsLabel}
+                    termKmLabel={termKmLabel}
+                    deductibleLabel={deductibleLabel}
+                    coverageDetailsText={coverageDetailsText}
+                    exclusionsText={exclusionsText}
+                    termsConditionsText={provider?.termsConditionsText}
+                    claimsRepairsText={provider?.claimsRepairsText}
+                    providerResponsibilityText={provider?.providerResponsibilityText}
+                    limitationLiabilityText={provider?.limitationLiabilityText}
+                    customerAcknowledgementText={provider?.customerAcknowledgementText}
+                  />
+                </div>
+              ) : (
+                <div className="mt-3 text-sm whitespace-pre-wrap leading-relaxed">{providerTerms}</div>
+              )}
             </div>
           </div>
 

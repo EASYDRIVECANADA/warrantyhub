@@ -384,6 +384,7 @@ export const supabaseContractsApi: ContractsApi = {
     const baseOnly: Record<string, unknown> = {};
     if (typeof patch.providerId === "string") baseOnly.provider_id = patch.providerId.trim() ? patch.providerId : null;
     if (typeof patch.productId === "string") baseOnly.product_id = patch.productId.trim() ? patch.productId : null;
+
     if ("productPricingId" in patch) {
       const v = (patch as any).productPricingId as string | null | undefined;
       if (typeof v === "string") baseOnly.product_pricing_id = v.trim() ? v : null;

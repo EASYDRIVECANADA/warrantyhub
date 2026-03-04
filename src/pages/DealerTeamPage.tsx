@@ -451,8 +451,7 @@ export function DealerTeamPage() {
 
   return (
     <PageShell
-      title="Team"
-      subtitle="Manage dealership staff access."
+      title=""
     >
       {error ? <div className="text-sm text-destructive">{error}</div> : null}
 

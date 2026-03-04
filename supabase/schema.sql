@@ -47,6 +47,21 @@ alter table public.profiles
 alter table public.profiles
   add column if not exists provider_terms_text text;
 
+alter table public.profiles
+  add column if not exists provider_terms_conditions_text text;
+
+alter table public.profiles
+  add column if not exists provider_claims_repairs_text text;
+
+alter table public.profiles
+  add column if not exists provider_responsibility_text text;
+
+alter table public.profiles
+  add column if not exists provider_limitation_liability_text text;
+
+alter table public.profiles
+  add column if not exists provider_customer_ack_text text;
+
 alter table public.profiles enable row level security;
 
 create or replace function public.current_role()

@@ -106,6 +106,9 @@ export function DealerContractsPage() {
   const preselectedProductId = (searchParams.get("productId") ?? "").trim();
   const preselectedProductPricingId = (searchParams.get("productPricingId") ?? "").trim();
   const prefilledVin = (searchParams.get("vin") ?? "").trim();
+  const prefilledMileageKmRaw = (searchParams.get("mileageKm") ?? "").trim();
+  const prefilledMileageKmNum = prefilledMileageKmRaw ? Number(prefilledMileageKmRaw) : NaN;
+  const prefilledMileageKm = Number.isFinite(prefilledMileageKmNum) && prefilledMileageKmNum >= 0 ? Math.round(prefilledMileageKmNum) : null;
   const preselectedAddonIds = (searchParams.get("addonIds") ?? "")
     .split(",")
     .map((x) => x.trim())
@@ -279,6 +282,7 @@ export function DealerContractsPage() {
         vehicleMake: decoded?.vehicleMake,
         vehicleModel: decoded?.vehicleModel,
         vehicleTrim: decoded?.vehicleTrim,
+        vehicleMileageKm: prefilledMileageKm ?? undefined,
         vehicleBodyClass: decoded?.vehicleBodyClass,
         vehicleEngine: decoded?.vehicleEngine,
         vehicleTransmission: decoded?.vehicleTransmission,
@@ -440,13 +444,7 @@ export function DealerContractsPage() {
 
   return (
     <PageShell
-      title="Contracts"
-      subtitle={headerSubtitle}
-      actions={
-        <Button asChild className="bg-yellow-400 text-black hover:bg-yellow-300">
-          <Link to="/dealer-marketplace">Find Products to Create Contract</Link>
-        </Button>
-      }
+      title=""
     >
       <div className="relative">
         <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-yellow-400/10 blur-2xl" />
@@ -454,7 +452,13 @@ export function DealerContractsPage() {
         <div className="space-y-6">
           <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
             <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
-              <div className="font-semibold">Contracts</div>
+              <div className="min-w-0">
+                <Button asChild className="bg-yellow-400 text-black hover:bg-yellow-300">
+                  <Link to="/dealer-marketplace">Find Products to Create Contract</Link>
+                </Button>
+                {headerSubtitle ? <div className="mt-2 text-xs text-muted-foreground truncate">{headerSubtitle}</div> : null}
+              </div>
+
               <div className="w-full sm:w-[320px] relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input

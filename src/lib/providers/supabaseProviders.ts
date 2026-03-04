@@ -10,6 +10,11 @@ type ProfilesRow = {
   company_name?: string | null;
   provider_logo_url?: string | null;
   provider_terms_text?: string | null;
+  provider_terms_conditions_text?: string | null;
+  provider_claims_repairs_text?: string | null;
+  provider_responsibility_text?: string | null;
+  provider_limitation_liability_text?: string | null;
+  provider_customer_ack_text?: string | null;
 };
 
 function missingColumnFromSchemaCacheError(e: unknown): string | null {
@@ -92,6 +97,11 @@ function toProviderPublic(r: ProfilesRow): ProviderPublic {
     companyName: r.company_name ?? undefined,
     logoUrl: r.provider_logo_url ?? undefined,
     termsText: r.provider_terms_text ?? undefined,
+    termsConditionsText: r.provider_terms_conditions_text ?? undefined,
+    claimsRepairsText: r.provider_claims_repairs_text ?? undefined,
+    providerResponsibilityText: r.provider_responsibility_text ?? undefined,
+    limitationLiabilityText: r.provider_limitation_liability_text ?? undefined,
+    customerAcknowledgementText: r.provider_customer_ack_text ?? undefined,
   };
 }
 
@@ -117,7 +127,7 @@ export const supabaseProvidersApi: ProvidersApi = {
 
     const { data, error } = await selectProfilesWithFallback(
       supabase,
-      "id, role, display_name, company_name, provider_logo_url, provider_terms_text",
+      "id, role, display_name, company_name, provider_logo_url, provider_terms_text, provider_terms_conditions_text, provider_claims_repairs_text, provider_responsibility_text, provider_limitation_liability_text, provider_customer_ack_text",
       (q) => q.in("id", wanted).eq("role", "PROVIDER"),
     );
 
@@ -133,7 +143,7 @@ export const supabaseProvidersApi: ProvidersApi = {
 
     const { data, error } = await selectProfilesWithFallback(
       supabase,
-      "id, role, display_name, company_name, provider_logo_url, provider_terms_text",
+      "id, role, display_name, company_name, provider_logo_url, provider_terms_text, provider_terms_conditions_text, provider_claims_repairs_text, provider_responsibility_text, provider_limitation_liability_text, provider_customer_ack_text",
       (q) => q.eq("id", uid).maybeSingle(),
     );
 
@@ -156,11 +166,26 @@ export const supabaseProvidersApi: ProvidersApi = {
     if (typeof patch.termsText === "string") updateRow.provider_terms_text = patch.termsText.trim() || null;
     if (patch.termsText === null) updateRow.provider_terms_text = null;
 
+    if (typeof patch.termsConditionsText === "string") updateRow.provider_terms_conditions_text = patch.termsConditionsText.trim() || null;
+    if (patch.termsConditionsText === null) updateRow.provider_terms_conditions_text = null;
+
+    if (typeof patch.claimsRepairsText === "string") updateRow.provider_claims_repairs_text = patch.claimsRepairsText.trim() || null;
+    if (patch.claimsRepairsText === null) updateRow.provider_claims_repairs_text = null;
+
+    if (typeof patch.providerResponsibilityText === "string") updateRow.provider_responsibility_text = patch.providerResponsibilityText.trim() || null;
+    if (patch.providerResponsibilityText === null) updateRow.provider_responsibility_text = null;
+
+    if (typeof patch.limitationLiabilityText === "string") updateRow.provider_limitation_liability_text = patch.limitationLiabilityText.trim() || null;
+    if (patch.limitationLiabilityText === null) updateRow.provider_limitation_liability_text = null;
+
+    if (typeof patch.customerAcknowledgementText === "string") updateRow.provider_customer_ack_text = patch.customerAcknowledgementText.trim() || null;
+    if (patch.customerAcknowledgementText === null) updateRow.provider_customer_ack_text = null;
+
     const { data, error } = await updateProfilesWithFallback(
       supabase,
       uid,
       updateRow,
-      "id, role, display_name, company_name, provider_logo_url, provider_terms_text",
+      "id, role, display_name, company_name, provider_logo_url, provider_terms_text, provider_terms_conditions_text, provider_claims_repairs_text, provider_responsibility_text, provider_limitation_liability_text, provider_customer_ack_text",
     );
 
     if (error) throw error;

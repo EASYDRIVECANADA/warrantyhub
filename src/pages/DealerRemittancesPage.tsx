@@ -345,8 +345,7 @@ export function DealerRemittancesPage() {
 
   return (
     <PageShell
-      title="Remittances"
-      subtitle="Create remittances for SOLD contracts and submit them for review."
+      title=""
     >
       <div className="relative">
         <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-yellow-400/10 blur-2xl" />

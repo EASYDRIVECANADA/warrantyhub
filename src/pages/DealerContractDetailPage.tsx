@@ -764,7 +764,7 @@ export function DealerContractDetailPage() {
                   >
                     Confirm
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => setStep("VEHICLE")}>
+                  <Button size="sm" variant="outline" onClick={() => setStep("VEHICLE")}> 
                     Back
                   </Button>
                 </div>

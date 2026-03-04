@@ -44,7 +44,8 @@ function providerDisplayName(p: ProviderPublic | undefined, id: string) {
 
 function money(cents?: number) {
   if (typeof cents !== "number") return "—";
-  return `$${(cents / 100).toFixed(2)}`;
+  const dollars = cents / 100;
+  return `$${dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function termLabel(p: Product) {

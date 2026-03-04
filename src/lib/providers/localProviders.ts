@@ -11,6 +11,11 @@ type StoredProfile = {
   companyName?: string;
   logoUrl?: string;
   termsText?: string;
+  termsConditionsText?: string;
+  claimsRepairsText?: string;
+  providerResponsibilityText?: string;
+  limitationLiabilityText?: string;
+  customerAcknowledgementText?: string;
 };
 
 type LocalUserRecord = {
@@ -160,6 +165,11 @@ async function toPublicAsync(p: StoredProfile): Promise<ProviderPublic> {
     companyName: p.companyName,
     logoUrl: await resolveLogoUrl(p.logoUrl),
     termsText: p.termsText,
+    termsConditionsText: p.termsConditionsText,
+    claimsRepairsText: p.claimsRepairsText,
+    providerResponsibilityText: p.providerResponsibilityText,
+    limitationLiabilityText: p.limitationLiabilityText,
+    customerAcknowledgementText: p.customerAcknowledgementText,
   };
 }
 
@@ -222,6 +232,46 @@ export const localProvidersApi: ProvidersApi = {
             ? undefined
             : idx >= 0
               ? items[idx]!.termsText
+              : undefined,
+      termsConditionsText:
+        typeof patch.termsConditionsText === "string"
+          ? patch.termsConditionsText
+          : patch.termsConditionsText === null
+            ? undefined
+            : idx >= 0
+              ? items[idx]!.termsConditionsText
+              : undefined,
+      claimsRepairsText:
+        typeof patch.claimsRepairsText === "string"
+          ? patch.claimsRepairsText
+          : patch.claimsRepairsText === null
+            ? undefined
+            : idx >= 0
+              ? items[idx]!.claimsRepairsText
+              : undefined,
+      providerResponsibilityText:
+        typeof patch.providerResponsibilityText === "string"
+          ? patch.providerResponsibilityText
+          : patch.providerResponsibilityText === null
+            ? undefined
+            : idx >= 0
+              ? items[idx]!.providerResponsibilityText
+              : undefined,
+      limitationLiabilityText:
+        typeof patch.limitationLiabilityText === "string"
+          ? patch.limitationLiabilityText
+          : patch.limitationLiabilityText === null
+            ? undefined
+            : idx >= 0
+              ? items[idx]!.limitationLiabilityText
+              : undefined,
+      customerAcknowledgementText:
+        typeof patch.customerAcknowledgementText === "string"
+          ? patch.customerAcknowledgementText
+          : patch.customerAcknowledgementText === null
+            ? undefined
+            : idx >= 0
+              ? items[idx]!.customerAcknowledgementText
               : undefined,
     };
 

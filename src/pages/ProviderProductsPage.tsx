@@ -17,6 +17,20 @@ import { defaultPricingRow } from "../lib/productPricing/defaultRow";
 const FINANCE_TERMS = [24, 36, 48, 60, 72, 84, 96] as const;
 type FinanceTermMonths = (typeof FINANCE_TERMS)[number];
 
+function normalizeMoneyString(value: string) {
+  return (value ?? "").replace(/,/g, "").trim();
+}
+
+function formatMoneyInput(value: string) {
+  const raw = sanitizeMoney(value);
+  if (!raw) return "";
+  const [intRaw, decRaw] = raw.split(".");
+  const intPart = (intRaw ?? "").replace(/^0+(?=\d)/, "");
+  const withCommas = (intPart || "0").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  if (decRaw === undefined) return withCommas;
+  return `${withCommas}.${decRaw}`;
+}
+
 function productTypeLabel(t: ProductType) {
   if (t === "EXTENDED_WARRANTY") return "Extended Warranty";
   if (t === "TIRE_RIM") return "Tire & Rim";
@@ -26,19 +40,21 @@ function productTypeLabel(t: ProductType) {
 }
 
 function dollarsToCents(v: string) {
-  const n = Number(v);
+  const n = Number(normalizeMoneyString(v));
   if (!Number.isFinite(n)) return undefined;
   return Math.round(n * 100);
 }
 
 function centsToDollars(cents?: number) {
   if (typeof cents !== "number") return "";
-  return (cents / 100).toFixed(2);
+  const dollars = cents / 100;
+  return dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function money(cents?: number) {
   if (typeof cents !== "number") return "—";
-  return `$${(cents / 100).toFixed(2)}`;
+  const dollars = cents / 100;
+  return `$${dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function formatUnknownError(e: unknown) {
@@ -460,6 +476,7 @@ export function ProviderProductsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const saveInFlightRef = useRef(false);
+  const [saveInFlight, setSaveInFlight] = useState(false);
 
   const [pastePricingOpen, setPastePricingOpen] = useState(false);
   const [pastePricingText, setPastePricingText] = useState("");
@@ -878,6 +895,7 @@ export function ProviderProductsPage() {
       }
 
       saveInFlightRef.current = true;
+      setSaveInFlight(true);
       let saveStep = "";
       try {
         const input: CreateProductInput = {
@@ -942,26 +960,40 @@ export function ProviderProductsPage() {
           const defaultBand = editor.financeBands.find((b) => b.id === editor.financeDefaultBandId) ?? null;
 
           saveStep = "Create finance matrix pricing";
-          for (const band of editor.financeBands) {
-            const loanAmountMinCents = dollarsToCents(band.loanAmountMin)!;
-            const loanAmountMaxCents = dollarsToCents(band.loanAmountMax)!;
-            for (const term of FINANCE_TERMS) {
-              const net = dollarsToCents((band.pricesByTermMonths?.[term] ?? "").trim())!;
-              const isDefault =
-                defaultBand?.id === band.id && editor.financeDefaultTermMonths === term;
-              await pricingApi.create({
-                productId,
-                isDefault,
-                termMonths: null,
-                termKm: null,
-                financeTermMonths: term,
-                loanAmountMinCents,
-                loanAmountMaxCents,
-                providerNetCostCents: net,
-                deductibleCents: 0,
-                basePriceCents: net,
-                dealerCostCents: net,
-              } as any);
+          {
+            const toCreate: any[] = [];
+            for (const band of editor.financeBands) {
+              const loanAmountMinCents = dollarsToCents(band.loanAmountMin)!;
+              const loanAmountMaxCents = dollarsToCents(band.loanAmountMax)!;
+              for (const term of FINANCE_TERMS) {
+                const net = dollarsToCents((band.pricesByTermMonths?.[term] ?? "").trim())!;
+                const isDefault = defaultBand?.id === band.id && editor.financeDefaultTermMonths === term;
+                toCreate.push({
+                  productId,
+                  isDefault,
+                  termMonths: null,
+                  termKm: null,
+                  financeTermMonths: term,
+                  loanAmountMinCents,
+                  loanAmountMaxCents,
+                  providerNetCostCents: net,
+                  deductibleCents: 0,
+                  basePriceCents: net,
+                  dealerCostCents: net,
+                });
+              }
+            }
+
+            const chunk = <T,>(arr: T[], size: number) => {
+              if (!Array.isArray(arr) || arr.length === 0) return [] as T[][];
+              const s = Math.max(1, Math.floor(size));
+              const out: T[][] = [];
+              for (let i = 0; i < arr.length; i += s) out.push(arr.slice(i, i + s));
+              return out;
+            };
+
+            for (const batch of chunk(toCreate, 25)) {
+              await Promise.all(batch.map((row) => pricingApi.create(row)));
             }
           }
 
@@ -983,6 +1015,7 @@ export function ProviderProductsPage() {
         setActiveTab("PRICING");
       } finally {
         saveInFlightRef.current = false;
+        setSaveInFlight(false);
       }
       return;
     }
@@ -1258,6 +1291,7 @@ export function ProviderProductsPage() {
     }
 
     saveInFlightRef.current = true;
+    setSaveInFlight(true);
     try {
       let savedProduct: Product | null = null;
       const desiredPublished = editor.published;
@@ -1461,10 +1495,11 @@ export function ProviderProductsPage() {
       setError(e instanceof Error ? e.message : `Failed to save product: ${formatUnknownError(e)}`);
     } finally {
       saveInFlightRef.current = false;
+      setSaveInFlight(false);
     }
   };
 
-  const busy = saveInFlightRef.current || createMutation.isPending || updateMutation.isPending || removeMutation.isPending;
+  const busy = saveInFlight || createMutation.isPending || updateMutation.isPending || removeMutation.isPending;
 
   const onDelete = (p: Product) => {
     void (async () => {
@@ -1791,9 +1826,13 @@ export function ProviderProductsPage() {
                             onChange={(e) =>
                               setPendingAddons((s) => s.map((x) => (x.key === row.key ? { ...x, price: sanitizeMoney(e.target.value) } : x)))
                             }
+                            onBlur={() =>
+                              setPendingAddons((s) => s.map((x) => (x.key === row.key ? { ...x, price: formatMoneyInput(x.price) } : x)))
+                            }
                             placeholder="Price"
                             inputMode="decimal"
                             disabled={busy}
+                            className="h-9"
                           />
                         </div>
                       </div>
@@ -2259,6 +2298,12 @@ export function ProviderProductsPage() {
                                                 financeBands: s.financeBands.map((x) => (x.id === b.id ? { ...x, loanAmountMin: nextMin } : x)),
                                               }));
                                             }}
+                                            onBlur={() =>
+                                              setEditor((s) => ({
+                                                ...s,
+                                                financeBands: s.financeBands.map((x) => (x.id === b.id ? { ...x, loanAmountMin: formatMoneyInput(x.loanAmountMin) } : x)),
+                                              }))
+                                            }
                                             placeholder="Loan min"
                                             inputMode="decimal"
                                             disabled={busy}
@@ -2273,6 +2318,12 @@ export function ProviderProductsPage() {
                                                 financeBands: s.financeBands.map((x) => (x.id === b.id ? { ...x, loanAmountMax: nextMax } : x)),
                                               }));
                                             }}
+                                            onBlur={() =>
+                                              setEditor((s) => ({
+                                                ...s,
+                                                financeBands: s.financeBands.map((x) => (x.id === b.id ? { ...x, loanAmountMax: formatMoneyInput(x.loanAmountMax) } : x)),
+                                              }))
+                                            }
                                             placeholder="Loan max"
                                             inputMode="decimal"
                                             disabled={busy}
@@ -2317,10 +2368,26 @@ export function ProviderProductsPage() {
                                                     ),
                                                   }));
                                                 }}
-                                                placeholder="$"
+                                                onBlur={() =>
+                                                  setEditor((s) => ({
+                                                    ...s,
+                                                    financeBands: s.financeBands.map((x) => {
+                                                      if (x.id !== b.id) return x;
+                                                      const current = x.pricesByTermMonths?.[t] ?? "";
+                                                      return {
+                                                        ...x,
+                                                        pricesByTermMonths: {
+                                                          ...(x.pricesByTermMonths ?? ({} as any)),
+                                                          [t]: formatMoneyInput(current),
+                                                        },
+                                                      };
+                                                    }),
+                                                  }))
+                                                }
+                                                placeholder="0"
                                                 inputMode="decimal"
                                                 disabled={busy}
-                                                className={("h-8 " + (isDefault ? "border-emerald-300" : ""))}
+                                                className="h-9"
                                               />
                                             </div>
                                           </td>
@@ -2500,275 +2567,85 @@ export function ProviderProductsPage() {
                         fieldIssuesByIdx.set(p.idx, issues);
                       }
 
-                      const hasIssues = (idx: number) => (fieldIssuesByIdx.get(idx) ?? []).length > 0;
-                      const cellErrorClass = (_bad: boolean) => "";
-
                       return (
-                    <div className="rounded-lg border overflow-x-auto">
-                      {defaultRowCount > 1 ? (
-                        <div className="border-b bg-rose-50/50 px-3 py-2 text-xs text-rose-700">
-                          ⚠ Multiple DEFAULT rows selected. Marketplace & summaries should have exactly one.
-                        </div>
-                      ) : null}
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b bg-muted/20">
-                            <th className="text-left px-3 py-1 text-xs text-muted-foreground">Default</th>
-                            <th className="text-left px-3 py-1 text-xs text-muted-foreground">Term (Months)</th>
-                            <th className="text-left px-3 py-1 text-xs text-muted-foreground">Term (KM)</th>
-                            {editor.pricingVariesByMileageBand ? (
-                              <>
-                                <th className="text-left px-3 py-1 text-xs text-muted-foreground">Mileage min</th>
-                                <th className="text-left px-3 py-1 text-xs text-muted-foreground">Mileage max</th>
-                              </>
-                            ) : null}
-                            {editor.pricingVariesByVehicleClass ? (
-                              <th className="text-left px-3 py-1 text-xs text-muted-foreground">Class</th>
-                            ) : null}
-                            <th className="text-left px-3 py-1 text-xs text-muted-foreground">Claim Limit</th>
-                            <th className="text-left px-3 py-1 text-xs text-muted-foreground">Provider Net Cost</th>
-                            <th className="text-left px-3 py-1 text-xs text-muted-foreground">Deductible</th>
-                            <th className="text-left px-3 py-1 text-xs text-muted-foreground">Issues</th>
-                            <th className="text-right px-3 py-1 text-xs text-muted-foreground">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y">
-                          {editor.pricingRows.map((row) => (
-                            <tr
-                              key={row.key}
-                              className={
-                                (row.isDefault ? "bg-emerald-50/40 " : "") +
-                                (hasIssues(editor.pricingRows.findIndex((r) => r.key === row.key)) ? "bg-rose-50/20" : "")
-                              }
-                            >
-                              <td className="px-3 py-1 align-top">
-                                <div className="flex items-center gap-2">
-                                  <label
-                                    className="flex items-center gap-2 text-xs text-muted-foreground"
-                                    title="Marketplace & summaries use this row when multiple variants match"
+                        <div className="rounded-lg border overflow-x-auto">
+                          {defaultRowCount > 1 ? (
+                            <div className="border-b bg-rose-50/50 px-3 py-2 text-xs text-rose-700">
+                              ⚠ Multiple DEFAULT rows selected. Marketplace & summaries should have exactly one.
+                            </div>
+                          ) : null}
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b bg-muted/20">
+                                <th className="text-left px-3 py-1 text-xs text-muted-foreground">Default</th>
+                                <th className="text-left px-3 py-1 text-xs text-muted-foreground">Term (Months)</th>
+                                <th className="text-left px-3 py-1 text-xs text-muted-foreground">Term (KM)</th>
+                                {editor.pricingVariesByMileageBand ? (
+                                  <>
+                                    <th className="text-left px-3 py-1 text-xs text-muted-foreground">Mileage min</th>
+                                    <th className="text-left px-3 py-1 text-xs text-muted-foreground">Mileage max</th>
+                                  </>
+                                ) : null}
+                                {editor.pricingVariesByVehicleClass ? (
+                                  <th className="text-left px-3 py-1 text-xs text-muted-foreground">Class</th>
+                                ) : null}
+                                <th className="text-left px-3 py-1 text-xs text-muted-foreground">Claim Limit</th>
+                                <th className="text-left px-3 py-1 text-xs text-muted-foreground">Provider Net Cost</th>
+                                <th className="text-left px-3 py-1 text-xs text-muted-foreground">Deductible</th>
+                                <th className="text-left px-3 py-1 text-xs text-muted-foreground">Issues</th>
+                                <th className="text-right px-3 py-1 text-xs text-muted-foreground">Action</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                              {editor.pricingRows.map((row) => {
+                                const idx = editor.pricingRows.findIndex((r) => r.key === row.key);
+                                const issues = fieldIssuesByIdx.get(idx) ?? [];
+                                const rowHasIssues = issues.length > 0;
+                                return (
+                                  <tr
+                                    key={row.key}
+                                    className={(row.isDefault ? "bg-emerald-50/40 " : "") + (rowHasIssues ? "bg-rose-50/20" : "")}
                                   >
-                                    <input
-                                      type="radio"
-                                      name="default-pricing-row"
-                                      checked={row.isDefault === true}
-                                      onChange={() =>
-                                        setEditor((s) => ({
-                                          ...s,
-                                          pricingRows: s.pricingRows.map((r) =>
-                                            r.key === row.key ? { ...r, isDefault: true } : { ...r, isDefault: false },
-                                          ),
-                                        }))
-                                      }
-                                      disabled={busy}
-                                    />
-                                  </label>
+                                    <td className="px-3 py-1 align-top">
+                                      <input
+                                        type="radio"
+                                        name="default-pricing-row"
+                                        checked={row.isDefault === true}
+                                        onChange={() =>
+                                          setEditor((s) => ({
+                                            ...s,
+                                            pricingRows: s.pricingRows.map((r) => ({ ...r, isDefault: r.key === row.key })),
+                                          }))
+                                        }
+                                        disabled={busy}
+                                        title={"Set as default"}
+                                      />
+                                    </td>
 
-                                  {row.isDefault ? (
-                                    <div
-                                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700"
-                                      title="Marketplace & summaries use this row when multiple variants match"
-                                    >
-                                      <span className="text-emerald-600">●</span>
-                                      DEFAULT
-                                    </div>
-                                  ) : null}
-                                </div>
-                              </td>
-
-                              <td className="px-3 py-1 align-top min-w-[160px]">
-                                <div className="space-y-1">
-                                  <div className="relative">
-                                    <Input
-                                      value={row.termMonths}
-                                      onChange={(e) =>
-                                        setEditor((s) => ({
-                                          ...s,
-                                          pricingRows: s.pricingRows.map((r) =>
-                                            r.key === row.key ? { ...r, termMonths: sanitizeDigitsOnly(e.target.value) } : r,
-                                          ),
-                                        }))
-                                      }
-                                      placeholder={row.termMonthsUnlimited ? "" : "Months"}
-                                      inputMode="numeric"
-                                      disabled={busy || row.termMonthsUnlimited}
-                                      className={
-                                        "h-8 " +
-                                        (row.termMonthsUnlimited ? "bg-muted/40 " : "") +
-                                        cellErrorClass((() => {
-                                          const idx = editor.pricingRows.findIndex((r) => r.key === row.key);
-                                          const p = parsed[idx];
-                                          if (!p) return false;
-                                          return p.termMonths !== null && (typeof p.termMonths !== "number" || p.termMonths <= 0);
-                                        })())
-                                      }
-                                    />
-                                    {row.termMonthsUnlimited ? (
-                                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                                        ∞ Unlimited
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                                    <input
-                                      type="checkbox"
-                                      checked={row.termMonthsUnlimited === true}
-                                      onChange={(e) =>
-                                        setEditor((s) => ({
-                                          ...s,
-                                          pricingRows: s.pricingRows.map((r) =>
-                                            r.key === row.key
-                                              ? {
-                                                  ...r,
-                                                  termMonthsUnlimited: e.target.checked,
-                                                  termMonths: e.target.checked ? "" : r.termMonths,
-                                                }
-                                              : r,
-                                          ),
-                                        }))
-                                      }
-                                      disabled={busy}
-                                    />
-                                    Unlimited
-                                  </label>
-                                </div>
-                              </td>
-
-                              <td className="px-3 py-1 align-top min-w-[160px]">
-                                <div className="space-y-1">
-                                  <div className="relative">
-                                    <Input
-                                      value={row.termKm}
-                                      onChange={(e) =>
-                                        setEditor((s) => ({
-                                          ...s,
-                                          pricingRows: s.pricingRows.map((r) =>
-                                            r.key === row.key ? { ...r, termKm: sanitizeDigitsOnly(e.target.value) } : r,
-                                          ),
-                                        }))
-                                      }
-                                      placeholder={row.termKmUnlimited ? "" : "KM"}
-                                      inputMode="numeric"
-                                      disabled={busy || row.termKmUnlimited}
-                                      className={
-                                        "h-8 " +
-                                        (row.termKmUnlimited ? "bg-muted/40 " : "") +
-                                        cellErrorClass((() => {
-                                          const idx = editor.pricingRows.findIndex((r) => r.key === row.key);
-                                          const p = parsed[idx];
-                                          if (!p) return false;
-                                          return p.termKm !== null && (typeof p.termKm !== "number" || p.termKm <= 0);
-                                        })())
-                                      }
-                                    />
-                                    {row.termKmUnlimited ? (
-                                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                                        ∞ Unlimited
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                                    <input
-                                      type="checkbox"
-                                      checked={row.termKmUnlimited === true}
-                                      onChange={(e) =>
-                                        setEditor((s) => ({
-                                          ...s,
-                                          pricingRows: s.pricingRows.map((r) =>
-                                            r.key === row.key
-                                              ? {
-                                                  ...r,
-                                                  termKmUnlimited: e.target.checked,
-                                                  termKm: e.target.checked ? "" : r.termKm,
-                                                }
-                                              : r,
-                                          ),
-                                        }))
-                                      }
-                                      disabled={busy}
-                                    />
-                                    Unlimited
-                                  </label>
-                                </div>
-                              </td>
-
-                              {editor.pricingVariesByMileageBand ? (
-                                <>
-                                  <td className="px-3 py-1 align-top min-w-[140px]">
-                                    <Input
-                                      value={row.vehicleMileageMinKm}
-                                      onChange={(e) =>
-                                        setEditor((s) => ({
-                                          ...s,
-                                          pricingRows: s.pricingRows.map((r) =>
-                                            r.key === row.key ? { ...r, vehicleMileageMinKm: sanitizeDigitsOnly(e.target.value) } : r,
-                                          ),
-                                        }))
-                                      }
-                                      placeholder="Min"
-                                      inputMode="numeric"
-                                      disabled={busy}
-                                      className={
-                                        "h-8 " +
-                                        cellErrorClass((() => {
-                                          const idx = editor.pricingRows.findIndex((r) => r.key === row.key);
-                                          const p = parsed[idx];
-                                          if (!p) return false;
-                                          return typeof p.mileageMin !== "number" || p.mileageMin < 0;
-                                        })())
-                                      }
-                                    />
-                                  </td>
-                                  <td className="px-3 py-1 align-top min-w-[170px]">
-                                    <div className="space-y-1">
-                                      <div className="relative">
-                                        <Input
-                                          value={row.vehicleMileageMaxKm}
-                                          onChange={(e) =>
-                                            setEditor((s) => ({
-                                              ...s,
-                                              pricingRows: s.pricingRows.map((r) =>
-                                                r.key === row.key ? { ...r, vehicleMileageMaxKm: sanitizeDigitsOnly(e.target.value) } : r,
-                                              ),
-                                            }))
-                                          }
-                                          placeholder={row.vehicleMileageMaxUnlimited ? "" : "Max"}
-                                          inputMode="numeric"
-                                          disabled={busy || row.vehicleMileageMaxUnlimited}
-                                          className={
-                                            "h-8 " +
-                                            (row.vehicleMileageMaxUnlimited ? "bg-muted/40 " : "") +
-                                            cellErrorClass((() => {
-                                              const idx = editor.pricingRows.findIndex((r) => r.key === row.key);
-                                              const p = parsed[idx];
-                                              if (!p) return false;
-                                              if (p.mileageMax === null) return false;
-                                              if (typeof p.mileageMax !== "number") return true;
-                                              if (p.mileageMax < 0) return true;
-                                              if (typeof p.mileageMin === "number" && p.mileageMax < p.mileageMin) return true;
-                                              return false;
-                                            })())
-                                          }
-                                        />
-                                        {row.vehicleMileageMaxUnlimited ? (
-                                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                                            ∞ Unlimited
-                                          </span>
-                                        ) : null}
-                                      </div>
-                                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                                    <td className="px-3 py-1 align-top min-w-[140px]">
+                                      <Input
+                                        value={row.termMonths}
+                                        onChange={(e) =>
+                                          setEditor((s) => ({
+                                            ...s,
+                                            pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, termMonths: sanitizeDigitsOnly(e.target.value) } : r)),
+                                          }))
+                                        }
+                                        placeholder={row.termMonthsUnlimited ? "Unlimited" : "Months"}
+                                        inputMode="numeric"
+                                        disabled={busy || row.termMonthsUnlimited}
+                                        className="h-8"
+                                      />
+                                      <label className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
                                         <input
                                           type="checkbox"
-                                          checked={row.vehicleMileageMaxUnlimited === true}
+                                          checked={row.termMonthsUnlimited}
                                           onChange={(e) =>
                                             setEditor((s) => ({
                                               ...s,
                                               pricingRows: s.pricingRows.map((r) =>
                                                 r.key === row.key
-                                                  ? {
-                                                      ...r,
-                                                      vehicleMileageMaxUnlimited: e.target.checked,
-                                                      vehicleMileageMaxKm: e.target.checked ? "" : r.vehicleMileageMaxKm,
-                                                    }
+                                                  ? { ...r, termMonthsUnlimited: e.target.checked, termMonths: e.target.checked ? "" : r.termMonths }
                                                   : r,
                                               ),
                                             }))
@@ -2777,160 +2654,244 @@ export function ProviderProductsPage() {
                                         />
                                         Unlimited
                                       </label>
-                                    </div>
-                                  </td>
-                                </>
-                              ) : null}
+                                    </td>
 
-                              {editor.pricingVariesByVehicleClass ? (
-                                <td className="px-3 py-1 align-top min-w-[150px]">
-                                  <select
-                                    value={row.vehicleClass}
-                                    onChange={(e) =>
-                                      setEditor((s) => ({
-                                        ...s,
-                                        pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, vehicleClass: e.target.value } : r)),
-                                      }))
-                                    }
-                                    className="h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-sm"
-                                    disabled={busy}
-                                  >
-                                    <option value="ALL">All Classes</option>
-                                    <option value="CLASS_1">Class 1</option>
-                                    <option value="CLASS_2">Class 2</option>
-                                    <option value="CLASS_3">Class 3</option>
-                                  </select>
-                                </td>
-                              ) : null}
+                                    <td className="px-3 py-1 align-top min-w-[140px]">
+                                      <Input
+                                        value={row.termKm}
+                                        onChange={(e) =>
+                                          setEditor((s) => ({
+                                            ...s,
+                                            pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, termKm: sanitizeDigitsOnly(e.target.value) } : r)),
+                                          }))
+                                        }
+                                        placeholder={row.termKmUnlimited ? "Unlimited" : "KM"}
+                                        inputMode="numeric"
+                                        disabled={busy || row.termKmUnlimited}
+                                        className="h-8"
+                                      />
+                                      <label className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+                                        <input
+                                          type="checkbox"
+                                          checked={row.termKmUnlimited}
+                                          onChange={(e) =>
+                                            setEditor((s) => ({
+                                              ...s,
+                                              pricingRows: s.pricingRows.map((r) =>
+                                                r.key === row.key
+                                                  ? { ...r, termKmUnlimited: e.target.checked, termKm: e.target.checked ? "" : r.termKm }
+                                                  : r,
+                                              ),
+                                            }))
+                                          }
+                                          disabled={busy}
+                                        />
+                                        Unlimited
+                                      </label>
+                                    </td>
 
-                              <td className="px-3 py-1 align-top min-w-[260px]">
-                                <div className="grid grid-cols-1 gap-1">
-                                  <select
-                                    value={row.claimLimitType}
-                                    onChange={(e) =>
-                                      setEditor((s) => ({
-                                        ...s,
-                                        pricingRows: s.pricingRows.map((r) =>
-                                          r.key === row.key
-                                            ? {
-                                                ...r,
-                                                claimLimitType: e.target.value as any,
-                                                claimLimitAmount: e.target.value === "FMV" || !e.target.value ? "" : r.claimLimitAmount,
+                                    {editor.pricingVariesByMileageBand ? (
+                                      <>
+                                        <td className="px-3 py-1 align-top min-w-[130px]">
+                                          <Input
+                                            value={row.vehicleMileageMinKm}
+                                            onChange={(e) =>
+                                              setEditor((s) => ({
+                                                ...s,
+                                                pricingRows: s.pricingRows.map((r) =>
+                                                  r.key === row.key ? { ...r, vehicleMileageMinKm: sanitizeDigitsOnly(e.target.value) } : r,
+                                                ),
+                                              }))
+                                            }
+                                            placeholder="Min"
+                                            inputMode="numeric"
+                                            disabled={busy}
+                                            className="h-8"
+                                          />
+                                        </td>
+                                        <td className="px-3 py-1 align-top min-w-[130px]">
+                                          <Input
+                                            value={row.vehicleMileageMaxKm}
+                                            onChange={(e) =>
+                                              setEditor((s) => ({
+                                                ...s,
+                                                pricingRows: s.pricingRows.map((r) =>
+                                                  r.key === row.key ? { ...r, vehicleMileageMaxKm: sanitizeDigitsOnly(e.target.value) } : r,
+                                                ),
+                                              }))
+                                            }
+                                            placeholder={row.vehicleMileageMaxUnlimited ? "Unlimited" : "Max"}
+                                            inputMode="numeric"
+                                            disabled={busy || row.vehicleMileageMaxUnlimited}
+                                            className="h-8"
+                                          />
+                                          <label className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+                                            <input
+                                              type="checkbox"
+                                              checked={row.vehicleMileageMaxUnlimited}
+                                              onChange={(e) =>
+                                                setEditor((s) => ({
+                                                  ...s,
+                                                  pricingRows: s.pricingRows.map((r) =>
+                                                    r.key === row.key
+                                                      ? {
+                                                          ...r,
+                                                          vehicleMileageMaxUnlimited: e.target.checked,
+                                                          vehicleMileageMaxKm: e.target.checked ? "" : r.vehicleMileageMaxKm,
+                                                        }
+                                                      : r,
+                                                  ),
+                                                }))
                                               }
-                                            : r,
-                                        ),
-                                      }))
-                                    }
-                                    className="h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-sm"
-                                    disabled={busy}
-                                  >
-                                    <option value="">None</option>
-                                    <option value="PER_CLAIM">Per Claim</option>
-                                    <option value="TOTAL_COVERAGE">Total Coverage</option>
-                                    <option value="FMV">FMV</option>
-                                    <option value="MAX_RETAIL">Max Retail</option>
-                                  </select>
+                                              disabled={busy}
+                                            />
+                                            Unlimited
+                                          </label>
+                                        </td>
+                                      </>
+                                    ) : null}
 
-                                  {row.claimLimitType && row.claimLimitType !== "FMV" ? (
-                                    <Input
-                                      value={row.claimLimitAmount}
-                                      onChange={(e) =>
-                                        setEditor((s) => ({
-                                          ...s,
-                                          pricingRows: s.pricingRows.map((r) =>
-                                            r.key === row.key ? { ...r, claimLimitAmount: sanitizeMoney(e.target.value) } : r,
-                                          ),
-                                        }))
-                                      }
-                                      placeholder="Amount"
-                                      inputMode="decimal"
-                                      disabled={busy}
-                                      className="h-8"
-                                    />
-                                  ) : (
-                                    <div className="h-8 flex items-center px-2 text-xs text-muted-foreground">—</div>
-                                  )}
-                                </div>
-                              </td>
+                                    {editor.pricingVariesByVehicleClass ? (
+                                      <td className="px-3 py-1 align-top min-w-[110px]">
+                                        <select
+                                          value={row.vehicleClass}
+                                          onChange={(e) =>
+                                            setEditor((s) => ({
+                                              ...s,
+                                              pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, vehicleClass: e.target.value } : r)),
+                                            }))
+                                          }
+                                          className="h-8 rounded-md border border-input bg-transparent px-2 text-xs shadow-sm"
+                                          disabled={busy}
+                                        >
+                                          <option value="ALL">All</option>
+                                          <option value="CLASS_1">Class 1</option>
+                                          <option value="CLASS_2">Class 2</option>
+                                          <option value="CLASS_3">Class 3</option>
+                                          <option value="CLASS_4">Class 4</option>
+                                        </select>
+                                      </td>
+                                    ) : null}
 
-                              <td className="px-3 py-1 align-top min-w-[180px]">
-                                <Input
-                                  value={row.providerCost}
-                                  onChange={(e) =>
-                                    setEditor((s) => ({
-                                      ...s,
-                                      pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, providerCost: sanitizeMoney(e.target.value) } : r)),
-                                    }))
-                                  }
-                                  placeholder="Net cost"
-                                  inputMode="decimal"
-                                  disabled={busy}
-                                  className={
-                                    "h-8 " +
-                                    cellErrorClass((() => {
-                                      const c = dollarsToCents(row.providerCost);
-                                      return typeof c !== "number" || c <= 0;
-                                    })())
-                                  }
-                                />
-                              </td>
+                                    <td className="px-3 py-1 align-top min-w-[180px]">
+                                      <select
+                                        value={row.claimLimitType}
+                                        onChange={(e) =>
+                                          setEditor((s) => ({
+                                            ...s,
+                                            pricingRows: s.pricingRows.map((r) =>
+                                              r.key === row.key ? { ...r, claimLimitType: e.target.value as any, claimLimitAmount: "" } : r,
+                                            ),
+                                          }))
+                                        }
+                                        className="h-8 rounded-md border border-input bg-transparent px-2 text-xs shadow-sm"
+                                        disabled={busy}
+                                      >
+                                        <option value="">None</option>
+                                        <option value="FMV">FMV</option>
+                                        <option value="PER_CLAIM">Per claim</option>
+                                      </select>
+                                      {row.claimLimitType && row.claimLimitType !== "FMV" ? (
+                                        <Input
+                                          value={row.claimLimitAmount}
+                                          onChange={(e) =>
+                                            setEditor((s) => ({
+                                              ...s,
+                                              pricingRows: s.pricingRows.map((r) =>
+                                                r.key === row.key ? { ...r, claimLimitAmount: sanitizeMoney(e.target.value) } : r,
+                                              ),
+                                            }))
+                                          }
+                                          onBlur={() =>
+                                            setEditor((s) => ({
+                                              ...s,
+                                              pricingRows: s.pricingRows.map((r) =>
+                                                r.key === row.key ? { ...r, claimLimitAmount: formatMoneyInput(r.claimLimitAmount) } : r,
+                                              ),
+                                            }))
+                                          }
+                                          placeholder="Amount"
+                                          inputMode="decimal"
+                                          disabled={busy}
+                                          className="h-8 mt-1"
+                                        />
+                                      ) : null}
+                                    </td>
 
-                              <td className="px-3 py-1 align-top min-w-[160px]">
-                                <Input
-                                  value={row.deductible}
-                                  onChange={(e) =>
-                                    setEditor((s) => ({
-                                      ...s,
-                                      pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, deductible: sanitizeMoney(e.target.value) } : r)),
-                                    }))
-                                  }
-                                  placeholder="Deductible"
-                                  inputMode="decimal"
-                                  disabled={busy}
-                                  className={
-                                    "h-8 " +
-                                    cellErrorClass((() => {
-                                      const c = dollarsToCents(row.deductible);
-                                      return typeof c !== "number" || c < 0;
-                                    })())
-                                  }
-                                />
-                              </td>
+                                    <td className="px-3 py-1 align-top min-w-[150px]">
+                                      <Input
+                                        value={row.providerCost}
+                                        onChange={(e) =>
+                                          setEditor((s) => ({
+                                            ...s,
+                                            pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, providerCost: sanitizeMoney(e.target.value) } : r)),
+                                          }))
+                                        }
+                                        onBlur={() =>
+                                          setEditor((s) => ({
+                                            ...s,
+                                            pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, providerCost: formatMoneyInput(r.providerCost) } : r)),
+                                          }))
+                                        }
+                                        placeholder="Net cost"
+                                        inputMode="decimal"
+                                        disabled={busy}
+                                        className="h-8"
+                                      />
+                                    </td>
 
-                              <td className="px-3 py-1 align-top min-w-[240px]">
-                                {(() => {
-                                  const idx = editor.pricingRows.findIndex((r) => r.key === row.key);
-                                  const issues = fieldIssuesByIdx.get(idx) ?? [];
-                                  if (issues.length === 0) return <span className="text-xs text-muted-foreground">—</span>;
-                                  return <div className="text-xs text-rose-700">{issues.join(" • ")}</div>;
-                                })()}
-                              </td>
+                                    <td className="px-3 py-1 align-top min-w-[150px]">
+                                      <Input
+                                        value={row.deductible}
+                                        onChange={(e) =>
+                                          setEditor((s) => ({
+                                            ...s,
+                                            pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, deductible: sanitizeMoney(e.target.value) } : r)),
+                                          }))
+                                        }
+                                        onBlur={() =>
+                                          setEditor((s) => ({
+                                            ...s,
+                                            pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, deductible: formatMoneyInput(r.deductible) } : r)),
+                                          }))
+                                        }
+                                        placeholder="Deductible"
+                                        inputMode="decimal"
+                                        disabled={busy}
+                                        className="h-8"
+                                      />
+                                    </td>
 
-                              <td className="px-3 py-1 align-top text-right min-w-[110px]">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() =>
-                                    setEditor((s) => {
-                                      const next = s.pricingRows.filter((r) => r.key !== row.key);
-                                      if (next.length === 0) return { ...s, pricingRows: s.pricingRows };
-                                      const stillHasDefault = next.some((r) => r.isDefault === true);
-                                      if (stillHasDefault) return { ...s, pricingRows: next };
-                                      return { ...s, pricingRows: next.map((r, i) => ({ ...r, isDefault: i === next.length - 1 })) };
-                                    })
-                                  }
-                                  disabled={busy || editor.pricingRows.length <= 1}
-                                  className="h-7"
-                                >
-                                  Remove
-                                </Button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                                    <td className="px-3 py-1 align-top min-w-[240px]">
+                                      {rowHasIssues ? <div className="text-xs text-rose-700">{issues.join(" • ")}</div> : <span className="text-xs text-muted-foreground">—</span>}
+                                    </td>
+
+                                    <td className="px-3 py-1 align-top text-right min-w-[110px]">
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                          setEditor((s) => {
+                                            const next = s.pricingRows.filter((r) => r.key !== row.key);
+                                            if (next.length === 0) return { ...s, pricingRows: s.pricingRows };
+                                            const stillHasDefault = next.some((r) => r.isDefault === true);
+                                            if (stillHasDefault) return { ...s, pricingRows: next };
+                                            return { ...s, pricingRows: next.map((r, i) => ({ ...r, isDefault: i === next.length - 1 })) };
+                                          })
+                                        }
+                                        disabled={busy || editor.pricingRows.length <= 1}
+                                        className="h-7"
+                                      >
+                                        Remove
+                                      </Button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
                       );
                     })()}
 

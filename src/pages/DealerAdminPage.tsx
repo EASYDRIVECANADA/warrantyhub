@@ -19,7 +19,8 @@ import { getEmployeesApi } from "../lib/employees/employees";
 import type { Employee } from "../lib/employees/types";
 
 function money(cents: number) {
-  return `$${(cents / 100).toFixed(2)}`;
+  const dollars = cents / 100;
+  return `$${dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function asText(v: unknown) {
@@ -348,7 +349,7 @@ export function DealerAdminPage() {
 
   return (
     <PageShell
-      title="Dealer Admin Dashboard"
+      title=""
     >
       <div className="relative">
         <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-yellow-400/10 blur-2xl" />
