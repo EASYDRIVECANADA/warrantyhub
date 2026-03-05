@@ -512,6 +512,16 @@ export function ProviderDashboardPage() {
                   })()}
                 </div>
               ) : null}
+
+              {saveProfileMutation.isError ? (
+                <div className="text-sm text-destructive">
+                  {(() => {
+                    const e = saveProfileMutation.error as any;
+                    const msg = typeof e?.message === "string" ? e.message : "Failed to save provider profile.";
+                    return msg;
+                  })()}
+                </div>
+              ) : null}
             </div>
           </div>
 
