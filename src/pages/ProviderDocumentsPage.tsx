@@ -111,7 +111,21 @@ export function ProviderDocumentsPage() {
       const input = document.getElementById("provider-doc-file") as HTMLInputElement | null;
       if (input) input.value = "";
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to upload");
+      const anyE = e as any;
+      const msg = typeof anyE?.message === "string" ? anyE.message : null;
+      const code = typeof anyE?.code === "string" ? anyE.code : null;
+      const status = typeof anyE?.statusCode === "number" ? anyE.statusCode : typeof anyE?.status === "number" ? anyE.status : null;
+
+      const parts = [msg, code ? `code=${code}` : null, status !== null ? `status=${status}` : null].filter(Boolean);
+      if (parts.length > 0) {
+        setError(parts.join(" | "));
+      } else {
+        try {
+          setError(JSON.stringify(anyE));
+        } catch {
+          setError("Failed to upload");
+        }
+      }
     }
   };
 
@@ -122,7 +136,21 @@ export function ProviderDocumentsPage() {
       await qc.invalidateQueries({ queryKey: ["my-provider-profile"] });
       setPreviewUrl(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to remove logo");
+      const anyE = e as any;
+      const msg = typeof anyE?.message === "string" ? anyE.message : null;
+      const code = typeof anyE?.code === "string" ? anyE.code : null;
+      const status = typeof anyE?.statusCode === "number" ? anyE.statusCode : typeof anyE?.status === "number" ? anyE.status : null;
+
+      const parts = [msg, code ? `code=${code}` : null, status !== null ? `status=${status}` : null].filter(Boolean);
+      if (parts.length > 0) {
+        setError(parts.join(" | "));
+      } else {
+        try {
+          setError(JSON.stringify(anyE));
+        } catch {
+          setError("Failed to remove logo");
+        }
+      }
     }
   };
 
