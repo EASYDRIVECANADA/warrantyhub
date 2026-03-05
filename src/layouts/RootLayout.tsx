@@ -13,9 +13,11 @@ import {
   BarChart3,
   DollarSign,
   FileText,
+  Image,
   LayoutGrid,
   LogOut,
   Menu,
+  Package,
   Store,
   User,
   Users,
@@ -96,11 +98,14 @@ export function RootLayout() {
   const prevRoleRef = useRef<Role | null>(null);
 
   const isDealerAdminSidebarCollapsed = false;
+  const isProviderSidebarCollapsed = false;
 
   const [isDealerAdminMobileNavOpen, setIsDealerAdminMobileNavOpen] = useState(false);
+  const [isProviderMobileNavOpen, setIsProviderMobileNavOpen] = useState(false);
 
   useEffect(() => {
     setIsDealerAdminMobileNavOpen(false);
+    setIsProviderMobileNavOpen(false);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -154,6 +159,7 @@ export function RootLayout() {
     location.pathname === "/dealer-employee-signup";
 
   const showDealerAdminShell = Boolean(user) && user?.role === "DEALER_ADMIN" && !isAuthLikeRoute;
+  const showProviderShell = Boolean(user) && user?.role === "PROVIDER" && !isAuthLikeRoute;
 
   const hideTopNavbar = isAuthLikeRoute;
 
@@ -192,6 +198,21 @@ export function RootLayout() {
   const dealerAdminSecondaryItems = [
     { to: "/profile", label: "Profile", icon: User, active: location.pathname.startsWith("/profile") },
   ] as const;
+
+  const providerNavItems = [
+    { to: "/provider-dashboard", label: "Dashboard", icon: LayoutGrid, active: location.pathname === "/provider-dashboard" },
+    { to: "/provider-products", label: "Products", icon: Package, active: location.pathname.startsWith("/provider-products") },
+    { to: "/provider-contracts", label: "Contracts", icon: FileText, active: location.pathname.startsWith("/provider-contracts") },
+    {
+      to: "/provider-remittances",
+      label: "Remittances",
+      icon: DollarSign,
+      active: location.pathname.startsWith("/provider-remittances"),
+    },
+    { to: "/provider-documents", label: "Logo", icon: Image, active: location.pathname.startsWith("/provider-documents") },
+  ] as const;
+
+  const providerSecondaryItems = [{ to: "/profile", label: "Profile", icon: User, active: location.pathname.startsWith("/profile") }] as const;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -385,6 +406,204 @@ export function RootLayout() {
                               window.location.assign(item.to);
                             }
                           }}
+                          className={cn(
+                            buttonVariants({ variant: "ghost" }),
+                            "w-full justify-start h-9 text-[13px] font-medium",
+                            item.active
+                              ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
+                              : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10",
+                          )}
+                        >
+                          <span className="flex items-center gap-2">
+                            <item.icon className="h-4 w-4" />
+                            <span>{item.label}</span>
+                          </span>
+                        </Link>
+                      ))}
+
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-start h-9 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-red-500/10"
+                        onClick={() => {
+                          void (async () => {
+                            if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
+                            await signOut();
+                            window.location.assign("/find-insurance");
+                          })();
+                        }}
+                      >
+                        <LogOut className="h-4 w-4" />
+                        <span>Sign Out</span>
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : showProviderShell ? (
+        <div className="min-h-screen grid grid-cols-1" style={{ gridTemplateColumns: `minmax(0, 1fr)` }}>
+          <div
+            className="hidden lg:grid min-h-screen"
+            style={{ gridTemplateColumns: isProviderSidebarCollapsed ? "88px minmax(0, 1fr)" : "260px minmax(0, 1fr)" }}
+          >
+            <aside className="flex flex-col border-r bg-card/95 backdrop-blur-xl">
+              <div className={`h-14 px-4 flex items-center border-b ${isProviderSidebarCollapsed ? "justify-center" : "justify-start"}`}>
+                <Link
+                  to="/provider-dashboard"
+                  className={`flex items-center gap-2 ${isProviderSidebarCollapsed ? "justify-center" : ""}`}
+                >
+                  <img src={BRAND.logoUrl} alt={BRAND.name} className="h-9 w-auto object-contain" />
+                  {!isProviderSidebarCollapsed ? (
+                    <div className="leading-tight">
+                      <div className="font-semibold text-sm">{BRAND.name}</div>
+                      <div className="text-[11px] text-muted-foreground">Provider Portal</div>
+                    </div>
+                  ) : null}
+                </Link>
+              </div>
+
+              <div className={`px-2 py-3 flex-1 ${isProviderSidebarCollapsed ? "" : ""}`}>
+                <div className="space-y-1">
+                  {providerNavItems.map((item) => (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      onClick={() => setIsProviderMobileNavOpen(false)}
+                      className={cn(
+                        buttonVariants({ variant: "ghost" }),
+                        `w-full ${isProviderSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium`,
+                        item.active
+                          ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
+                          : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10",
+                      )}
+                    >
+                      <span className="flex items-center gap-2" title={isProviderSidebarCollapsed ? item.label : undefined}>
+                        <item.icon className="h-4 w-4" />
+                        {!isProviderSidebarCollapsed ? <span>{item.label}</span> : null}
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+
+                <div className="pt-3 mt-3 border-t" />
+                <div className="space-y-1">
+                  {providerSecondaryItems.map((item) => (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      onClick={() => setIsProviderMobileNavOpen(false)}
+                      className={cn(
+                        buttonVariants({ variant: "ghost" }),
+                        `w-full ${isProviderSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium`,
+                        item.active
+                          ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
+                          : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10",
+                      )}
+                    >
+                      <span className="flex items-center gap-2" title={isProviderSidebarCollapsed ? item.label : undefined}>
+                        <item.icon className="h-4 w-4" />
+                        {!isProviderSidebarCollapsed ? <span>{item.label}</span> : null}
+                      </span>
+                    </Link>
+                  ))}
+
+                  <Button
+                    variant={isProviderSidebarCollapsed ? "ghost" : "default"}
+                    size={isProviderSidebarCollapsed ? "icon" : "sm"}
+                    className={cn(
+                      isProviderSidebarCollapsed
+                        ? "text-muted-foreground hover:text-foreground hover:bg-red-500/10"
+                        : "bg-red-500/10 text-red-600 hover:bg-red-500/15 hover:text-red-600",
+                    )}
+                    title={isProviderSidebarCollapsed ? "Sign Out" : undefined}
+                    onClick={() => {
+                      void (async () => {
+                        if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
+                        await signOut();
+                        window.location.assign("/find-insurance");
+                      })();
+                    }}
+                  >
+                    <LogOut className={isProviderSidebarCollapsed ? "h-4 w-4" : "h-4 w-4"} />
+                    {isProviderSidebarCollapsed ? null : <span>Sign Out</span>}
+                  </Button>
+                </div>
+              </div>
+            </aside>
+
+            <main className="min-w-0">
+              {isLoading && !user ? <div style={{ padding: 24, color: "#6b7280" }}>Loading…</div> : null}
+              <RouteErrorBoundary key={location.pathname}>
+                <Outlet />
+              </RouteErrorBoundary>
+            </main>
+          </div>
+
+          <div className="lg:hidden">
+            <div className="h-14 px-4 border-b bg-card/95 backdrop-blur-xl flex items-center justify-between">
+              <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setIsProviderMobileNavOpen(true)}>
+                <Menu className="h-5 w-5" />
+              </Button>
+              <Link to="/provider-dashboard" className="flex items-center gap-2">
+                <img src={BRAND.logoUrl} alt={BRAND.name} className="h-9 w-auto object-contain" />
+                <div className="leading-tight">
+                  <div className="font-semibold text-sm">Provider Portal</div>
+                  <div className="text-[11px] text-muted-foreground">{location.pathname === "/provider-dashboard" ? "Dashboard" : ""}</div>
+                </div>
+              </Link>
+              <div className="w-9" />
+            </div>
+
+            <main className="min-w-0">
+              {isLoading && !user ? <div style={{ padding: 24, color: "#6b7280" }}>Loading…</div> : null}
+              <RouteErrorBoundary key={location.pathname}>
+                <Outlet />
+              </RouteErrorBoundary>
+            </main>
+
+            {isProviderMobileNavOpen ? (
+              <div className="fixed inset-0 z-50">
+                <button type="button" className="absolute inset-0 bg-black/40" onClick={() => setIsProviderMobileNavOpen(false)} />
+                <div className="absolute left-0 top-0 bottom-0 w-[280px] max-w-[85vw] bg-card border-r shadow-xl flex flex-col">
+                  <div className="h-14 px-4 border-b flex items-center justify-between">
+                    <div className="font-semibold text-sm">Menu</div>
+                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setIsProviderMobileNavOpen(false)}>
+                      <X className="h-5 w-5" />
+                    </Button>
+                  </div>
+
+                  <div className="p-3 flex-1">
+                    <div className="space-y-1">
+                      {providerNavItems.map((item) => (
+                        <Link
+                          key={item.to}
+                          to={item.to}
+                          onClick={() => setIsProviderMobileNavOpen(false)}
+                          className={cn(
+                            buttonVariants({ variant: "ghost" }),
+                            "w-full justify-start h-9 text-[13px] font-medium",
+                            item.active
+                              ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
+                              : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10",
+                          )}
+                        >
+                          <span className="flex items-center gap-2">
+                            <item.icon className="h-4 w-4" />
+                            <span>{item.label}</span>
+                          </span>
+                        </Link>
+                      ))}
+                    </div>
+
+                    <div className="pt-3 mt-3 border-t" />
+                    <div className="space-y-1">
+                      {providerSecondaryItems.map((item) => (
+                        <Link
+                          key={item.to}
+                          to={item.to}
+                          onClick={() => setIsProviderMobileNavOpen(false)}
                           className={cn(
                             buttonVariants({ variant: "ghost" }),
                             "w-full justify-start h-9 text-[13px] font-medium",
