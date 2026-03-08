@@ -21,6 +21,7 @@ import { DealerRemittancesPage } from "../pages/DealerRemittancesPage";
 import { DealerDashboardPage } from "../pages/DealerDashboardPage";
 import { DealerTeamPage } from "../pages/DealerTeamPage";
 import { DealerReportingPage } from "../pages/DealerReportingPage";
+import { DealerConfigurePage } from "../pages/DealerConfigurePage";
 import { HomePage } from "../pages/HomePage";
 import { RegisterDealershipPage } from "../pages/RegisterDealershipPage";
 import { DealerEmployeeSignupPage } from "../pages/DealerEmployeeSignupPage";
@@ -32,6 +33,7 @@ import { ProviderDocumentsPage } from "../pages/ProviderDocumentsPage";
 import { ProviderProductsPage } from "../pages/ProviderProductsPage";
 import { ProviderRemittancePrintPage } from "../pages/ProviderRemittancePrintPage";
 import { ProviderRemittancesPage } from "../pages/ProviderRemittancesPage";
+import { ProviderTermsPage } from "../pages/ProviderTermsPage";
 import { SignInPage } from "../pages/SignInPage";
 import { ForgotPasswordPage } from "../pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "../pages/ResetPasswordPage";
@@ -89,6 +91,7 @@ export function AppRouter() {
           <Route path="dealer-contracts-admin" element={<DealerAdminContractsPage />} />
           <Route path="dealer-employees" element={<DealerTeamPage />} />
           <Route path="dealer-team" element={<DealerTeamPage />} />
+          <Route path="dealer-configure" element={<DealerConfigurePage />} />
           <Route path="dealer-reporting" element={<DealerReportingPage />} />
         </Route>
 
@@ -109,6 +112,7 @@ export function AppRouter() {
 
         <Route element={<ProtectedRoute allowedRoles={["PROVIDER"]} />}>
           <Route path="provider-dashboard" element={<ProviderDashboardPage />} />
+          <Route path="provider-terms" element={<ProviderTermsPage />} />
           <Route path="provider-contracts" element={<ProviderContractsPage />} />
           <Route path="provider-contracts/:id" element={<ProviderContractDetailPage />} />
           <Route path="provider-contracts/:id/print" element={<ProviderContractPrintPage />} />

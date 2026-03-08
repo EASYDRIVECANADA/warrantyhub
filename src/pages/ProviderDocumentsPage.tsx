@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "../components/ui/button";
@@ -156,66 +155,69 @@ export function ProviderDocumentsPage() {
 
   return (
     <PageShell
-      badge="Provider Portal"
-      title="Logo"
-      subtitle="Upload your company logo. Dealers will see it when browsing your products."
-      actions={
-        <Button variant="outline" asChild>
-          <Link to="/provider-dashboard">Back to dashboard</Link>
-        </Button>
-      }
+      title=""
     >
       {error ? <div className="text-sm text-destructive">{error}</div> : null}
 
-      <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden">
-        <div className="px-6 py-4 border-b flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <div className="font-semibold">Upload Logo</div>
-            <div className="text-sm text-muted-foreground mt-1">Recommended: square image, PNG with transparent background.</div>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => void onRemove()} disabled={busy || (!previewUrl && !(myProfileQuery.data as any)?.logoUrl)}>
-              Remove
-            </Button>
-            <Button onClick={() => void onUpload()} disabled={busy}>
-              Upload
-            </Button>
-          </div>
-        </div>
+      <div className="relative">
+        <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-yellow-400/10 blur-2xl" />
 
-        <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-5 space-y-3">
-            <Input value={(myProfileQuery.data as any)?.companyName ?? ""} disabled placeholder="Company name" />
-            <input
-              id="provider-doc-file"
-              type="file"
-              onChange={(e) => {
-                const f = e.target.files?.[0] ?? null;
-                setFile(f);
-                if (!f) return;
-                if (!isAllowedLogoUpload(f)) return;
-                const url = URL.createObjectURL(f);
-                setPreviewUrl(url);
-              }}
-              className="block w-full text-sm text-muted-foreground"
-              accept="image/*"
-              disabled={busy}
-            />
-            <div className="text-xs text-muted-foreground">Max 2–3MB recommended.</div>
-          </div>
-
-          <div className="lg:col-span-7 rounded-xl border p-4">
-            <div className="font-semibold">Preview</div>
-            <div className="mt-3 flex items-center gap-4">
-              <div className="h-16 w-16 rounded-xl border bg-white overflow-hidden flex items-center justify-center">
-                {previewUrl ? (
-                  <img src={previewUrl} alt="Provider logo" className="h-full w-full object-contain" />
-                ) : (
-                  <div className="text-xs text-muted-foreground">No logo</div>
-                )}
+        <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-600/10">
+          <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 to-transparent flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <div className="font-semibold">Logo</div>
+              <div className="text-sm text-muted-foreground mt-1">
+                Upload your company logo. Dealers will see it when browsing your products.
               </div>
-              <div className="text-sm text-muted-foreground">
-                Your logo will appear in the dealer marketplace next to your provider name.
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => void onRemove()}
+                disabled={busy || (!previewUrl && !(myProfileQuery.data as any)?.logoUrl)}
+              >
+                Remove
+              </Button>
+              <Button onClick={() => void onUpload()} disabled={busy}>
+                Upload
+              </Button>
+            </div>
+          </div>
+
+          <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-5 space-y-3">
+              <div className="rounded-xl border bg-background/40 p-4 space-y-3">
+                <Input value={(myProfileQuery.data as any)?.companyName ?? ""} disabled placeholder="Company name" />
+                <input
+                  id="provider-doc-file"
+                  type="file"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] ?? null;
+                    setFile(f);
+                    if (!f) return;
+                    if (!isAllowedLogoUpload(f)) return;
+                    const url = URL.createObjectURL(f);
+                    setPreviewUrl(url);
+                  }}
+                  className="block w-full text-sm text-muted-foreground"
+                  accept="image/*"
+                  disabled={busy}
+                />
+                <div className="text-xs text-muted-foreground">Recommended: square PNG with transparent background. Max 2–3MB.</div>
+              </div>
+            </div>
+
+            <div className="lg:col-span-7 rounded-xl border bg-background/40 p-4">
+              <div className="font-semibold">Preview</div>
+              <div className="mt-3 flex items-center gap-4">
+                <div className="h-16 w-16 rounded-xl border bg-white overflow-hidden flex items-center justify-center">
+                  {previewUrl ? (
+                    <img src={previewUrl} alt="Provider logo" className="h-full w-full object-contain" />
+                  ) : (
+                    <div className="text-xs text-muted-foreground">No logo</div>
+                  )}
+                </div>
+                <div className="text-sm text-muted-foreground">Your logo will appear in the dealer marketplace next to your provider name.</div>
               </div>
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Search, Trash2 } from "lucide-react";
@@ -24,6 +24,7 @@ import { useAuth } from "../providers/AuthProvider";
 import type { Contract, ContractStatus } from "../lib/contracts/types";
 import { getProductAddonsApi } from "../lib/productAddons/productAddons";
 import { decodeVin } from "../lib/vin/decodeVin";
+import { getDealerProductAddonRetailCents, getDealerProductPricingRetailCents, getDealerProductRetailCents } from "../lib/dealerProductRetail";
 
 const LOCAL_DEALER_MEMBERSHIPS_KEY = "warrantyhub.local.dealer_memberships";
 
@@ -115,6 +116,7 @@ export function DealerContractsPage() {
     .filter(Boolean);
   const [q, setQ] = useState("");
   const [quickFilter, setQuickFilter] = useState<QuickFilterKey>("ALL");
+  const [selectedContractIds, setSelectedContractIds] = useState<Record<string, boolean>>({});
 
   const didAutoCreateRef = useRef(false);
 
@@ -198,13 +200,23 @@ export function DealerContractsPage() {
           })
         : undefined;
 
-      const retailCents = typeof costCents === "number" ? (retailFromCost(costCents, markupPct) ?? costCents) : undefined;
+      const selectedPricingId = (defaultPricing?.id ?? "").trim();
+      const retailTermOverrideCents =
+        selectedProductId && selectedPricingId ? getDealerProductPricingRetailCents(dealerId, selectedProductId, selectedPricingId) : null;
+      const retailOverrideCents = selectedProductId ? getDealerProductRetailCents(dealerId, selectedProductId) : null;
+      const retailCents =
+        typeof retailTermOverrideCents === "number"
+          ? retailTermOverrideCents
+          : typeof retailOverrideCents === "number"
+            ? retailOverrideCents
+          : typeof costCents === "number"
+            ? retailFromCost(costCents, markupPct) ?? costCents
+            : undefined;
 
       let finalAddonSnapshot: any[] = [];
       let finalAddonTotals: { retail: number; cost: number } = { retail: 0, cost: 0 };
       if (selectedProductId && preselectedAddonIds.length > 0) {
         const ids = new Set(preselectedAddonIds);
-        const selectedPricingId = (defaultPricing?.id ?? "").trim();
         const all = (await productAddonsApi.list({ productId: selectedProductId })) as any[];
         const actives = all.filter((a) => (a?.active ?? true) === true);
         const applicable = actives.filter((a) => {
@@ -224,7 +236,10 @@ export function DealerContractsPage() {
           const min = typeof a?.minPriceCents === "number" ? a.minPriceCents : a.basePriceCents;
           const max = typeof a?.maxPriceCents === "number" ? a.maxPriceCents : min;
           const costCents = costFromProductOrPricing({ dealerCostCents: a.dealerCostCents, basePriceCents: a.basePriceCents });
-          const retailCents = retailFromCost(costCents, markupPct) ?? costCents;
+          const pid = (selectedProductId ?? "").trim();
+          const aid = (a?.id ?? "").toString().trim();
+          const addonOverride = pid && aid ? getDealerProductAddonRetailCents(dealerId, pid, aid) : null;
+          const retailCents = typeof addonOverride === "number" ? addonOverride : retailFromCost(costCents, markupPct) ?? costCents;
           return {
             id: a.id,
             name: a.name,
@@ -304,17 +319,20 @@ export function DealerContractsPage() {
   }, [createFromMarketplaceMutation, preselectedProductId, selectedProduct]);
 
   const contracts = (listQuery.data ?? []) as Contract[];
-  const myContracts = contracts.filter((c) => {
-    const byId = (c.createdByUserId ?? "").trim();
-    const byEmail = (c.createdByEmail ?? "").trim().toLowerCase();
+  const myContracts = useMemo(() => {
     const uid = (user?.id ?? "").trim();
     const uem = (user?.email ?? "").trim().toLowerCase();
-    if (uid && byId) return byId === uid;
-    if (uem && byEmail) return byEmail === uem;
-    return false;
-  });
+    if (!uid && !uem) return [] as Contract[];
+    return contracts.filter((c) => {
+      const byId = (c.createdByUserId ?? "").trim();
+      const byEmail = (c.createdByEmail ?? "").trim().toLowerCase();
+      if (uid && byId) return byId === uid;
+      if (uem && byEmail) return byEmail === uem;
+      return false;
+    });
+  }, [contracts, user?.email, user?.id]);
 
-  const visibleContracts = (() => {
+  const visibleContracts = useMemo(() => {
     if (!user) return [] as Contract[];
     if (user.role !== "DEALER_ADMIN") return myContracts;
     if (mode !== "local") return myContracts;
@@ -327,15 +345,16 @@ export function DealerContractsPage() {
       const byId = (c.createdByUserId ?? "").trim();
       return byId && ids.has(byId);
     });
-  })();
+  }, [contracts, mode, myContracts, user, user?.dealerId, user?.role]);
 
-  const searched = (() => {
+  const searched = useMemo(() => {
     const query = q.trim().toLowerCase();
     if (!query) return visibleContracts;
     return visibleContracts.filter((c) => {
       const hay = [
-        c.warrantyId,
+        c.id,
         c.contractNumber,
+        c.status,
         c.customerName,
         c.vin,
         c.vehicleYear,
@@ -347,7 +366,7 @@ export function DealerContractsPage() {
         .join(" ");
       return hay.includes(query);
     });
-  })();
+  }, [q, visibleContracts]);
 
   const isDealerAdmin = user?.role === "DEALER_ADMIN";
   const batches = (batchesQuery.data ?? []) as Batch[];
@@ -360,9 +379,17 @@ export function DealerContractsPage() {
     return ids;
   }, [batches]);
 
-  const isMissingInfo = (c: Contract) => !c.customerName?.trim() || !c.customerEmail?.trim() || !c.customerPhone?.trim();
-  const isReadyToRemit = (c: Contract) => c.status === "SOLD" && !contractIdsInAnyBatch.has(c.id);
-  const isActive = (c: Contract) => c.status === "SOLD" || c.status === "REMITTED";
+  const isMissingInfo = useCallback(
+    (c: Contract) => !c.customerName?.trim() || !c.customerEmail?.trim() || !c.customerPhone?.trim(),
+    [],
+  );
+
+  const isReadyToRemit = useCallback(
+    (c: Contract) => c.status === "SOLD" && !contractIdsInAnyBatch.has(c.id),
+    [contractIdsInAnyBatch],
+  );
+
+  const isActive = useCallback((c: Contract) => c.status === "SOLD" || c.status === "REMITTED", []);
 
   const filtered = useMemo(() => {
     if (quickFilter === "ALL") return searched;
@@ -376,6 +403,35 @@ export function DealerContractsPage() {
     }
     return searched;
   }, [isActive, isDealerAdmin, isMissingInfo, isReadyToRemit, quickFilter, searched]);
+
+  useEffect(() => {
+    setSelectedContractIds((prev) => {
+      const visible = new Set(filtered.map((c) => (c.id ?? "").trim()).filter(Boolean));
+      const next: Record<string, boolean> = {};
+      for (const [id, on] of Object.entries(prev)) {
+        if (!on) continue;
+        if (!visible.has(id)) continue;
+        next[id] = true;
+      }
+      const prevKeys = Object.keys(prev).filter((k) => Boolean(prev[k]));
+      const nextKeys = Object.keys(next);
+      if (prevKeys.length !== nextKeys.length) return next;
+      for (const k of nextKeys) {
+        if (!prev[k]) return next;
+      }
+      return prev;
+    });
+  }, [filtered]);
+
+  const visibleDraftIds = useMemo(
+    () => filtered.filter((c) => c.status === "DRAFT").map((c) => (c.id ?? "").trim()).filter(Boolean),
+    [filtered],
+  );
+  const selectedDraftIds = useMemo(
+    () => visibleDraftIds.filter((id) => Boolean(selectedContractIds[id])),
+    [selectedContractIds, visibleDraftIds],
+  );
+  const allVisibleDraftSelected = visibleDraftIds.length > 0 && selectedDraftIds.length === visibleDraftIds.length;
 
   const quickFilterCounts = useMemo(() => {
     const base = searched;
@@ -430,6 +486,18 @@ export function DealerContractsPage() {
     },
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (contractIds: string[]) => {
+      const ids = Array.from(new Set(contractIds.map((x) => (x ?? "").toString().trim()).filter(Boolean)));
+      if (ids.length === 0) return;
+      await Promise.all(ids.map((id) => api.delete(id)));
+    },
+    onSuccess: async () => {
+      setSelectedContractIds({});
+      await qc.invalidateQueries({ queryKey: ["contracts"] });
+    },
+  });
+
   const headerSubtitle = preselectedProductId
     ? createFromMarketplaceMutation.isPending
       ? "Creating contract…"
@@ -471,7 +539,7 @@ export function DealerContractsPage() {
             </div>
 
             <div className="px-6 py-3 border-b">
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
                 <button
                   type="button"
                   onClick={() => {
@@ -553,6 +621,27 @@ export function DealerContractsPage() {
                     <span className="ml-2 text-xs opacity-70">{quickFilterCounts.READY_TO_REMIT}</span>
                   </button>
                 ) : null}
+
+                <div className="flex-1" />
+
+                {selectedDraftIds.length > 0 ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="hover:text-foreground hover:bg-red-500/10 hover:border-red-500/30"
+                    disabled={bulkDeleteMutation.isPending || deleteMutation.isPending}
+                    onClick={() => {
+                      void (async () => {
+                        const count = selectedDraftIds.length;
+                        if (!(await confirmProceed(`Delete ${count} draft contract${count === 1 ? "" : "s"}? This cannot be undone.`))) return;
+                        await bulkDeleteMutation.mutateAsync(selectedDraftIds);
+                      })();
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span className="ml-2">Delete Selected ({selectedDraftIds.length})</span>
+                  </Button>
+                ) : null}
               </div>
             </div>
 
@@ -560,6 +649,25 @@ export function DealerContractsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
+                    <th className="text-left px-6 py-3 font-medium whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all draft contracts"
+                        checked={allVisibleDraftSelected}
+                        disabled={visibleDraftIds.length === 0 || bulkDeleteMutation.isPending || deleteMutation.isPending}
+                        onChange={(e) => {
+                          const on = e.target.checked;
+                          setSelectedContractIds((prev) => {
+                            const next = { ...prev };
+                            for (const id of visibleDraftIds) {
+                              if (on) next[id] = true;
+                              else delete next[id];
+                            }
+                            return next;
+                          });
+                        }}
+                      />
+                    </th>
                     <th className="text-left px-6 py-3 font-medium whitespace-nowrap">Contract #</th>
                     <th className="text-left px-6 py-3 font-medium">Customer</th>
                     <th className="text-left px-6 py-3 font-medium">Product</th>
@@ -572,6 +680,25 @@ export function DealerContractsPage() {
                 <tbody className="divide-y">
                   {filtered.map((c) => (
                     <tr key={c.id} className="hover:bg-muted/20">
+                      <td className="px-6 py-3 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select contract ${c.contractNumber}`}
+                          checked={Boolean(selectedContractIds[c.id])}
+                          disabled={c.status !== "DRAFT" || bulkDeleteMutation.isPending || deleteMutation.isPending}
+                          onChange={(e) => {
+                            const on = e.target.checked;
+                            const id = (c.id ?? "").trim();
+                            if (!id) return;
+                            setSelectedContractIds((prev) => {
+                              const next = { ...prev };
+                              if (on) next[id] = true;
+                              else delete next[id];
+                              return next;
+                            });
+                          }}
+                        />
+                      </td>
                       <td className="px-6 py-3 whitespace-nowrap">
                         <div className="font-medium text-foreground">{c.contractNumber}</div>
                         <div className="text-[11px] text-muted-foreground">{c.warrantyId}</div>
@@ -612,7 +739,7 @@ export function DealerContractsPage() {
                                 await deleteMutation.mutateAsync(c.id);
                               })();
                             }}
-                            disabled={deleteMutation.isPending || c.status !== "DRAFT"}
+                            disabled={deleteMutation.isPending || bulkDeleteMutation.isPending || c.status !== "DRAFT"}
                             title={c.status !== "DRAFT" ? "Only Draft contracts can be deleted." : "Delete"}
                             aria-label="Delete"
                           >
@@ -626,7 +753,7 @@ export function DealerContractsPage() {
 
                   {listQuery.isLoading ? (
                     <tr>
-                      <td className="px-6 py-6 text-sm text-muted-foreground" colSpan={7}>
+                      <td className="px-6 py-6 text-sm text-muted-foreground" colSpan={8}>
                         Loading…
                       </td>
                     </tr>
@@ -634,7 +761,7 @@ export function DealerContractsPage() {
 
                   {!listQuery.isLoading && filtered.length === 0 ? (
                     <tr>
-                      <td className="px-6 py-10 text-sm text-muted-foreground" colSpan={7}>
+                      <td className="px-6 py-10 text-sm text-muted-foreground" colSpan={8}>
                         No contracts found.
                       </td>
                     </tr>
@@ -642,7 +769,7 @@ export function DealerContractsPage() {
 
                   {listQuery.isError ? (
                     <tr>
-                      <td className="px-6 py-6 text-sm text-destructive" colSpan={7}>
+                      <td className="px-6 py-6 text-sm text-destructive" colSpan={8}>
                         Failed to load contracts.
                       </td>
                     </tr>

@@ -17,6 +17,12 @@ import { getProvidersApi } from "../lib/providers/providers";
 import type { ProviderPublic } from "../lib/providers/types";
 import { costFromProductOrPricing, retailFromCost } from "../lib/dealerPricing";
 import { useDealerMarkupPct } from "../lib/dealerMarkup";
+import {
+  getDealerProductAddonRetailCents,
+  getDealerProductPricingRetailCents,
+  getDealerProductRetailCents,
+  subscribeDealerProductRetail,
+} from "../lib/dealerProductRetail";
 import { getAppMode } from "../lib/runtime";
 import { useAuth } from "../providers/AuthProvider";
 import type { ProductAddon } from "../lib/productAddons/types";
@@ -99,6 +105,16 @@ export function DealerMarketplaceProductDetailPage() {
   const mode = useMemo(() => getAppMode(), []);
   const dealerId = (mode === "local" ? (user?.dealerId ?? user?.id ?? "") : (user?.dealerId ?? "")).trim();
   const { markupPct } = useDealerMarkupPct(dealerId);
+
+  const [retailOverridesVersion, setRetailOverridesVersion] = useState(0);
+  useEffect(() => {
+    const unsub = subscribeDealerProductRetail(() => {
+      setRetailOverridesVersion((v) => v + 1);
+    });
+    return () => {
+      unsub();
+    };
+  }, []);
 
   const marketplaceApi = useMemo(() => getMarketplaceApi(), []);
   const productPricingApi = useMemo(() => getProductPricingApi(), []);
@@ -242,14 +258,18 @@ export function DealerMarketplaceProductDetailPage() {
   const selectedAddonsTotalCents = useMemo(() => {
     if (activeAddons.length === 0) return 0;
     let total = 0;
+    void retailOverridesVersion;
+    const pid = (product?.id ?? "").trim();
     for (const a of activeAddons) {
       if (!selectedAddonIds[a.id]) continue;
+      const aid = (a.id ?? "").trim();
+      const addonOverride = dealerId && pid && aid ? getDealerProductAddonRetailCents(dealerId, pid, aid) : null;
       const cost = costFromProductOrPricing({ dealerCostCents: a.dealerCostCents, basePriceCents: a.basePriceCents });
-      const retail = retailFromCost(cost, markupPct) ?? cost;
+      const retail = typeof addonOverride === "number" ? addonOverride : retailFromCost(cost, markupPct) ?? cost;
       if (typeof retail === "number" && Number.isFinite(retail) && retail > 0) total += retail;
     }
     return total;
-  }, [activeAddons, markupPct, selectedAddonIds]);
+  }, [activeAddons, dealerId, markupPct, product?.id, retailOverridesVersion, selectedAddonIds]);
 
   useEffect(() => {
     setSelectedAddonIds((current) => {
@@ -418,8 +438,18 @@ export function DealerMarketplaceProductDetailPage() {
                           {(() => {
                             const r = sortedPricingRows.find((x) => x.id === selectedPricingId) ?? primaryRow;
                             if (!r) return <div className="text-sm text-muted-foreground">—</div>;
+                            void retailOverridesVersion;
+                            const pid = (product?.id ?? "").trim();
+                            const rid = (r.id ?? "").trim();
+                            const termOverride = dealerId && pid && rid ? getDealerProductPricingRetailCents(dealerId, pid, rid) : null;
+                            const override = dealerId && pid ? getDealerProductRetailCents(dealerId, pid) : null;
                             const cost = costFromProductOrPricing({ dealerCostCents: r.dealerCostCents, basePriceCents: r.basePriceCents });
-                            const retail = retailFromCost(cost, markupPct) ?? cost;
+                            const retail =
+                              typeof termOverride === "number"
+                                ? termOverride
+                                : typeof override === "number"
+                                  ? override
+                                  : retailFromCost(cost, markupPct) ?? cost;
                             const baseRetailCents = typeof retail === "number" && Number.isFinite(retail) ? retail : 0;
                             const totalRetail = baseRetailCents + selectedAddonsTotalCents;
                             return (
@@ -476,6 +506,21 @@ export function DealerMarketplaceProductDetailPage() {
                             sortedPricingRows.map((r) => {
                               const isPrimary = primaryRow?.id && r.id === primaryRow.id;
                               const isSelected = r.id === selectedPricingId;
+
+                              const baseRetail = (() => {
+                                void retailOverridesVersion;
+                                const pid = (product?.id ?? "").trim();
+                                const rid = (r.id ?? "").trim();
+                                const termOverride = dealerId && pid && rid ? getDealerProductPricingRetailCents(dealerId, pid, rid) : null;
+                                const override = dealerId && pid ? getDealerProductRetailCents(dealerId, pid) : null;
+                                const cost = costFromProductOrPricing({ dealerCostCents: r.dealerCostCents, basePriceCents: r.basePriceCents });
+                                return typeof termOverride === "number"
+                                  ? termOverride
+                                  : typeof override === "number"
+                                    ? override
+                                    : retailFromCost(cost, markupPct) ?? cost;
+                              })();
+
                               return (
                                 <tr
                                   key={r.id}
@@ -524,11 +569,7 @@ export function DealerMarketplaceProductDetailPage() {
                                   <td className="px-4 py-3 pr-3 text-muted-foreground">{money(r.claimLimitCents)}</td>
                                   <td className="px-4 py-3 pr-3 text-muted-foreground">{money(r.deductibleCents)}</td>
                                   <td className="px-4 py-3 pr-3 font-medium text-foreground">
-                                    {(() => {
-                                      const cost = costFromProductOrPricing({ dealerCostCents: r.dealerCostCents, basePriceCents: r.basePriceCents });
-                                      const retail = retailFromCost(cost, markupPct) ?? cost;
-                                      return <div>{money(retail)}</div>;
-                                    })()}
+                                    <div>{money(baseRetail)}</div>
                                   </td>
                                 </tr>
                               );
@@ -544,8 +585,12 @@ export function DealerMarketplaceProductDetailPage() {
                               <td className="px-4 py-3 pr-3 text-muted-foreground">{money(product.deductibleCents)}</td>
                               <td className="px-4 py-3 pr-3 font-medium text-foreground">
                                 {(() => {
+                                  void retailOverridesVersion;
+                                  const pid = (product?.id ?? "").trim();
+                                  const override = dealerId && pid ? getDealerProductRetailCents(dealerId, pid) : null;
                                   const cost = costFromProductOrPricing({ dealerCostCents: product.dealerCostCents, basePriceCents: product.basePriceCents });
-                                  const retail = retailFromCost(cost, markupPct) ?? cost;
+                                  const retail =
+                                    typeof override === "number" ? override : retailFromCost(cost, markupPct) ?? cost;
                                   return <div>{money(retail)}</div>;
                                 })()}
                               </td>
@@ -561,8 +606,18 @@ export function DealerMarketplaceProductDetailPage() {
                         if (!r) {
                           return <div className="text-sm text-muted-foreground">Select a pricing option to continue.</div>;
                         }
+                        void retailOverridesVersion;
+                        const pid = (product?.id ?? "").trim();
+                        const rid = (r.id ?? "").trim();
+                        const termOverride = dealerId && pid && rid ? getDealerProductPricingRetailCents(dealerId, pid, rid) : null;
+                        const override = dealerId && pid ? getDealerProductRetailCents(dealerId, pid) : null;
                         const cost = costFromProductOrPricing({ dealerCostCents: r.dealerCostCents, basePriceCents: r.basePriceCents });
-                        const retail = retailFromCost(cost, markupPct) ?? cost;
+                        const retail =
+                          typeof termOverride === "number"
+                            ? termOverride
+                            : typeof override === "number"
+                              ? override
+                              : retailFromCost(cost, markupPct) ?? cost;
                         const baseRetailCents = typeof retail === "number" && Number.isFinite(retail) ? retail : 0;
                         const totalRetail = baseRetailCents + selectedAddonsTotalCents;
                         return (
@@ -683,8 +738,12 @@ export function DealerMarketplaceProductDetailPage() {
                 <div className="space-y-3">
                   {activeAddons.map((a) => {
                     const checked = Boolean(selectedAddonIds[a.id]);
+                    void retailOverridesVersion;
+                    const pid = (product?.id ?? "").trim();
+                    const aid = (a.id ?? "").trim();
+                    const addonOverride = dealerId && pid && aid ? getDealerProductAddonRetailCents(dealerId, pid, aid) : null;
                     const cost = costFromProductOrPricing({ dealerCostCents: a.dealerCostCents, basePriceCents: a.basePriceCents });
-                    const retail = retailFromCost(cost, markupPct) ?? cost;
+                    const retail = typeof addonOverride === "number" ? addonOverride : retailFromCost(cost, markupPct) ?? cost;
                     return (
                       <label key={a.id} className="flex items-start justify-between gap-3 cursor-pointer select-none">
                         <span className="flex items-start gap-3">

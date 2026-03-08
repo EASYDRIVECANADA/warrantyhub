@@ -1,13 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate } from "react-router-dom";
 import { BarChart3, DollarSign, FileText, Users } from "lucide-react";
 
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
 import { PageShell } from "../components/PageShell";
 import { getAppMode } from "../lib/runtime";
-import { useDealerMarkupPct } from "../lib/dealerMarkup";
 import { listAuditEvents, logAuditEvent } from "../lib/auditLog";
 import { useAuth } from "../providers/AuthProvider";
 import { getSupabaseClient } from "../lib/supabase/client";
@@ -172,18 +170,10 @@ export function DealerAdminPage() {
   if (user.role !== "DEALER_ADMIN") return <Navigate to="/dealer-dashboard" replace />;
 
   const dealerId = (mode === "local" ? (user.dealerId ?? user.id) : (user.dealerId ?? "")).trim();
-  const { markupPct: persistedMarkupPct, saveMarkupPct, isSaving: isSavingMarkup } = useDealerMarkupPct(dealerId);
-  const [markupPct, setMarkupPct] = useState("");
-  const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
 
   const recentAudit = useMemo(() => listAuditEvents({ dealerId, limit: 25 }), [dealerId]);
 
   const dealerKey = dealerId;
-
-  useEffect(() => {
-    setMarkupPct(String(persistedMarkupPct));
-  }, [dealerId, persistedMarkupPct]);
 
   useEffect(() => {
     if (!dealerKey) return;
@@ -488,74 +478,6 @@ export function DealerAdminPage() {
                   {invite?.createdAt ? (
                     <div className="mt-2 text-xs text-muted-foreground">Updated {new Date(invite.createdAt).toLocaleString()}</div>
                   ) : null}
-                </div>
-
-                <div className="rounded-xl border bg-background/40 p-4">
-                  <div className="font-semibold text-sm">Pricing</div>
-                  <div className="text-xs text-muted-foreground mt-1">Controls dealer price markup.</div>
-
-                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-                    <div className="sm:col-span-2">
-                      <div className="text-xs text-muted-foreground mb-1">Dealership markup %</div>
-                      <Input
-                        value={markupPct}
-                        onChange={(e) => setMarkupPct(e.target.value)}
-                        placeholder="e.g. 25"
-                        inputMode="decimal"
-                        disabled={!dealerId || isSavingMarkup}
-                      />
-                      {(() => {
-                        const n = Number(markupPct);
-                        if (!Number.isFinite(n)) return null;
-                        const pct = Math.max(0, Math.min(200, n));
-                        const exampleCostCents = 50000;
-                        const exampleRetailCents = Math.round(exampleCostCents * (1 + pct / 100));
-                        return (
-                          <div className="mt-2 text-xs text-muted-foreground">
-                            Example: {money(exampleCostCents)} → {money(exampleRetailCents)}
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    <Button
-                      onClick={() => {
-                        void (async () => {
-                          try {
-                            const n = Number(markupPct);
-                            await saveMarkupPct(n);
-                            setSavedAt(new Date().toLocaleString());
-                            setSaveError(null);
-                          } catch (err) {
-                            setSavedAt(null);
-                            const anyErr = err as any;
-                            const msg =
-                              err instanceof Error
-                                ? err.message
-                                : typeof anyErr?.message === "string"
-                                  ? anyErr.message
-                                  : typeof err === "string"
-                                    ? err
-                                    : (() => {
-                                        try {
-                                          return JSON.stringify(err);
-                                        } catch {
-                                          return "Failed to save markup";
-                                        }
-                                      })();
-                            setSaveError(msg || "Failed to save markup");
-                          }
-                        })();
-                      }}
-                      disabled={!dealerId || isSavingMarkup}
-                      className="bg-yellow-400 text-black hover:bg-yellow-300"
-                    >
-                      Save
-                    </Button>
-                  </div>
-
-                  {savedAt ? <div className="mt-2 text-xs text-muted-foreground">Saved {savedAt}</div> : null}
-                  {saveError ? <div className="mt-2 text-xs text-destructive">{saveError}</div> : null}
                 </div>
               </div>
             </div>

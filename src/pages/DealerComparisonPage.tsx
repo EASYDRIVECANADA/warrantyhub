@@ -19,6 +19,7 @@ import type { ProviderPublic } from "../lib/providers/types";
 import { decodeVin, type VinDecoded } from "../lib/vin/decodeVin";
 import { alertMissing, confirmProceed, sanitizeDigitsOnly } from "../lib/utils";
 import { useAuth } from "../providers/AuthProvider";
+import { getDealerProductRetailCents, subscribeDealerProductRetail } from "../lib/dealerProductRetail";
 
 function productTypeLabel(t: string) {
   if (t === "EXTENDED_WARRANTY") return "Extended Warranty";
@@ -82,8 +83,19 @@ export function DealerComparisonPage() {
   const { user } = useAuth();
   const mode = useMemo(() => getAppMode(), []);
 
-  const dealerId = (mode === "local" ? (user?.dealerId ?? user?.id ?? "") : user?.dealerId ?? "").trim();
+  const dealerId = (mode === "local" ? (user?.dealerId ?? user?.id ?? "") : (user?.dealerId ?? "")).trim();
   const { markupPct } = useDealerMarkupPct(dealerId);
+
+  const [retailOverridesVersion, setRetailOverridesVersion] = useState(0);
+  useEffect(() => {
+    const unsub = subscribeDealerProductRetail(() => {
+      setRetailOverridesVersion((v) => v + 1);
+    });
+    return () => {
+      unsub();
+    };
+  }, []);
+
   const [vin, setVin] = useState(() => (searchParams.get("vin") ?? ""));
   const [decoded, setDecoded] = useState<VinDecoded | null>(null);
   const [mileageKm, setMileageKm] = useState(() => (searchParams.get("mileageKm") ?? ""));
@@ -204,6 +216,9 @@ export function DealerComparisonPage() {
     .filter((p) => eligible(p));
 
   const shownRetailFor = (p: Product) => {
+    void retailOverridesVersion;
+    const override = dealerId ? getDealerProductRetailCents(dealerId, (p.id ?? "").trim()) : null;
+    if (typeof override === "number" && Number.isFinite(override) && override > 0) return override;
     const cost = costFromProductOrPricing({ dealerCostCents: p.dealerCostCents, basePriceCents: p.basePriceCents });
     return retailFromCost(cost, markupPct) ?? cost;
   };

@@ -9,7 +9,13 @@ import { AuthProvider } from "./providers/AuthProvider";
 import { ConfirmProvider } from "./providers/ConfirmProvider";
 import { AlertProvider } from "./providers/AlertProvider";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+    },
+  },
+});
 
 const faviconUrl = new URL("../images/Bridge Warranty_Icon Only.png", import.meta.url).href;
 

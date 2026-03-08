@@ -11,14 +11,15 @@ import { useAuth } from "../providers/AuthProvider";
 
 import {
   BarChart3,
+  Cog,
   DollarSign,
   FileText,
-  Image,
   LayoutGrid,
   LogOut,
   Menu,
   Package,
   Store,
+  Text,
   User,
   Users,
   X,
@@ -185,6 +186,7 @@ export function RootLayout() {
       active: location.pathname.startsWith("/dealer-marketplace"),
     },
     { to: "/dealer-contracts", label: "Contracts", icon: FileText, active: location.pathname.startsWith("/dealer-contracts") },
+    { to: "/dealer-configure", label: "Configure", icon: Cog, active: location.pathname.startsWith("/dealer-configure") },
     {
       to: "/dealer-remittances",
       label: "Remittances",
@@ -202,6 +204,7 @@ export function RootLayout() {
   const providerNavItems = [
     { to: "/provider-dashboard", label: "Dashboard", icon: LayoutGrid, active: location.pathname === "/provider-dashboard" },
     { to: "/provider-products", label: "Products", icon: Package, active: location.pathname.startsWith("/provider-products") },
+    { to: "/provider-terms", label: "Terms", icon: Text, active: location.pathname.startsWith("/provider-terms") },
     { to: "/provider-contracts", label: "Contracts", icon: FileText, active: location.pathname.startsWith("/provider-contracts") },
     {
       to: "/provider-remittances",
@@ -209,7 +212,6 @@ export function RootLayout() {
       icon: DollarSign,
       active: location.pathname.startsWith("/provider-remittances"),
     },
-    { to: "/provider-documents", label: "Logo", icon: Image, active: location.pathname.startsWith("/provider-documents") },
   ] as const;
 
   const providerSecondaryItems = [{ to: "/profile", label: "Profile", icon: User, active: location.pathname.startsWith("/profile") }] as const;
@@ -225,7 +227,7 @@ export function RootLayout() {
             className="hidden lg:grid min-h-screen"
             style={{ gridTemplateColumns: isDealerAdminSidebarCollapsed ? "88px minmax(0, 1fr)" : "260px minmax(0, 1fr)" }}
           >
-            <aside className="flex flex-col border-r bg-card/95 backdrop-blur-xl">
+            <aside className="relative z-20 flex flex-col border-r bg-card/95 backdrop-blur-xl">
               <div className={`h-14 px-4 flex items-center border-b ${isDealerAdminSidebarCollapsed ? "justify-center" : "justify-start"}`}>
                 <Link to="/dealer-admin" className={`flex items-center gap-2 ${isDealerAdminSidebarCollapsed ? "justify-center" : ""}`}>
                   <img src={BRAND.logoUrl} alt={BRAND.name} className="h-9 w-auto object-contain" />
@@ -252,7 +254,7 @@ export function RootLayout() {
                         }
                       }}
                       className={cn(
-                        buttonVariants({ variant: "ghost" }),
+                        buttonVariants({ variant: "ghost", size: "sm" }),
                         `w-full ${isDealerAdminSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium`,
                         item.active
                           ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
@@ -281,7 +283,7 @@ export function RootLayout() {
                         }
                       }}
                       className={cn(
-                        buttonVariants({ variant: "ghost" }),
+                        buttonVariants({ variant: "ghost", size: "sm" }),
                         `w-full ${isDealerAdminSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium`,
                         item.active
                           ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
@@ -319,7 +321,7 @@ export function RootLayout() {
               </div>
             </aside>
 
-            <main className="min-w-0">
+            <main className="relative z-0 min-w-0">
               {isLoading && !user ? <div style={{ padding: 24, color: "#6b7280" }}>Loading…</div> : null}
               <RouteErrorBoundary key={location.pathname}>
                 <Outlet />
@@ -378,7 +380,7 @@ export function RootLayout() {
                             }
                           }}
                           className={cn(
-                            buttonVariants({ variant: "ghost" }),
+                            buttonVariants({ variant: "ghost", size: "sm" }),
                             "w-full justify-start h-9 text-[13px] font-medium",
                             item.active
                               ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
@@ -407,7 +409,7 @@ export function RootLayout() {
                             }
                           }}
                           className={cn(
-                            buttonVariants({ variant: "ghost" }),
+                            buttonVariants({ variant: "ghost", size: "sm" }),
                             "w-full justify-start h-9 text-[13px] font-medium",
                             item.active
                               ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
@@ -472,7 +474,7 @@ export function RootLayout() {
                       to={item.to}
                       onClick={() => setIsProviderMobileNavOpen(false)}
                       className={cn(
-                        buttonVariants({ variant: "ghost" }),
+                        buttonVariants({ variant: "ghost", size: "sm" }),
                         `w-full ${isProviderSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium`,
                         item.active
                           ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
@@ -495,7 +497,7 @@ export function RootLayout() {
                       to={item.to}
                       onClick={() => setIsProviderMobileNavOpen(false)}
                       className={cn(
-                        buttonVariants({ variant: "ghost" }),
+                        buttonVariants({ variant: "ghost", size: "sm" }),
                         `w-full ${isProviderSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium`,
                         item.active
                           ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
@@ -582,7 +584,7 @@ export function RootLayout() {
                           to={item.to}
                           onClick={() => setIsProviderMobileNavOpen(false)}
                           className={cn(
-                            buttonVariants({ variant: "ghost" }),
+                            buttonVariants({ variant: "ghost", size: "sm" }),
                             "w-full justify-start h-9 text-[13px] font-medium",
                             item.active
                               ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
@@ -605,7 +607,7 @@ export function RootLayout() {
                           to={item.to}
                           onClick={() => setIsProviderMobileNavOpen(false)}
                           className={cn(
-                            buttonVariants({ variant: "ghost" }),
+                            buttonVariants({ variant: "ghost", size: "sm" }),
                             "w-full justify-start h-9 text-[13px] font-medium",
                             item.active
                               ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"

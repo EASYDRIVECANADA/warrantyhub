@@ -1542,163 +1542,201 @@ export function ProviderProductsPage() {
       {error ? <div className="text-sm text-destructive">{error}</div> : null}
 
       {showEditor ? (
-        <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden">
+        <div className="mt-8 relative">
+          <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-yellow-400/10 blur-2xl" />
 
-          <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap">
-            <div>
-              <div className="font-semibold">{editor.id ? "Edit Product" : "New Product"}</div>
-              <div className="text-sm text-muted-foreground mt-1">Create and publish offerings into the marketplace.</div>
+          <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-600/10">
+            <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 to-transparent flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <div className="font-semibold">{editor.id ? "Edit Product" : "New Product"}</div>
+                <div className="text-sm text-muted-foreground mt-1">
+                  Fill out the required details, then add pricing before publishing.
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowEditor(false);
+                    setEditor(emptyEditor());
+                  }}
+                  disabled={busy}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={() => void onSubmit()} disabled={busy}>
+                  Save
+                </Button>
+              </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowEditor(false);
-                  setEditor(emptyEditor());
-                }}
-                disabled={busy}
-              >
-                Cancel
-              </Button>
-              <Button onClick={() => void onSubmit()} disabled={busy}>
-                Save
-              </Button>
+            <div className="px-6 pt-4">
+              <div className="inline-flex rounded-xl border bg-background/40 p-1 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("OVERVIEW")}
+                  className={
+                    "px-3 py-1.5 text-sm rounded-lg transition-colors " +
+                    (activeTab === "OVERVIEW"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground")
+                  }
+                  disabled={busy}
+                >
+                  Overview
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("ELIGIBILITY")}
+                  className={
+                    "px-3 py-1.5 text-sm rounded-lg transition-colors " +
+                    (activeTab === "ELIGIBILITY"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground")
+                  }
+                  disabled={busy}
+                >
+                  Eligibility
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("PRICING")}
+                  className={
+                    "px-3 py-1.5 text-sm rounded-lg transition-colors " +
+                    (activeTab === "PRICING"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground")
+                  }
+                  disabled={busy}
+                >
+                  Pricing
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("DOCUMENTS")}
+                  className={
+                    "px-3 py-1.5 text-sm rounded-lg transition-colors " +
+                    (activeTab === "DOCUMENTS"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground")
+                  }
+                  disabled={busy}
+                >
+                  Documents
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("ADDONS")}
+                  className={
+                    "px-3 py-1.5 text-sm rounded-lg transition-colors " +
+                    (activeTab === "ADDONS" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")
+                  }
+                  disabled={busy}
+                >
+                  Add-ons
+                </button>
+              </div>
             </div>
-          </div>
 
-          <div className="px-6 pt-4">
-            <div className="inline-flex rounded-lg border bg-background p-1 gap-1">
-              <button
-                type="button"
-                onClick={() => setActiveTab("OVERVIEW")}
-                className={
-                  "px-3 py-1.5 text-sm rounded-md " +
-                  (activeTab === "OVERVIEW" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")
-                }
-                disabled={busy}
-              >
-                Overview
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("ELIGIBILITY")}
-                className={
-                  "px-3 py-1.5 text-sm rounded-md " +
-                  (activeTab === "ELIGIBILITY" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")
-                }
-                disabled={busy}
-              >
-                Eligibility
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("PRICING")}
-                className={
-                  "px-3 py-1.5 text-sm rounded-md " +
-                  (activeTab === "PRICING" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")
-                }
-                disabled={busy}
-              >
-                Pricing
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("DOCUMENTS")}
-                className={
-                  "px-3 py-1.5 text-sm rounded-md " +
-                  (activeTab === "DOCUMENTS" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")
-                }
-                disabled={busy}
-              >
-                Documents
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("ADDONS")}
-                className={
-                  "px-3 py-1.5 text-sm rounded-md " +
-                  (activeTab === "ADDONS" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")
-                }
-                disabled={busy}
-              >
-                Add-ons
-              </button>
-            </div>
-          </div>
-
-          <div className="p-6">
+            <div className="p-6">
             {activeTab === "OVERVIEW" ? (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <Input
-                    value={editor.name}
-                    onChange={(e) => setEditor((s) => ({ ...s, name: sanitizeWordsOnly(e.target.value) }))}
-                    placeholder="Product name"
-                    disabled={busy}
-                  />
+              <div className="space-y-6">
+                <div className="rounded-2xl border bg-background/40 p-4">
+                  <div className="font-semibold">Basics</div>
+                  <div className="text-sm text-muted-foreground mt-1">Name and product type show to dealerships.</div>
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <div className="text-xs text-muted-foreground">Product name</div>
+                      <Input
+                        value={editor.name}
+                        onChange={(e) => setEditor((s) => ({ ...s, name: sanitizeWordsOnly(e.target.value) }))}
+                        placeholder="Example: GAP Pro"
+                        disabled={busy}
+                      />
+                    </div>
 
-                  <select
-                    value={editor.productType}
-                    onChange={(e) => setEditor((s) => ({ ...s, productType: e.target.value as ProductType }))}
-                    className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
-                    disabled={busy}
-                  >
-                    <option value="EXTENDED_WARRANTY">Extended Warranty</option>
-                    <option value="GAP">GAP Insurance</option>
-                    <option value="TIRE_RIM">Tire & Rim</option>
-                    <option value="APPEARANCE">Appearance / Rust / Key</option>
-                    <option value="OTHER">Other</option>
-                  </select>
+                    <div className="space-y-2">
+                      <div className="text-xs text-muted-foreground">Product type</div>
+                      <select
+                        value={editor.productType}
+                        onChange={(e) => setEditor((s) => ({ ...s, productType: e.target.value as ProductType }))}
+                        className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
+                        disabled={busy}
+                      >
+                        <option value="EXTENDED_WARRANTY">Extended Warranty</option>
+                        <option value="GAP">GAP Insurance</option>
+                        <option value="TIRE_RIM">Tire & Rim</option>
+                        <option value="APPEARANCE">Appearance / Rust / Key</option>
+                        <option value="OTHER">Other</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    <div className="text-xs text-muted-foreground">Program code (optional)</div>
+                    <Input
+                      value={editor.programCode}
+                      onChange={(e) => setEditor((s) => ({ ...s, programCode: e.target.value }))}
+                      placeholder="Example: AX1"
+                      disabled={busy}
+                    />
+                  </div>
+
+                  {editor.productType === "GAP" ? (
+                    <div className="mt-4 space-y-2">
+                      <div className="text-xs text-muted-foreground">Max LTV percent (GAP only)</div>
+                      <Input
+                        value={editor.coverageMaxLtvPercent}
+                        onChange={(e) => setEditor((s) => ({ ...s, coverageMaxLtvPercent: e.target.value }))}
+                        placeholder="Example: 130"
+                        disabled={busy}
+                      />
+                    </div>
+                  ) : null}
                 </div>
 
-                <Input
-                  value={editor.programCode}
-                  onChange={(e) => setEditor((s) => ({ ...s, programCode: e.target.value }))}
-                  placeholder="Program code (optional). Example: AX1, Elite Plus, Bronze"
-                  disabled={busy}
-                />
+                <div className="rounded-2xl border bg-background/40 p-4">
+                  <div className="font-semibold">Coverage details</div>
+                  <div className="text-sm text-muted-foreground mt-1">Dealerships use this to understand what’s included.</div>
 
-                <textarea
-                  value={editor.keyBenefits}
-                  onChange={(e) => setEditor((s) => ({ ...s, keyBenefits: e.target.value }))}
-                  placeholder="Key benefits (shown on card)\n\nExample:\nCovers loan deficit after total loss\nUp to $50,000 deficit coverage\nDeductible reimbursement up to $1,000\nUp to 130% LTV"
-                  className={textareaClassName()}
-                  disabled={busy}
-                />
+                  <div className="mt-4 space-y-2">
+                    <div className="text-xs text-muted-foreground">Coverage summary</div>
+                    <textarea
+                      value={editor.coverageDetails}
+                      onChange={(e) => setEditor((s) => ({ ...s, coverageDetails: e.target.value }))}
+                      placeholder="Short summary of what’s covered…"
+                      className={textareaClassName()}
+                      disabled={busy}
+                    />
+                  </div>
 
-                {editor.productType === "GAP" ? (
-                  <Input
-                    value={editor.coverageMaxLtvPercent}
-                    onChange={(e) => setEditor((s) => ({ ...s, coverageMaxLtvPercent: e.target.value }))}
-                    placeholder="Max LTV percent (GAP only). Example: 130 or 160"
-                    disabled={busy}
-                  />
-                ) : null}
+                  <div className="mt-4 space-y-2">
+                    <div className="text-xs text-muted-foreground">Exclusions</div>
+                    <textarea
+                      value={editor.exclusions}
+                      onChange={(e) => setEditor((s) => ({ ...s, exclusions: e.target.value }))}
+                      placeholder="What’s not covered…"
+                      className={textareaClassName()}
+                      disabled={busy}
+                    />
+                  </div>
+                </div>
 
-                <textarea
-                  value={editor.coverageDetails}
-                  onChange={(e) => setEditor((s) => ({ ...s, coverageDetails: e.target.value }))}
-                  placeholder="Coverage summary"
-                  className={textareaClassName()}
-                  disabled={busy}
-                />
+                <div className="rounded-2xl border bg-background/40 p-4">
+                  <div className="font-semibold">Internal notes</div>
+                  <div className="text-sm text-muted-foreground mt-1">Provider-only notes for your team. Not shown to dealerships.</div>
 
-                <textarea
-                  value={editor.exclusions}
-                  onChange={(e) => setEditor((s) => ({ ...s, exclusions: e.target.value }))}
-                  placeholder="Exclusions"
-                  className={textareaClassName()}
-                  disabled={busy}
-                />
-
-                <textarea
-                  value={editor.internalNotes}
-                  onChange={(e) => setEditor((s) => ({ ...s, internalNotes: e.target.value }))}
-                  placeholder="Internal notes (provider-only)"
-                  className={textareaClassName()}
-                  disabled={busy}
-                />
+                  <div className="mt-4">
+                    <textarea
+                      value={editor.internalNotes}
+                      onChange={(e) => setEditor((s) => ({ ...s, internalNotes: e.target.value }))}
+                      placeholder="Optional…"
+                      className={textareaClassName()}
+                      disabled={busy}
+                    />
+                  </div>
+                </div>
               </div>
             ) : null}
 
@@ -2995,21 +3033,22 @@ export function ProviderProductsPage() {
                 </div>
               </div>
             ) : null}
+            </div>
           </div>
         </div>
       ) : null}
 
-      <div className="mt-10 rounded-2xl border bg-card shadow-card overflow-hidden">
-        <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap">
+      <div className="mt-10 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-600/10">
+        <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 to-transparent flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <div className="font-semibold">Your Products</div>
-            <div className="text-sm text-muted-foreground mt-1">Draft and published offerings.</div>
+            <div className="font-semibold">Products</div>
+            <div className="text-sm text-muted-foreground mt-1">Create, edit, and publish products for the dealer marketplace.</div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap justify-end">
             <Input
               value={search}
               onChange={(e) => setSearch(sanitizeWordsOnly(e.target.value))}
-              placeholder="Search…"
+              placeholder="Search products…"
               className="w-[220px]"
               disabled={busy}
             />
@@ -3023,23 +3062,13 @@ export function ProviderProductsPage() {
               <option value="DRAFT">Draft</option>
               <option value="PUBLISHED">Published</option>
             </select>
-            <div className="text-sm text-muted-foreground whitespace-nowrap">
+            <div className="text-xs text-muted-foreground whitespace-nowrap rounded-full border bg-background/40 px-3 py-1">
               {publishedCount} published • {draftCount} draft
             </div>
           </div>
         </div>
 
-        <div className="hidden md:grid grid-cols-12 gap-3 px-6 py-3 border-b text-xs text-muted-foreground">
-          <div className="col-span-3">Product</div>
-          <div className="col-span-1">Status</div>
-          <div className="col-span-3">Coverage</div>
-          <div className="col-span-2">Terms</div>
-          <div className="col-span-1">Cost</div>
-          <div className="col-span-1">Eligibility</div>
-          <div className="col-span-1 text-right">Action</div>
-        </div>
-
-        <div className="divide-y">
+        <div className="p-4 md:p-6 space-y-3">
           {filteredProducts.map((p) => {
             const health = pricingHealthByProductId.get(p.id);
             const primary = health?.primary ?? null;
@@ -3074,54 +3103,35 @@ export function ProviderProductsPage() {
               : "text-[10px] px-2 py-0.5 rounded-md border bg-rose-50 text-rose-700 border-rose-200";
 
             return (
-              <div key={p.id} className="px-6 py-4">
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                  <div className="md:col-span-3">
-                    <div className="text-sm font-medium text-foreground">{p.name}</div>
+              <div key={p.id} className="rounded-2xl border bg-background/40 p-4">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="min-w-[240px]">
+                    <div className="text-sm font-semibold text-foreground">{p.name}</div>
                     <div className="text-xs text-muted-foreground mt-1">{productTypeLabel(p.productType)}</div>
                   </div>
-                  <div className="md:col-span-1">
-                    <div className="space-y-1">
-                      <span className={statusBadge(p.published)}>{p.published ? "Published" : "Draft"}</span>
-                      {health ? (
-                        <div className="flex items-center gap-2">
-                          <div className={pricingBadgeClass}>{health.ok ? "Pricing OK" : health.reason}</div>
-                          {!health.ok ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-6 px-2 text-[10px]"
-                              onClick={() => beginEditTab(p, "PRICING")}
-                              disabled={busy}
-                            >
-                              Fix
-                            </Button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                  <div className="md:col-span-3 text-sm text-muted-foreground">
-                    {(p.coverageDetails ?? "").trim() || (p.exclusions ?? "").trim() ? (
-                      <div className="line-clamp-2">{(p.coverageDetails ?? "").trim() || (p.exclusions ?? "").trim()}</div>
-                    ) : (
-                      "—"
-                    )}
-                  </div>
-                  <div className="md:col-span-2 text-sm text-muted-foreground">
-                    <div>{months} / {km}</div>
-                    {primary ? (
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {(primaryClass ? `Class ${primaryClass.replace(/^CLASS_/, "")}` : "Any class")}
-                        {primaryMileageLabel ? ` • ${primaryMileageLabel}` : ""}
-                        {primaryClaimLimit ? ` • Limit ${primaryClaimLimit}` : ""}
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={statusBadge(p.published)}>{p.published ? "Published" : "Draft"}</span>
+                    {health ? (
+                      <div className="flex items-center gap-2">
+                        <div className={pricingBadgeClass}>{health.ok ? "Pricing OK" : "Pricing needs attention"}</div>
+                        {!health.ok ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-[11px]"
+                            onClick={() => beginEditTab(p, "PRICING")}
+                            disabled={busy}
+                          >
+                            Fix pricing
+                          </Button>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
-                  <div className="md:col-span-1 text-sm text-muted-foreground">{money(primary?.basePriceCents ?? undefined)}</div>
-                  <div className="md:col-span-1 text-xs text-muted-foreground">{eligibilitySummary(p)}</div>
-                  <div className="md:col-span-1 flex md:justify-end gap-2">
+
+                  <div className="flex items-center gap-2">
                     <Button size="sm" variant="outline" onClick={() => beginEdit(p)} disabled={busy}>
                       Edit
                     </Button>
@@ -3136,16 +3146,51 @@ export function ProviderProductsPage() {
                     </Button>
                   </div>
                 </div>
+
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-4">
+                  <div className="md:col-span-5">
+                    <div className="text-xs text-muted-foreground">Coverage</div>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      {(p.coverageDetails ?? "").trim() || (p.exclusions ?? "").trim() ? (
+                        <div className="line-clamp-2">{(p.coverageDetails ?? "").trim() || (p.exclusions ?? "").trim()}</div>
+                      ) : (
+                        "—"
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-3">
+                    <div className="text-xs text-muted-foreground">Primary terms</div>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      {months} / {km}
+                    </div>
+                    {primary ? (
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {(primaryClass ? `Class ${primaryClass.replace(/^CLASS_/, "")}` : "Any class")}
+                        {primaryMileageLabel ? ` • ${primaryMileageLabel}` : ""}
+                        {primaryClaimLimit ? ` • Limit ${primaryClaimLimit}` : ""}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <div className="text-xs text-muted-foreground">Base provider cost</div>
+                    <div className="text-sm font-medium text-foreground mt-1">{money(primary?.basePriceCents ?? undefined)}</div>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <div className="text-xs text-muted-foreground">Eligibility</div>
+                    <div className="text-sm text-muted-foreground mt-1">{eligibilitySummary(p)}</div>
+                  </div>
+                </div>
               </div>
             );
           })}
 
-          {productsQuery.isLoading ? <div className="px-6 py-6 text-sm text-muted-foreground">Loading…</div> : null}
-          {productsQuery.isError ? <div className="px-6 py-6 text-sm text-destructive">Failed to load products.</div> : null}
+          {productsQuery.isLoading ? <div className="px-2 py-2 text-sm text-muted-foreground">Loading…</div> : null}
+          {productsQuery.isError ? <div className="px-2 py-2 text-sm text-destructive">Failed to load products.</div> : null}
           {!productsQuery.isLoading && !productsQuery.isError && filteredProducts.length === 0 ? (
-            <div className="px-6 py-10 text-sm text-muted-foreground">
-              No products yet. Click <span className="font-medium">New Product</span> to create your first offering.
-            </div>
+            <div className="px-2 py-10 text-sm text-muted-foreground">No products found. Create a new product to publish to the marketplace.</div>
           ) : null}
         </div>
       </div>

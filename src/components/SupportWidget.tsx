@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { MessageCircle } from "lucide-react";
 
 import { Button } from "./ui/button";
 import { SupportFaqs } from "./SupportFaqs";
@@ -216,26 +217,47 @@ export function SupportWidget() {
   return (
     <div className="fixed bottom-5 right-5 z-50">
       {!open ? (
-        <Button
-          onClick={() => {
-            setTab("chat");
-            setOpen(true);
-          }}
-        >
-          Help
-        </Button>
+        <>
+          <Button
+            onClick={() => {
+              setTab("chat");
+              setOpen(true);
+            }}
+            className="relative h-14 w-14 rounded-full p-0 shadow-card ring-1 ring-blue-600/15 bg-primary text-primary-foreground hover:bg-primary/90 transition-transform hover:-translate-y-0.5"
+            style={{ animation: "support-widget-fab-float 3.2s ease-in-out infinite" }}
+          >
+            <MessageCircle className="h-6 w-6" />
+            <span className="sr-only">Help</span>
+            <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-rose-500 text-white text-[11px] font-semibold grid place-items-center shadow">
+              1
+            </span>
+          </Button>
+          <style>
+            {`@keyframes support-widget-fab-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}`}
+          </style>
+        </>
       ) : (
-        <div className="w-[360px] max-w-[calc(100vw-40px)] max-h-[calc(100vh-40px)] rounded-xl border bg-card shadow-card overflow-hidden flex flex-col">
-          <div className="px-4 py-3 border-b flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="font-semibold text-sm">Help & Support</div>
-              <div className="flex items-center rounded-md border bg-background overflow-hidden">
+        <div className="w-[380px] max-w-[calc(100vw-40px)] max-h-[calc(100vh-40px)] rounded-2xl border bg-card shadow-card overflow-hidden flex flex-col ring-1 ring-blue-600/10">
+          <div className="px-4 py-3 bg-gradient-to-r from-blue-700 to-blue-600 text-white flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-white/15 ring-1 ring-white/20 grid place-items-center">
+                <MessageCircle className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-semibold leading-tight">Support</div>
+                <div className="text-xs text-white/80 leading-tight">Chat with the Bridge Warranty team</div>
+              </div>
+              <div className="ml-2 flex items-center rounded-full bg-white/10 ring-1 ring-white/15 p-1">
                 <button
                   type="button"
                   className={
-                    showChat
-                      ? "px-2 py-1 text-xs font-medium bg-accent/30"
-                      : "px-2 py-1 text-xs text-muted-foreground hover:bg-accent/10"
+                    (showChat
+                      ? "bg-white text-blue-700"
+                      : "text-white/80 hover:text-white hover:bg-white/10") +
+                    " px-3 py-1 text-xs font-medium rounded-full transition-colors"
                   }
                   onClick={() => setTab("chat")}
                 >
@@ -244,9 +266,10 @@ export function SupportWidget() {
                 <button
                   type="button"
                   className={
-                    !showChat
-                      ? "px-2 py-1 text-xs font-medium bg-accent/30"
-                      : "px-2 py-1 text-xs text-muted-foreground hover:bg-accent/10"
+                    (!showChat
+                      ? "bg-white text-blue-700"
+                      : "text-white/80 hover:text-white hover:bg-white/10") +
+                    " px-3 py-1 text-xs font-medium rounded-full transition-colors"
                   }
                   onClick={() => setTab("faqs")}
                 >
@@ -254,26 +277,36 @@ export function SupportWidget() {
                 </button>
               </div>
             </div>
-            <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setOpen(false)}
+              className="text-white hover:text-white hover:bg-white/10"
+            >
               Close
             </Button>
           </div>
 
           {mode !== "supabase" ? (
-            <div className="p-4 text-sm text-muted-foreground">Supabase is not configured.</div>
+            <div className="px-4 py-3 text-sm bg-blue-50 text-blue-900 border-b">
+              Support chat is unavailable (Supabase is not configured).
+            </div>
           ) : null}
 
           {conversationQuery.isError ? (
-            <div className="p-4 text-sm text-destructive">{toErrorMessage(conversationQuery.error)}</div>
+            <div className="px-4 py-3 text-sm bg-rose-50 text-rose-700 border-b">{toErrorMessage(conversationQuery.error)}</div>
           ) : null}
 
-          <div className="flex-1 overflow-auto p-4">
+          <div className="flex-1 overflow-auto p-4 bg-gradient-to-b from-blue-50/60 to-transparent">
             {showChat ? (
               <>
-                <div className="text-sm font-medium">Hi, how can we help you?</div>
-                <div className="text-xs text-muted-foreground mt-1">Send us a message and our team will reply.</div>
-                <div className="text-xs text-muted-foreground mt-1">Human support only. This is not an AI chatbot.</div>
-                <div className="space-y-2 pr-1 mt-3">
+                <div className="rounded-2xl border bg-white/70 p-4 shadow-sm">
+                  <div className="text-sm font-semibold">How can we help?</div>
+                  <div className="text-xs text-muted-foreground mt-1">Send a message and our support team will reply.</div>
+                  <div className="text-xs text-muted-foreground mt-1">Human support only. This is not an AI chatbot.</div>
+                </div>
+
+                <div className="space-y-2 pr-1 mt-4">
                   {(messagesQuery.data ?? []).map((m) => {
                     const mine = m.sender_type === "USER";
                     return (
@@ -281,11 +314,11 @@ export function SupportWidget() {
                         <div
                           className={
                             mine
-                              ? "max-w-[85%] rounded-2xl bg-primary text-primary-foreground px-3 py-2 text-xs"
-                              : "max-w-[85%] rounded-2xl border bg-background px-3 py-2 text-xs"
+                              ? "max-w-[85%] rounded-2xl bg-blue-700 text-white px-3.5 py-2.5 text-sm shadow-sm"
+                              : "max-w-[85%] rounded-2xl border bg-white px-3.5 py-2.5 text-sm shadow-sm"
                           }
                         >
-                          <div className={mine ? "text-primary-foreground/80 text-[11px]" : "text-muted-foreground text-[11px]"}>
+                          <div className={mine ? "text-white/80 text-[11px]" : "text-muted-foreground text-[11px]"}>
                             {mine ? "You" : "Support"} • {new Date(m.created_at).toLocaleTimeString()}
                           </div>
                           <div className="mt-1 whitespace-pre-wrap break-words text-sm">{m.body}</div>
@@ -295,7 +328,7 @@ export function SupportWidget() {
                   })}
 
                   {!messagesQuery.isLoading && (messagesQuery.data ?? []).length === 0 ? (
-                    <div className="text-sm text-muted-foreground">Send a message to start.</div>
+                    <div className="text-sm text-muted-foreground">Start by typing a message below.</div>
                   ) : null}
 
                   {messagesQuery.isError ? (
@@ -305,9 +338,11 @@ export function SupportWidget() {
               </>
             ) : (
               <>
-                <div className="text-sm font-medium">Bridge Warranty-FAQs</div>
-                <div className="text-xs text-muted-foreground mt-1">Search common questions before messaging.</div>
-                <div className="mt-3">
+                <div className="rounded-2xl border bg-white/70 p-4 shadow-sm">
+                  <div className="text-sm font-semibold">FAQs</div>
+                  <div className="text-xs text-muted-foreground mt-1">Browse common questions before starting a chat.</div>
+                </div>
+                <div className="mt-4">
                   <SupportFaqs compact />
                 </div>
               </>
@@ -315,22 +350,24 @@ export function SupportWidget() {
           </div>
 
           {showChat ? (
-            <div className="p-4 border-t">
+            <div className="p-4 border-t bg-white">
               <div className="grid grid-cols-1 gap-2">
                 <textarea
-                  className="min-h-[84px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="min-h-[92px] w-full rounded-xl border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-600/20"
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   placeholder="Type your message…"
                   disabled={busy || mode !== "supabase"}
                 />
-                <div className="flex justify-end">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-muted-foreground">We typically reply within 1 business day.</div>
                   <Button
                     size="sm"
                     disabled={busy || mode !== "supabase"}
                     onClick={() => {
                       sendMutation.mutate();
                     }}
+                    className="bg-blue-700 hover:bg-blue-700/90"
                   >
                     Send
                   </Button>

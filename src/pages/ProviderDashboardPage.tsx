@@ -1,22 +1,50 @@
 import { Link } from "react-router-dom";
 import { FileText, Package, Users } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { useQueries, useQuery } from "@tanstack/react-query";
 
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
 import { PageShell } from "../components/PageShell";
 import { getContractsApi } from "../lib/contracts/contracts";
 import type { Contract } from "../lib/contracts/types";
 import { getProductsApi } from "../lib/products/products";
 import type { Product } from "../lib/products/types";
-import { getProvidersApi } from "../lib/providers/providers";
-import type { ProviderPublic } from "../lib/providers/types";
-import { confirmProceed, sanitizeLettersOnly, sanitizeWordsOnly } from "../lib/utils";
 import { useAuth } from "../providers/AuthProvider";
 import { getProductPricingApi } from "../lib/productPricing/productPricing";
 import type { ProductPricing } from "../lib/productPricing/types";
 import { defaultPricingRow } from "../lib/productPricing/defaultRow";
+
+type SummaryCard = {
+  title: string;
+  value: string;
+  subtitle?: string;
+  icon: "products" | "contracts" | "dealers";
+};
+
+function iconForSummary(kind: SummaryCard["icon"]) {
+  if (kind === "products") return Package;
+  if (kind === "contracts") return FileText;
+  return Users;
+}
+
+function accentForSummary(kind: SummaryCard["icon"]) {
+  if (kind === "products") {
+    return {
+      ring: "ring-sky-500/15",
+      iconWrap: "bg-gradient-to-br from-sky-500/20 to-indigo-500/15 border-sky-500/20 text-sky-700",
+    };
+  }
+  if (kind === "contracts") {
+    return {
+      ring: "ring-amber-500/15",
+      iconWrap: "bg-gradient-to-br from-amber-500/25 to-orange-500/15 border-amber-500/25 text-amber-700",
+    };
+  }
+  return {
+    ring: "ring-emerald-500/15",
+    iconWrap: "bg-gradient-to-br from-emerald-500/20 to-cyan-500/15 border-emerald-500/20 text-emerald-700",
+  };
+}
 
 function dealerLabelFromContract(c: Contract) {
   const created = (c.createdByEmail ?? "").trim();
@@ -84,17 +112,9 @@ function validatePricingHealth(rows: ProductPricing[]) {
 
 export function ProviderDashboardPage() {
   const { user } = useAuth();
-  const providersApi = useMemo(() => getProvidersApi(), []);
   const productsApi = useMemo(() => getProductsApi(), []);
   const contractsApi = useMemo(() => getContractsApi(), []);
   const pricingApi = useMemo(() => getProductPricingApi(), []);
-
-  const hasHydratedProfile = useRef(false);
-
-  const myProfileQuery = useQuery({
-    queryKey: ["my-provider-profile"],
-    queryFn: () => providersApi.getMyProfile(),
-  });
 
   const productsQuery = useQuery({
     queryKey: ["provider-products"],
@@ -105,68 +125,6 @@ export function ProviderDashboardPage() {
     queryKey: ["provider-contracts"],
     queryFn: () => contractsApi.list(),
   });
-
-  const [displayName, setDisplayName] = useState("");
-  const [companyName, setCompanyName] = useState("");
-  const [termsText, setTermsText] = useState("");
-  const [termsConditionsText, setTermsConditionsText] = useState("");
-  const [claimsRepairsText, setClaimsRepairsText] = useState("");
-  const [providerResponsibilityText, setProviderResponsibilityText] = useState("");
-  const [limitationLiabilityText, setLimitationLiabilityText] = useState("");
-  const [customerAcknowledgementText, setCustomerAcknowledgementText] = useState("");
-
-  const saveProfileMutation = useMutation({
-    mutationFn: async () => {
-      return providersApi.updateMyProfile({
-        displayName,
-        companyName,
-        termsText,
-        termsConditionsText,
-        claimsRepairsText,
-        providerResponsibilityText,
-        limitationLiabilityText,
-        customerAcknowledgementText,
-      });
-    },
-    onSuccess: async (next) => {
-      setDisplayName(next.displayName ?? "");
-      setCompanyName(next.companyName ?? "");
-      setTermsText(next.termsText ?? "");
-      setTermsConditionsText(next.termsConditionsText ?? "");
-      setClaimsRepairsText(next.claimsRepairsText ?? "");
-      setProviderResponsibilityText(next.providerResponsibilityText ?? "");
-      setLimitationLiabilityText(next.limitationLiabilityText ?? "");
-      setCustomerAcknowledgementText(next.customerAcknowledgementText ?? "");
-    },
-  });
-
-  useEffect(() => {
-    const p = myProfileQuery.data as ProviderPublic | null | undefined;
-    if (!p) return;
-    if (hasHydratedProfile.current) return;
-    hasHydratedProfile.current = true;
-
-    setDisplayName((p.displayName ?? "").toString());
-    setCompanyName((p.companyName ?? "").toString());
-    setTermsText((p.termsText ?? "").toString());
-    setTermsConditionsText((p.termsConditionsText ?? "").toString());
-    setClaimsRepairsText((p.claimsRepairsText ?? "").toString());
-    setProviderResponsibilityText((p.providerResponsibilityText ?? "").toString());
-    setLimitationLiabilityText((p.limitationLiabilityText ?? "").toString());
-    setCustomerAcknowledgementText((p.customerAcknowledgementText ?? "").toString());
-  }, [myProfileQuery.data]);
-
-  const profileLoaded = myProfileQuery.data;
-  const effectiveDisplayName = (profileLoaded?.displayName ?? "").trim();
-  const effectiveCompanyName = (profileLoaded?.companyName ?? "").trim();
-
-  useEffect(() => {
-    if (!myProfileQuery.isSuccess) return;
-    if (displayName !== "" || companyName !== "") return;
-    if (!effectiveDisplayName && !effectiveCompanyName) return;
-    setDisplayName(effectiveDisplayName);
-    setCompanyName(effectiveCompanyName);
-  }, [companyName, displayName, effectiveCompanyName, effectiveDisplayName, myProfileQuery.isSuccess]);
 
   const products = (productsQuery.data ?? []) as Product[];
   const publishedCount = products.filter((p) => p.published).length;
@@ -269,76 +227,73 @@ export function ProviderDashboardPage() {
     return keys.map((k) => ({ key: k, label: monthLabel(k), value: buckets.get(k) ?? 0 }));
   }, [providerContracts]);
 
-  const busy = saveProfileMutation.isPending;
+  const summaryCards: SummaryCard[] = [
+    {
+      title: "Products",
+      value: `${products.length}`,
+      subtitle: `${publishedCount} published • ${draftCount} draft${publishedPricingIssuesCount > 0 ? ` • ${publishedPricingIssuesCount} published w/ pricing issues` : ""}`,
+      icon: "products",
+    },
+    {
+      title: "Contracts",
+      value: `${contractsSoldCount}`,
+      subtitle: "Sold (read-only support view)",
+      icon: "contracts",
+    },
+    {
+      title: "Active Dealerships",
+      value: `${activeDealersCount}`,
+      subtitle: "Unique dealerships/users with contract activity",
+      icon: "dealers",
+    },
+  ];
 
   return (
     <PageShell
-      badge="Provider Portal"
-      title="Provider Dashboard"
-      subtitle="Insights and quick access to provider tools."
-      actions={
-        <div className="flex gap-2">
-          <Button variant="outline" asChild>
-            <Link to="/provider-contracts">Contracts</Link>
-          </Button>
-          <Button asChild>
-            <Link to="/provider-products">Products</Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link to="/provider-documents">Logo</Link>
-          </Button>
-        </div>
-      }
+      title=""
     >
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-8 space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="rounded-2xl border bg-card shadow-card p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-sm text-muted-foreground">Products</div>
-                  <div className="text-3xl font-bold text-foreground mt-2">{products.length}</div>
-                  <div className="text-xs text-muted-foreground mt-2">
-                    {publishedCount} published • {draftCount} draft
-                    {publishedPricingIssuesCount > 0 ? ` • ${publishedPricingIssuesCount} published w/ pricing issues` : ""}
+      <div className="relative">
+        <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-yellow-400/10 blur-2xl" />
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-9 space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 auto-rows-fr">
+              {summaryCards.map((c) => {
+                const Icon = iconForSummary(c.icon);
+                const a = accentForSummary(c.icon);
+                return (
+                  <div
+                    key={c.title}
+                    className={
+                      "group rounded-2xl border bg-card shadow-card p-4 ring-1 transition-all hover:-translate-y-0.5 hover:shadow-md h-full overflow-hidden flex flex-col " +
+                      a.ring
+                    }
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="text-[13px] text-muted-foreground">{c.title}</div>
+                      <div
+                        className={
+                          "shrink-0 h-10 w-10 rounded-2xl border ring-1 ring-white/30 flex items-center justify-center " +
+                          a.iconWrap
+                        }
+                      >
+                        <Icon className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div className="text-2xl font-bold text-foreground mt-3 leading-none break-all">{c.value}</div>
+                    {c.subtitle ? (
+                      <div className="text-[11px] text-muted-foreground mt-2 leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity">
+                        {c.subtitle}
+                      </div>
+                    ) : null}
                   </div>
-                </div>
-                <div className="p-3 rounded-xl bg-muted text-primary border">
-                  <Package className="w-5 h-5" />
-                </div>
-              </div>
+                );
+              })}
             </div>
-
-            <div className="rounded-2xl border bg-card shadow-card p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-sm text-muted-foreground">Contracts Sold</div>
-                  <div className="text-3xl font-bold text-foreground mt-2">{contractsSoldCount}</div>
-                  <div className="text-xs text-muted-foreground mt-2">Read-only support view</div>
-                </div>
-                <div className="p-3 rounded-xl bg-muted text-primary border">
-                  <FileText className="w-5 h-5" />
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border bg-card shadow-card p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-sm text-muted-foreground">Active Dealers</div>
-                  <div className="text-3xl font-bold text-foreground mt-2">{activeDealersCount}</div>
-                  <div className="text-xs text-muted-foreground mt-2">No dealer-level breakdown</div>
-                </div>
-                <div className="p-3 rounded-xl bg-muted text-primary border">
-                  <Users className="w-5 h-5" />
-                </div>
-              </div>
-            </div>
-          </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
-              <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap">
+            <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-yellow-500/10">
+              <div className="px-6 py-4 border-b bg-gradient-to-r from-yellow-500/10 to-blue-600/10 flex items-center justify-between gap-4 flex-wrap">
                 <div>
                   <div className="font-semibold">Product Popularity</div>
                   <div className="text-sm text-muted-foreground mt-1">Based on sold contracts (count only).</div>
@@ -368,8 +323,8 @@ export function ProviderDashboardPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
-              <div className="px-6 py-4 border-b">
+            <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-600/10">
+              <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 to-transparent">
                 <div className="font-semibold">Contract Volume Trend</div>
                 <div className="text-sm text-muted-foreground mt-1">Last 6 months (sold + remitted + paid).</div>
               </div>
@@ -392,161 +347,27 @@ export function ProviderDashboardPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
-            <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap">
+          <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-yellow-500/10">
+            <div className="px-6 py-4 border-b bg-gradient-to-r from-yellow-500/10 to-blue-600/10 flex items-center justify-between gap-4 flex-wrap">
               <div>
-                <div className="font-semibold text-lg">Provider Profile</div>
-                <div className="text-sm text-muted-foreground mt-1">This is the name dealers will see.</div>
+                <div className="font-semibold">Next Steps</div>
+                <div className="text-sm text-muted-foreground mt-1">Build your marketplace presence.</div>
               </div>
-              <Button
-                size="sm"
-                onClick={() => {
-                  void (async () => {
-                    const d = displayName.trim();
-                    const c = companyName.trim();
-                    const msg = d || c ? "Save provider profile?" : "Clear provider profile fields?";
-                    if (!(await confirmProceed(msg))) return;
-                    saveProfileMutation.mutate();
-                  })();
-                }}
-                disabled={busy}
-              >
-                Save
+              <Button size="sm" variant="outline" asChild>
+                <Link to="/provider-terms">Edit warranty terms</Link>
               </Button>
             </div>
-
-            <div className="px-6 py-6 grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Input
-                value={displayName}
-                onChange={(e) => setDisplayName(sanitizeLettersOnly(e.target.value))}
-                placeholder="Display name (e.g. John Smith)"
-                disabled={busy}
-              />
-              <Input
-                value={companyName}
-                onChange={(e) => setCompanyName(sanitizeWordsOnly(e.target.value))}
-                placeholder="Company name (e.g. Acme Warranty)"
-                disabled={busy}
-              />
-
-              <div className="md:col-span-2">
-                <div className="text-sm font-medium text-foreground">Contract Terms & Conditions</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  This text appears on the printable contract. You can use tokens like {"{{product_name}}"}, {"{{term_months}}"}, {"{{term_km}}"}, {"{{deductible}}"}, {"{{coverage_details}}"}, {"{{exclusions}}"}.
-                </div>
-                <textarea
-                  value={termsText}
-                  onChange={(e) => setTermsText(e.target.value)}
-                  placeholder="Enter your Terms & Conditions..."
-                  className="mt-3 w-full min-h-[220px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  disabled={busy}
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <div className="text-sm font-medium text-foreground">Warranty Terms Sections</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  These sections appear on the customer printable contract. Tokens are supported.
-                </div>
-                <div className="mt-3 grid grid-cols-1 gap-3">
-                  <div>
-                    <div className="text-sm font-medium text-foreground">Terms & Conditions</div>
-                    <textarea
-                      value={termsConditionsText}
-                      onChange={(e) => setTermsConditionsText(e.target.value)}
-                      placeholder="Enter Terms & Conditions..."
-                      className="mt-2 w-full min-h-[110px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      disabled={busy}
-                    />
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium text-foreground">Claims / Repairs</div>
-                    <textarea
-                      value={claimsRepairsText}
-                      onChange={(e) => setClaimsRepairsText(e.target.value)}
-                      placeholder="Enter Claims / Repairs instructions..."
-                      className="mt-2 w-full min-h-[110px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      disabled={busy}
-                    />
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium text-foreground">Provider Responsibility</div>
-                    <textarea
-                      value={providerResponsibilityText}
-                      onChange={(e) => setProviderResponsibilityText(e.target.value)}
-                      placeholder="Enter Provider Responsibility..."
-                      className="mt-2 w-full min-h-[110px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      disabled={busy}
-                    />
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium text-foreground">Limitation of Liability</div>
-                    <textarea
-                      value={limitationLiabilityText}
-                      onChange={(e) => setLimitationLiabilityText(e.target.value)}
-                      placeholder="Enter Limitation of Liability..."
-                      className="mt-2 w-full min-h-[110px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      disabled={busy}
-                    />
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium text-foreground">Customer Acknowledgement</div>
-                    <textarea
-                      value={customerAcknowledgementText}
-                      onChange={(e) => setCustomerAcknowledgementText(e.target.value)}
-                      placeholder="Enter Customer Acknowledgement..."
-                      className="mt-2 w-full min-h-[110px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      disabled={busy}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {myProfileQuery.isLoading ? <div className="text-sm text-muted-foreground">Loading…</div> : null}
-              {myProfileQuery.isError ? (
-                <div className="text-sm text-destructive">
-                  {(() => {
-                    const e = myProfileQuery.error as any;
-                    const msg = typeof e?.message === "string" ? e.message : "Failed to load provider profile.";
-                    return msg;
-                  })()}
-                </div>
-              ) : null}
-
-              {saveProfileMutation.isError ? (
-                <div className="text-sm text-destructive">
-                  {(() => {
-                    const e = saveProfileMutation.error as any;
-                    const msg = typeof e?.message === "string" ? e.message : "Failed to save provider profile.";
-                    return msg;
-                  })()}
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
-            <div className="px-6 py-4 border-b">
-              <div className="font-semibold">Next Steps</div>
-              <div className="text-sm text-muted-foreground mt-1">Build your marketplace presence.</div>
-            </div>
             <div className="px-6 py-6 space-y-3 text-sm text-muted-foreground">
-              <div>
-                1. Create at least one product (coverage, terms, pricing, eligibility) and publish it when ready.
-              </div>
-              <div>
-                2. Upload your company logo so dealers can identify your organization.
-              </div>
-              <div>
-                3. Keep your profile up to date so dealers can identify your organization.
-              </div>
+              <div>1. Create at least one product (coverage, terms, pricing, eligibility) and publish it when ready.</div>
+              <div>2. Upload your company logo so dealers can identify your organization.</div>
+              <div>3. Set your warranty terms and provider name so dealers see the correct info.</div>
             </div>
           </div>
-        </div>
+          </div>
 
-        <div className="lg:col-span-4 space-y-6">
-          <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
-            <div className="px-6 py-4 border-b">
+          <div className="lg:col-span-3 space-y-6">
+          <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-600/10">
+            <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 to-transparent">
               <div className="font-semibold">Empty States</div>
               <div className="text-sm text-muted-foreground mt-1">Guidance for first-time setup.</div>
             </div>
@@ -554,7 +375,7 @@ export function ProviderDashboardPage() {
               {productsQuery.isLoading ? <div className="text-sm text-muted-foreground">Loading…</div> : null}
               {productsQuery.isError ? <div className="text-sm text-destructive">Failed to load products.</div> : null}
               {!productsQuery.isLoading && !productsQuery.isError && products.length === 0 ? (
-                <div className="rounded-xl border p-4">
+                <div className="rounded-xl border bg-background/40 p-4">
                   <div className="font-semibold">No products yet</div>
                   <div className="text-sm text-muted-foreground mt-1">
                     Create your first product to appear in dealer search and comparison.
@@ -567,7 +388,7 @@ export function ProviderDashboardPage() {
                 </div>
               ) : null}
 
-              <div className="rounded-xl border p-4">
+              <div className="rounded-xl border bg-background/40 p-4">
                 <div className="font-semibold">Add your logo</div>
                 <div className="text-sm text-muted-foreground mt-1">
                   Upload a logo so dealers recognize your brand when browsing products.
@@ -579,20 +400,20 @@ export function ProviderDashboardPage() {
                 </div>
               </div>
 
+              <div className="rounded-xl border bg-background/40 p-4">
+                <div className="font-semibold">Set warranty terms</div>
+                <div className="text-sm text-muted-foreground mt-1">Set your provider name and the terms shown on printable contracts.</div>
+                <div className="mt-3">
+                  <Button size="sm" variant="outline" asChild>
+                    <Link to="/provider-terms">Edit warranty terms</Link>
+                  </Button>
+                </div>
+              </div>
+
             </div>
           </div>
 
-          <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
-            <div className="px-6 py-4 border-b">
-              <div className="font-semibold">Permissions</div>
-              <div className="text-sm text-muted-foreground mt-1">Provider role boundaries.</div>
-            </div>
-            <div className="px-6 py-6 text-sm text-muted-foreground space-y-2">
-              <div>- You create products and documents.</div>
-              <div>- You do not create contracts or handle payments.</div>
-              <div>- Financial tools and system settings are not available in this portal.</div>
-            </div>
-          </div>
+        </div>
         </div>
       </div>
     </PageShell>

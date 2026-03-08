@@ -18,6 +18,12 @@ import {
   retailFromCost,
 } from "../lib/dealerPricing";
 import { useDealerMarkupPct } from "../lib/dealerMarkup";
+import {
+  getDealerProductAddonRetailCents,
+  getDealerProductPricingRetailCents,
+  getDealerProductRetailCents,
+  subscribeDealerProductRetail,
+} from "../lib/dealerProductRetail";
 import { getAppMode } from "../lib/runtime";
 import { alertMissing, confirmProceed, sanitizeDigitsOnly, sanitizeLettersOnly, sanitizeWordsOnly } from "../lib/utils";
 import { getProvidersApi } from "../lib/providers/providers";
@@ -70,6 +76,16 @@ export function DealerContractDetailPage() {
   const isEmployee = user?.role === "DEALER_EMPLOYEE";
   const dealerId = (mode === "local" ? (user?.dealerId ?? user?.id ?? "") : (user?.dealerId ?? "")).trim();
   const { markupPct } = useDealerMarkupPct(dealerId);
+
+  const [retailOverridesVersion, setRetailOverridesVersion] = useState(0);
+  useEffect(() => {
+    const unsub = subscribeDealerProductRetail(() => {
+      setRetailOverridesVersion((v) => v + 1);
+    });
+    return () => {
+      unsub();
+    };
+  }, []);
 
   const api = useMemo(() => getContractsApi(), []);
   const marketplaceApi = useMemo(() => getMarketplaceApi(), []);
@@ -396,7 +412,12 @@ export function DealerContractDetailPage() {
 
     const costCents = costFromProductOrPricing({ dealerCostCents: row.dealerCostCents, basePriceCents: row.basePriceCents });
     if (typeof costCents !== "number") throw new Error("Pricing row is missing a cost");
-    const retailCents = retailFromCost(costCents, markupPct) ?? costCents;
+    void retailOverridesVersion;
+    const rid = (row.id ?? "").trim();
+    const termOverride = selectedProductId && rid ? getDealerProductPricingRetailCents(dealerId, selectedProductId, rid) : null;
+    const override = selectedProductId ? getDealerProductRetailCents(dealerId, selectedProductId) : null;
+    const retailCents =
+      typeof termOverride === "number" ? termOverride : typeof override === "number" ? override : retailFromCost(costCents, markupPct) ?? costCents;
 
     setPricingId(row.id);
     await updateMutation.mutateAsync({
@@ -456,14 +477,18 @@ export function DealerContractDetailPage() {
 
   const selectedAddonSnapshots = useMemo(() => {
     const byId = new Map(activeAddons.map((a) => [a.id, a] as const));
+    void retailOverridesVersion;
+    const pid = (selectedProductId || contract?.productId || "").trim();
     return selectedAddonIdList
       .map((id) => byId.get(id))
       .filter(Boolean)
       .map((a) => {
         const min = typeof (a as any).minPriceCents === "number" ? (a as any).minPriceCents : a!.basePriceCents;
         const max = typeof (a as any).maxPriceCents === "number" ? (a as any).maxPriceCents : min;
+        const aid = (a!.id ?? "").trim();
+        const addonOverride = dealerId && pid && aid ? getDealerProductAddonRetailCents(dealerId, pid, aid) : null;
         const costCents = costFromProductOrPricing({ dealerCostCents: a!.dealerCostCents, basePriceCents: a!.basePriceCents });
-        const retailCents = retailFromCost(costCents, markupPct) ?? costCents;
+        const retailCents = typeof addonOverride === "number" ? addonOverride : retailFromCost(costCents, markupPct) ?? costCents;
         const chosenPriceCents = typeof retailCents === "number" ? retailCents : 0;
 
         return {
@@ -477,7 +502,7 @@ export function DealerContractDetailPage() {
           chosenPriceCents,
         };
       });
-  }, [activeAddons, markupPct, selectedAddonIdList]);
+  }, [activeAddons, contract?.productId, dealerId, markupPct, retailOverridesVersion, selectedAddonIdList, selectedProductId]);
 
   const addonTotals = useMemo(() => {
     const retail = selectedAddonSnapshots.reduce((sum, a) => sum + (typeof (a as any).chosenPriceCents === "number" ? (a as any).chosenPriceCents : 0), 0);
@@ -499,8 +524,12 @@ export function DealerContractDetailPage() {
       .map((a) => {
         const min = typeof (a as any).minPriceCents === "number" ? (a as any).minPriceCents : a!.basePriceCents;
         const max = typeof (a as any).maxPriceCents === "number" ? (a as any).maxPriceCents : min;
+        void retailOverridesVersion;
+        const pid = (selectedProductId || contract?.productId || "").trim();
+        const aid = (a!.id ?? "").trim();
+        const addonOverride = dealerId && pid && aid ? getDealerProductAddonRetailCents(dealerId, pid, aid) : null;
         const costCents = costFromProductOrPricing({ dealerCostCents: a!.dealerCostCents, basePriceCents: a!.basePriceCents });
-        const retailCents = retailFromCost(costCents, markupPct) ?? costCents;
+        const retailCents = typeof addonOverride === "number" ? addonOverride : retailFromCost(costCents, markupPct) ?? costCents;
         const chosen = typeof retailCents === "number" ? retailCents : 0;
         return {
           id: a!.id,
@@ -936,7 +965,7 @@ export function DealerContractDetailPage() {
                 </div>
 
                 <div className="mt-4 rounded-xl border p-4">
-                  <div className="text-xs text-muted-foreground">Available pricing</div>
+                  <div className="text-xs text-muted-foreground">Available Coverage</div>
                   {pricingOptionsQuery.isLoading ? <div className="mt-2 text-sm text-muted-foreground">Loading pricing…</div> : null}
                   {pricingOptionsQuery.isError ? <div className="mt-2 text-sm text-destructive">Failed to load pricing.</div> : null}
 
@@ -944,60 +973,83 @@ export function DealerContractDetailPage() {
                     <div className="mt-2 text-sm text-muted-foreground">No eligible pricing rows found for this plan.</div>
                   ) : null}
 
-                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {eligiblePricingOptions
-                      .slice()
-                      .sort((a, b) => {
-                        if (selectedProduct?.productType === "GAP") {
-                          const at = typeof a.financeTermMonths === "number" ? a.financeTermMonths : Number.MAX_SAFE_INTEGER;
-                          const bt = typeof b.financeTermMonths === "number" ? b.financeTermMonths : Number.MAX_SAFE_INTEGER;
-                          const amin = typeof a.loanAmountMinCents === "number" ? a.loanAmountMinCents : Number.MAX_SAFE_INTEGER;
-                          const bmin = typeof b.loanAmountMinCents === "number" ? b.loanAmountMinCents : Number.MAX_SAFE_INTEGER;
-                          const amax = typeof a.loanAmountMaxCents === "number" ? a.loanAmountMaxCents : Number.MAX_SAFE_INTEGER;
-                          const bmax = typeof b.loanAmountMaxCents === "number" ? b.loanAmountMaxCents : Number.MAX_SAFE_INTEGER;
-                          return (at - bt) || (amin - bmin) || (amax - bmax) || (a.deductibleCents - b.deductibleCents);
-                        }
-                        const am = a.termMonths ?? Number.MAX_SAFE_INTEGER;
-                        const bm = b.termMonths ?? Number.MAX_SAFE_INTEGER;
-                        const ak = a.termKm ?? Number.MAX_SAFE_INTEGER;
-                        const bk = b.termKm ?? Number.MAX_SAFE_INTEGER;
-                        return (am - bm) || (ak - bk) || (a.deductibleCents - b.deductibleCents);
-                      })
-                      .map((r) => (
-                        <button
-                          key={r.id}
-                          type="button"
-                          onClick={() => {
-                            void (async () => {
-                              await selectPricing(r);
-                            })();
-                          }}
-                          disabled={!canEdit || updateMutation.isPending}
-                          className={
-                            "rounded-xl border p-4 text-left transition-colors " +
-                            (r.id === selectedPricingId ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted")
-                          }
-                        >
-                          <div className="text-sm font-medium">
-                            {selectedProduct?.productType === "GAP"
-                              ? `${typeof r.financeTermMonths === "number" ? `${r.financeTermMonths} months` : "—"} • ${typeof r.loanAmountMinCents === "number" ? money(r.loanAmountMinCents) : "—"} - ${typeof r.loanAmountMaxCents === "number" ? money(r.loanAmountMaxCents) : "—"}`
-                              : `${r.termMonths === null ? "Unlimited" : `${r.termMonths} mo`} / ${r.termKm === null ? "Unlimited" : `${r.termKm.toLocaleString()} km`}`}
-                          </div>
-                          {selectedProduct?.productType !== "GAP" ? (
-                            <div className={"text-xs mt-1 " + (r.id === selectedPricingId ? "text-primary-foreground/80" : "text-muted-foreground")}>
-                              Deductible {money(r.deductibleCents)}
-                            </div>
-                          ) : null}
-                          <div className={"text-sm font-semibold mt-2 " + (r.id === selectedPricingId ? "text-primary-foreground" : "text-foreground")}>
-                            {(() => {
+                  {!pricingOptionsQuery.isLoading && !pricingOptionsQuery.isError && eligiblePricingOptions.length > 0 ? (
+                    <div className="mt-3">
+                      <select
+                        className="w-full rounded-xl border bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-600/20"
+                        disabled={!canEdit || updateMutation.isPending}
+                        value={selectedPricingId || ""}
+                        onChange={(e) => {
+                          const nextId = e.target.value;
+                          const row = eligiblePricingOptions.find((x) => x.id === nextId) ?? null;
+                          if (!row) return;
+                          void (async () => {
+                            await selectPricing(row);
+                          })();
+                        }}
+                      >
+                        <option value="" disabled>
+                          Select coverage…
+                        </option>
+                        {eligiblePricingOptions
+                          .slice()
+                          .sort((a, b) => {
+                            if (selectedProduct?.productType === "GAP") {
+                              const at = typeof a.financeTermMonths === "number" ? a.financeTermMonths : Number.MAX_SAFE_INTEGER;
+                              const bt = typeof b.financeTermMonths === "number" ? b.financeTermMonths : Number.MAX_SAFE_INTEGER;
+                              const amin = typeof a.loanAmountMinCents === "number" ? a.loanAmountMinCents : Number.MAX_SAFE_INTEGER;
+                              const bmin = typeof b.loanAmountMinCents === "number" ? b.loanAmountMinCents : Number.MAX_SAFE_INTEGER;
+                              const amax = typeof a.loanAmountMaxCents === "number" ? a.loanAmountMaxCents : Number.MAX_SAFE_INTEGER;
+                              const bmax = typeof b.loanAmountMaxCents === "number" ? b.loanAmountMaxCents : Number.MAX_SAFE_INTEGER;
+                              return (at - bt) || (amin - bmin) || (amax - bmax) || (a.deductibleCents - b.deductibleCents);
+                            }
+                            const am = a.termMonths ?? Number.MAX_SAFE_INTEGER;
+                            const bm = b.termMonths ?? Number.MAX_SAFE_INTEGER;
+                            const ak = a.termKm ?? Number.MAX_SAFE_INTEGER;
+                            const bk = b.termKm ?? Number.MAX_SAFE_INTEGER;
+                            return (am - bm) || (ak - bk) || (a.deductibleCents - b.deductibleCents);
+                          })
+                          .map((r) => {
+                            const label =
+                              selectedProduct?.productType === "GAP"
+                                ? `${typeof r.financeTermMonths === "number" ? `${r.financeTermMonths} months` : "—"} • ${typeof r.loanAmountMinCents === "number" ? money(r.loanAmountMinCents) : "—"} - ${typeof r.loanAmountMaxCents === "number" ? money(r.loanAmountMaxCents) : "—"}`
+                                : `${r.termMonths === null ? "Unlimited" : `${r.termMonths} mo`} / ${r.termKm === null ? "Unlimited" : `${r.termKm.toLocaleString()} km`}`;
+                            const retail = (() => {
+                              void retailOverridesVersion;
+                              const rid = (r.id ?? "").trim();
+                              const termOverride = selectedProductId && rid ? getDealerProductPricingRetailCents(dealerId, selectedProductId, rid) : null;
+                              if (typeof termOverride === "number") return termOverride;
+
+                              const override = selectedProductId ? getDealerProductRetailCents(dealerId, selectedProductId) : null;
+                              if (typeof override === "number") return override;
                               const cost = costFromProductOrPricing({ dealerCostCents: r.dealerCostCents, basePriceCents: r.basePriceCents });
-                              const retail = retailFromCost(cost, markupPct) ?? cost;
-                              return money(retail);
-                            })()}
-                          </div>
-                        </button>
-                      ))}
-                  </div>
+                              const out = retailFromCost(cost, markupPct) ?? cost;
+                              return typeof out === "number" ? out : null;
+                            })();
+                            const suffix =
+                              selectedProduct?.productType === "GAP"
+                                ? retail !== null
+                                  ? ` — ${money(retail)}`
+                                  : ""
+                                : `${retail !== null ? ` — ${money(retail)}` : ""} • Ded ${money(r.deductibleCents)}`;
+                            return (
+                              <option key={r.id} value={r.id}>
+                                {label}
+                                {suffix}
+                              </option>
+                            );
+                          })}
+                      </select>
+
+                      {selectedProduct?.productType !== "GAP" && selectedPricing ? (
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          Selected: {selectedPricing.termMonths === null ? "Unlimited" : `${selectedPricing.termMonths} mo`} /{" "}
+                          {selectedPricing.termKm === null ? "Unlimited" : `${selectedPricing.termKm.toLocaleString()} km`} • Deductible{" "}
+                          {money(selectedPricing.deductibleCents)}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="mt-4 rounded-xl border p-4">
@@ -1011,7 +1063,11 @@ export function DealerContractDetailPage() {
                   <div className="mt-3 space-y-2">
                     {activeAddons.map((a) => {
                       const costCents = costFromProductOrPricing({ dealerCostCents: a.dealerCostCents, basePriceCents: a.basePriceCents });
-                      const retailCents = retailFromCost(costCents, markupPct) ?? costCents;
+                      void retailOverridesVersion;
+                      const pid = (selectedProductId || contract?.productId || "").trim();
+                      const aid = (a.id ?? "").trim();
+                      const addonOverride = dealerId && pid && aid ? getDealerProductAddonRetailCents(dealerId, pid, aid) : null;
+                      const retailCents = typeof addonOverride === "number" ? addonOverride : retailFromCost(costCents, markupPct) ?? costCents;
                       return (
                         <label key={a.id} className="flex items-start justify-between gap-3 text-sm">
                           <span className="flex items-start gap-2">
@@ -1046,12 +1102,28 @@ export function DealerContractDetailPage() {
                     <div>
                       <div className="text-xs text-muted-foreground">Pricing</div>
                       {(() => {
+                        void retailOverridesVersion;
+                        const rid = (selectedPricingId ?? "").trim();
+                        const termOverride = selectedProductId && rid ? getDealerProductPricingRetailCents(dealerId, selectedProductId, rid) : null;
+
+                        const baseRetailFromContract =
+                          contract && (contract.productPricingId ?? "").trim() === rid && typeof (contract as any).pricingBasePriceCents === "number"
+                            ? (contract as any).pricingBasePriceCents
+                            : null;
+
                         const baseCost =
                           costFromProductOrPricing({
                             dealerCostCents: selectedPricing?.dealerCostCents,
                             basePriceCents: selectedPricing?.basePriceCents,
                           }) ?? 0;
-                        const baseRetail = (retailFromCost(baseCost, markupPct) ?? baseCost) || 0;
+                        const baseRetailComputed = (retailFromCost(baseCost, markupPct) ?? baseCost) || 0;
+
+                        const baseRetail =
+                          typeof termOverride === "number"
+                            ? termOverride
+                            : typeof baseRetailFromContract === "number"
+                              ? baseRetailFromContract
+                              : baseRetailComputed;
                         const addonsRetail = addonTotals.retail;
                         const totalRetail = baseRetail + addonsRetail;
                         return (
@@ -1064,12 +1136,28 @@ export function DealerContractDetailPage() {
                     </div>
                     <div className="text-right">
                       {(() => {
+                        void retailOverridesVersion;
+                        const rid = (selectedPricingId ?? "").trim();
+                        const termOverride = selectedProductId && rid ? getDealerProductPricingRetailCents(dealerId, selectedProductId, rid) : null;
+
+                        const baseRetailFromContract =
+                          contract && (contract.productPricingId ?? "").trim() === rid && typeof (contract as any).pricingBasePriceCents === "number"
+                            ? (contract as any).pricingBasePriceCents
+                            : null;
+
                         const baseCost =
                           costFromProductOrPricing({
                             dealerCostCents: selectedPricing?.dealerCostCents,
                             basePriceCents: selectedPricing?.basePriceCents,
                           }) ?? 0;
-                        const baseRetail = (retailFromCost(baseCost, markupPct) ?? baseCost) || 0;
+                        const baseRetailComputed = (retailFromCost(baseCost, markupPct) ?? baseCost) || 0;
+
+                        const baseRetail =
+                          typeof termOverride === "number"
+                            ? termOverride
+                            : typeof baseRetailFromContract === "number"
+                              ? baseRetailFromContract
+                              : baseRetailComputed;
                         const addonsRetail = addonTotals.retail;
                         const totalRetail = baseRetail + addonsRetail;
                         return (
@@ -1130,11 +1218,28 @@ export function DealerContractDetailPage() {
                       <div>
                         <div className="text-xs text-muted-foreground">Total</div>
                         {(() => {
+                          void retailOverridesVersion;
+                          const rid = (selectedPricingId ?? "").trim();
+                          const termOverride = selectedProductId && rid ? getDealerProductPricingRetailCents(dealerId, selectedProductId, rid) : null;
+
+                          const baseRetailFromContract =
+                            contract && (contract.productPricingId ?? "").trim() === rid && typeof (contract as any).pricingBasePriceCents === "number"
+                              ? (contract as any).pricingBasePriceCents
+                              : null;
+
                           const cost = costFromProductOrPricing({
                             dealerCostCents: selectedPricing?.dealerCostCents,
                             basePriceCents: selectedPricing?.basePriceCents,
                           });
-                          const retail = (retailFromCost(cost, markupPct) ?? cost) || 0;
+                          const retailComputed = (retailFromCost(cost, markupPct) ?? cost) || 0;
+
+                          const retail =
+                            typeof termOverride === "number"
+                              ? termOverride
+                              : typeof baseRetailFromContract === "number"
+                                ? baseRetailFromContract
+                                : retailComputed;
+
                           const totalRetail = retail + addonTotals.retail;
                           return <div className="text-lg font-semibold mt-1">{money(totalRetail)}</div>;
                         })()}
