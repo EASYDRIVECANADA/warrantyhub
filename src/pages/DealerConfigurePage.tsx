@@ -11,6 +11,8 @@ import { getAppMode } from "../lib/runtime";
 import { useAuth } from "../providers/AuthProvider";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
 import type { MarketplaceProduct } from "../lib/marketplace/api";
+import { getProvidersApi } from "../lib/providers/providers";
+import type { ProviderPublic } from "../lib/providers/types";
 import { getProductPricingApi } from "../lib/productPricing/productPricing";
 import type { ProductPricing } from "../lib/productPricing/types";
 import { getProductAddonsApi } from "../lib/productAddons/productAddons";
@@ -62,6 +64,13 @@ function norm(s: string) {
   return s.trim().toLowerCase();
 }
 
+function providerDisplayName(p: ProviderPublic | undefined, fallbackId: string) {
+  const name = (p?.companyName ?? p?.displayName ?? "").toString().trim();
+  if (name) return name;
+  const fid = (fallbackId ?? "").toString().trim();
+  return fid || "Unknown provider";
+}
+
 export function DealerConfigurePage() {
   const { user } = useAuth();
   const mode = useMemo(() => getAppMode(), []);
@@ -82,11 +91,36 @@ export function DealerConfigurePage() {
 
   const products = (productsQuery.data ?? []) as MarketplaceProduct[];
 
+  const providersApi = useMemo(() => getProvidersApi(), []);
+  const providerIdsKey = useMemo(() => {
+    const ids = Array.from(new Set(products.map((p) => (p.providerId ?? "").toString().trim()).filter(Boolean)));
+    ids.sort((a, b) => a.localeCompare(b));
+    return ids.join(",");
+  }, [products]);
+
+  const providersQuery = useQuery({
+    queryKey: ["providers-by-ids", providerIdsKey],
+    enabled: Boolean(providerIdsKey),
+    queryFn: async () => {
+      const ids = providerIdsKey.split(",").map((s) => s.trim()).filter(Boolean);
+      if (ids.length === 0) return [];
+      return await providersApi.listByIds(ids);
+    },
+  });
+
+  const providerById = useMemo(() => {
+    const rows = (providersQuery.data ?? []) as ProviderPublic[];
+    return new Map(rows.map((p) => [p.id, p] as const));
+  }, [providersQuery.data]);
+
   const [search, setSearch] = useState("");
 
   const providerOptions = useMemo(() => {
-    return Array.from(new Set(products.map((p) => (p.providerId ?? "").toString().trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
-  }, [products]);
+    const ids = Array.from(new Set(products.map((p) => (p.providerId ?? "").toString().trim()).filter(Boolean)));
+    return ids
+      .map((id) => ({ id, name: providerDisplayName(providerById.get(id), id) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [products, providerById]);
 
   const [providerId, setProviderId] = useState("");
 
@@ -250,8 +284,8 @@ export function DealerConfigurePage() {
               >
                 <option value="">All providers</option>
                 {providerOptions.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
+                  <option key={p.id} value={p.id}>
+                    {p.name}
                   </option>
                 ))}
               </select>
@@ -270,6 +304,8 @@ export function DealerConfigurePage() {
               {filtered.map((p) => {
                 const pid = (p.id ?? "").toString();
                 const isSelected = pid === selectedProductId;
+                const providerIdLabel = (p.providerId ?? "").toString();
+                const providerName = providerDisplayName(providerById.get(providerIdLabel), providerIdLabel);
                 return (
                   <button
                     key={pid}
@@ -287,7 +323,7 @@ export function DealerConfigurePage() {
                       <div className="text-sm font-medium text-foreground truncate">{(p.name ?? "").trim() || "Untitled"}</div>
                       <div className="text-[11px] text-muted-foreground truncate">{(p.productType ?? "").toString()}</div>
                     </div>
-                    <div className="col-span-4 text-sm text-muted-foreground truncate">{(p.providerId ?? "").toString()}</div>
+                    <div className="col-span-4 text-sm text-muted-foreground truncate">{providerName}</div>
                   </button>
                 );
               })}
@@ -309,7 +345,7 @@ export function DealerConfigurePage() {
                 <div>
                   <div className="text-base font-semibold text-foreground">{(selectedProduct.name ?? "").trim() || "Untitled"}</div>
                   <div className="text-xs text-muted-foreground mt-1">
-                    Provider: {(selectedProduct.providerId ?? "").toString()} • Type: {(selectedProduct.productType ?? "").toString()}
+                    Provider: {providerDisplayName(providerById.get((selectedProduct.providerId ?? "").toString()), (selectedProduct.providerId ?? "").toString())} • Type: {(selectedProduct.productType ?? "").toString()}
                   </div>
                 </div>
 
