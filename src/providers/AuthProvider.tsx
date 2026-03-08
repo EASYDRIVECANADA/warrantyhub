@@ -10,6 +10,7 @@ import {
 import { getAppMode, type AppMode } from "../lib/runtime";
 import { getAuthApi } from "../lib/auth/auth";
 import type { AuthUser, Role } from "../lib/auth/types";
+import { syncDealerRetailOverridesFromSupabase } from "../lib/dealerProductRetail";
 
 const DEV_BYPASS_KEY = "warrantyhub.dev.bypass_user";
 
@@ -56,11 +57,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       const u = await api.getCurrentUser();
       setUser(u);
+
+      if (mode === "supabase" && u?.dealerId) {
+        try {
+          await syncDealerRetailOverridesFromSupabase(u.dealerId);
+        } catch {
+        }
+      }
+
       return u;
     } finally {
       setIsLoading(false);
     }
-  }, [api]);
+  }, [api, mode]);
 
   useEffect(() => {
     void refreshUser();

@@ -1,3 +1,6 @@
+import { getAppMode } from "./runtime";
+import { getSupabaseClient } from "./supabase/client";
+
 type DealerProductRetailOverrides = {
   dealerId: string;
   productOverrides: Record<string, number>;
@@ -13,6 +16,135 @@ const listeners = new Set<Listener>();
 
 function emitChange() {
   for (const l of listeners) l();
+}
+
+async function listSupabaseOverrides(dealerId: string) {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error("Supabase is not configured");
+
+  const did = dealerId.trim();
+  if (!did) throw new Error("dealerId is required");
+
+  const { data, error } = await supabase
+    .from("dealer_retail_overrides")
+    .select("product_id, pricing_id, addon_id, retail_cents")
+    .eq("dealer_id", did);
+  if (error) throw error;
+  return (data ?? []) as Array<{
+    product_id: string | null;
+    pricing_id: string | null;
+    addon_id: string | null;
+    retail_cents: number | null;
+  }>;
+}
+
+export async function syncDealerRetailOverridesFromSupabase(dealerId: string) {
+  if (getAppMode() !== "supabase") return;
+  const did = dealerId.trim();
+  if (!did) return;
+
+  const rows = await listSupabaseOverrides(did);
+
+  const productOverrides: Record<string, number> = {};
+  const pricingOverrides: Record<string, number> = {};
+  const addonOverrides: Record<string, number> = {};
+
+  for (const r of rows) {
+    const pid = (r.product_id ?? "").toString().trim();
+    if (!pid) continue;
+    const cents = clampRetailCents(typeof r.retail_cents === "number" ? r.retail_cents : Number(r.retail_cents));
+    if (typeof cents !== "number") continue;
+
+    const pricingId = (r.pricing_id ?? "").toString().trim();
+    const addonId = (r.addon_id ?? "").toString().trim();
+
+    if (pricingId) pricingOverrides[`${pid}:${pricingId}`] = cents;
+    if (addonId) addonOverrides[`${pid}:${addonId}`] = cents;
+  }
+
+  const all = readAll();
+  writeAll({
+    ...all,
+    [did]: {
+      dealerId: did,
+      productOverrides: all[did]?.productOverrides ?? productOverrides,
+      pricingOverrides,
+      addonOverrides,
+      updatedAt: new Date().toISOString(),
+    },
+  });
+}
+
+async function upsertSupabasePricingOverride(args: {
+  dealerId: string;
+  productId: string;
+  pricingId: string;
+  retailCents: number;
+}) {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error("Supabase is not configured");
+  const { error } = await supabase
+    .from("dealer_retail_overrides")
+    .upsert(
+      {
+        dealer_id: args.dealerId,
+        product_id: args.productId,
+        pricing_id: args.pricingId,
+        addon_id: null,
+        retail_cents: args.retailCents,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "dealer_id,product_id,pricing_id" },
+    );
+  if (error) throw error;
+}
+
+async function deleteSupabasePricingOverride(args: { dealerId: string; productId: string; pricingId: string }) {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error("Supabase is not configured");
+  const { error } = await supabase
+    .from("dealer_retail_overrides")
+    .delete()
+    .eq("dealer_id", args.dealerId)
+    .eq("product_id", args.productId)
+    .eq("pricing_id", args.pricingId);
+  if (error) throw error;
+}
+
+async function upsertSupabaseAddonOverride(args: {
+  dealerId: string;
+  productId: string;
+  addonId: string;
+  retailCents: number;
+}) {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error("Supabase is not configured");
+  const { error } = await supabase
+    .from("dealer_retail_overrides")
+    .upsert(
+      {
+        dealer_id: args.dealerId,
+        product_id: args.productId,
+        pricing_id: null,
+        addon_id: args.addonId,
+        retail_cents: args.retailCents,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "dealer_id,product_id,addon_id" },
+    );
+  if (error) throw error;
+}
+
+async function deleteSupabaseAddonOverride(args: { dealerId: string; productId: string; addonId: string }) {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error("Supabase is not configured");
+  const { error } = await supabase
+    .from("dealer_retail_overrides")
+    .delete()
+    .eq("dealer_id", args.dealerId)
+    .eq("product_id", args.productId)
+    .eq("addon_id", args.addonId);
+  if (error) throw error;
 }
 
 export function getDealerProductAddonRetailCents(dealerId: string, productId: string, addonId: string) {
@@ -197,6 +329,14 @@ export function setDealerProductPricingRetailCents(dealerId: string, productId: 
     delete nextOverrides[key];
   }
 
+  if (getAppMode() === "supabase") {
+    if (typeof cents === "number") {
+      void upsertSupabasePricingOverride({ dealerId: did, productId: pid, pricingId: rid, retailCents: cents });
+    } else {
+      void deleteSupabasePricingOverride({ dealerId: did, productId: pid, pricingId: rid });
+    }
+  }
+
   writeAll({
     ...all,
     [did]: {
@@ -227,6 +367,14 @@ export function setDealerProductAddonRetailCents(dealerId: string, productId: st
     nextOverrides[key] = cents;
   } else {
     delete nextOverrides[key];
+  }
+
+  if (getAppMode() === "supabase") {
+    if (typeof cents === "number") {
+      void upsertSupabaseAddonOverride({ dealerId: did, productId: pid, addonId: aid, retailCents: cents });
+    } else {
+      void deleteSupabaseAddonOverride({ dealerId: did, productId: pid, addonId: aid });
+    }
   }
 
   writeAll({
