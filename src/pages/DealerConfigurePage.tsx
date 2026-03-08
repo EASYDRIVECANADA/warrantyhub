@@ -71,6 +71,30 @@ function providerDisplayName(p: ProviderPublic | undefined, fallbackId: string) 
   return fid || "Unknown provider";
 }
 
+const CONFIGURE_STATE_KEY = "warrantyhub.session.dealer_configure_state";
+
+function readConfigureState(): { search?: string; providerId?: string; selectedProductId?: string } {
+  const raw = sessionStorage.getItem(CONFIGURE_STATE_KEY);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as { search?: unknown; providerId?: unknown; selectedProductId?: unknown };
+    return {
+      search: typeof parsed.search === "string" ? parsed.search : undefined,
+      providerId: typeof parsed.providerId === "string" ? parsed.providerId : undefined,
+      selectedProductId: typeof parsed.selectedProductId === "string" ? parsed.selectedProductId : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function writeConfigureState(next: { search: string; providerId: string; selectedProductId: string }) {
+  try {
+    sessionStorage.setItem(CONFIGURE_STATE_KEY, JSON.stringify(next));
+  } catch {
+  }
+}
+
 export function DealerConfigurePage() {
   const { user } = useAuth();
   const mode = useMemo(() => getAppMode(), []);
@@ -113,7 +137,9 @@ export function DealerConfigurePage() {
     return new Map(rows.map((p) => [p.id, p] as const));
   }, [providersQuery.data]);
 
-  const [search, setSearch] = useState("");
+  const initialConfigureState = useMemo(() => readConfigureState(), []);
+
+  const [search, setSearch] = useState(() => initialConfigureState.search ?? "");
 
   const providerOptions = useMemo(() => {
     const ids = Array.from(new Set(products.map((p) => (p.providerId ?? "").toString().trim()).filter(Boolean)));
@@ -122,9 +148,9 @@ export function DealerConfigurePage() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [products, providerById]);
 
-  const [providerId, setProviderId] = useState("");
+  const [providerId, setProviderId] = useState(() => initialConfigureState.providerId ?? "");
 
-  const [selectedProductId, setSelectedProductId] = useState<string>("");
+  const [selectedProductId, setSelectedProductId] = useState<string>(() => initialConfigureState.selectedProductId ?? "");
 
   const [retailOverridesVersion, setRetailOverridesVersion] = useState(0);
 
@@ -155,6 +181,10 @@ export function DealerConfigurePage() {
     const ok = filtered.some((p) => (p.id ?? "").toString() === selectedProductId);
     if (!ok) setSelectedProductId("");
   }, [filtered, selectedProductId]);
+
+  useEffect(() => {
+    writeConfigureState({ search, providerId, selectedProductId });
+  }, [providerId, search, selectedProductId]);
 
   const selectedProduct = useMemo(() => {
     const id = selectedProductId.trim();
