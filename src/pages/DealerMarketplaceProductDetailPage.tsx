@@ -174,6 +174,10 @@ export function DealerMarketplaceProductDetailPage() {
   const { id } = useParams();
   const productId = id ?? "";
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [productId]);
+
   const [searchParams] = useSearchParams();
   const vin = (searchParams.get("vin") ?? "").trim();
   const mileageRaw = (searchParams.get("mileageKm") ?? "").trim();

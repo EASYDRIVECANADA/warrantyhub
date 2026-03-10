@@ -63,7 +63,8 @@ function downloadTextFile(filename: string, content: string, mime: string) {
 }
 
 function money(cents: number) {
-  return `$${(cents / 100).toFixed(2)}`;
+  const dollars = cents / 100;
+  return `$${dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function productTypeLabel(t: ProductType) {
@@ -373,43 +374,6 @@ export function DealerReportingPage() {
   return (
     <PageShell
       title=""
-      actions={
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => setShowProfitability((v) => !v)}
-            className="whitespace-nowrap"
-          >
-            {showProfitability ? "Hide" : "Show"} Profit
-          </Button>
-
-          <details className="relative">
-            <summary className="list-none">
-              <Button type="button" size="sm" className="whitespace-nowrap">
-                Export (CSV)
-              </Button>
-            </summary>
-            <div className="absolute right-0 mt-2 w-56 rounded-xl border bg-card shadow-card p-2 z-20">
-              <button
-                type="button"
-                className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-muted/40"
-                onClick={() => exportContractsCsv()}
-              >
-                Export Contracts CSV
-              </button>
-              <button
-                type="button"
-                className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-muted/40"
-                onClick={() => exportAuditCsv()}
-              >
-                Export Activity CSV
-              </button>
-            </div>
-          </details>
-        </div>
-      }
     >
       {contracts.length === 0 && !isLoading ? (
         <div className="rounded-2xl border bg-card shadow-card p-6">
@@ -520,6 +484,40 @@ export function DealerReportingPage() {
             <Button size="sm" variant="outline" onClick={() => setShowAdvancedFilters((v) => !v)}>
               {showAdvancedFilters ? "Hide" : "More"}
             </Button>
+
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setShowProfitability((v) => !v)}
+              className="whitespace-nowrap"
+            >
+              {showProfitability ? "Hide" : "Show"} Profit
+            </Button>
+
+            <details className="relative">
+              <summary className="list-none">
+                <Button type="button" size="sm" className="whitespace-nowrap">
+                  Export (CSV)
+                </Button>
+              </summary>
+              <div className="absolute right-0 mt-2 w-56 rounded-xl border bg-card shadow-card p-2 z-20">
+                <button
+                  type="button"
+                  className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-muted/40"
+                  onClick={() => exportContractsCsv()}
+                >
+                  Export Contracts CSV
+                </button>
+                <button
+                  type="button"
+                  className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-muted/40"
+                  onClick={() => exportAuditCsv()}
+                >
+                  Export Activity CSV
+                </button>
+              </div>
+            </details>
           </div>
 
           {showAdvancedFilters ? (

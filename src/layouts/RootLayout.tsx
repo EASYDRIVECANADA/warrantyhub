@@ -344,11 +344,8 @@ export function RootLayout() {
                       onClick={() => {
                         void (async () => {
                           if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
-                          try {
-                            await signOut();
-                          } finally {
-                            window.location.assign("/find-insurance");
-                          }
+                          window.location.assign("/find-insurance");
+                          void signOut();
                         })();
                       }}
                     >
@@ -361,7 +358,11 @@ export function RootLayout() {
             </aside>
 
             <main className="relative z-0 min-w-0">
-              {isLoading && !user ? <div style={{ padding: 24, color: "#6b7280" }}>Loading…</div> : null}
+              {isLoading && !user ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/30 backdrop-blur-sm">
+                  <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" aria-label="Loading" />
+                </div>
+              ) : null}
               <RouteErrorBoundary key={location.pathname}>
                 <Outlet />
               </RouteErrorBoundary>
@@ -384,7 +385,11 @@ export function RootLayout() {
             </div>
 
             <main className="min-w-0">
-              {isLoading && !user ? <div style={{ padding: 24, color: "#6b7280" }}>Loading…</div> : null}
+              {isLoading && !user ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/30 backdrop-blur-sm">
+                  <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" aria-label="Loading" />
+                </div>
+              ) : null}
               <RouteErrorBoundary key={location.pathname}>
                 <Outlet />
               </RouteErrorBoundary>
@@ -480,11 +485,8 @@ export function RootLayout() {
                         onClick={() => {
                           void (async () => {
                             if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
-                            try {
-                              await signOut();
-                            } finally {
-                              window.location.assign("/find-insurance");
-                            }
+                            void signOut();
+                            window.location.assign("/find-insurance");
                           })();
                         }}
                       >
@@ -590,11 +592,8 @@ export function RootLayout() {
                     onClick={() => {
                       void (async () => {
                         if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
-                        try {
-                          await signOut();
-                        } finally {
-                          window.location.assign("/find-insurance");
-                        }
+                        void signOut();
+                        window.location.assign("/find-insurance");
                       })();
                     }}
                   >
@@ -607,7 +606,11 @@ export function RootLayout() {
             </aside>
 
             <main className="min-w-0">
-              {isLoading && !user ? <div style={{ padding: 24, color: "#6b7280" }}>Loading…</div> : null}
+              {isLoading && !user ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/30 backdrop-blur-sm">
+                  <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" aria-label="Loading" />
+                </div>
+              ) : null}
               <RouteErrorBoundary key={location.pathname}>
                 <Outlet />
               </RouteErrorBoundary>
@@ -630,7 +633,11 @@ export function RootLayout() {
             </div>
 
             <main className="min-w-0">
-              {isLoading && !user ? <div style={{ padding: 24, color: "#6b7280" }}>Loading…</div> : null}
+              {isLoading && !user ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/30 backdrop-blur-sm">
+                  <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" aria-label="Loading" />
+                </div>
+              ) : null}
               <RouteErrorBoundary key={location.pathname}>
                 <Outlet />
               </RouteErrorBoundary>
@@ -710,11 +717,8 @@ export function RootLayout() {
                           onClick={() => {
                             void (async () => {
                               if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
-                              try {
-                                await signOut();
-                              } finally {
-                                window.location.assign("/find-insurance");
-                              }
+                              void signOut();
+                              window.location.assign("/find-insurance");
                             })();
                           }}
                         >
@@ -733,7 +737,11 @@ export function RootLayout() {
         <>
           {hideTopNavbar || hidePublicNavbarWhileLoading ? null : <Navbar />}
           <main className={hideTopNavbar ? "" : "pt-16"}>
-            {isLoading && !user ? <div style={{ padding: 24, color: "#6b7280" }}>Loading…</div> : null}
+            {isLoading && !user ? (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/30 backdrop-blur-sm">
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" aria-label="Loading" />
+              </div>
+            ) : null}
             <RouteErrorBoundary key={location.pathname}>
               <Outlet />
             </RouteErrorBoundary>
