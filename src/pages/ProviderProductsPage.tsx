@@ -1561,6 +1561,16 @@ export function ProviderProductsPage() {
       {
         const productId = (savedProduct?.id ?? editor.id ?? "").trim();
         if (productId) {
+          if (desiredPublished) {
+            const check = await pricingApi.list({ productId });
+            if (!Array.isArray(check) || check.length === 0) {
+              setActiveTab("PRICING");
+              throw new Error(
+                `Failed to save pricing: Cannot publish product ${productId}: no pricing rows exist. Add at least one pricing row, Save, then publish.`
+              );
+            }
+          }
+
           savedProduct = (await updateMutation.mutateAsync({
             id: productId,
             patch: { published: desiredPublished },

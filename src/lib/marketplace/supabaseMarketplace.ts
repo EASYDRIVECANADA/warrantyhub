@@ -14,6 +14,7 @@ type ProductsRow = {
   coverage_max_ltv_percent?: number | null;
   coverage_details?: string | null;
   exclusions?: string | null;
+  class_vehicle_types?: Record<string, string> | null;
   term_months?: number | null;
   term_km?: number | null;
   deductible_cents?: number | null;
@@ -38,6 +39,9 @@ type ProductPricingDefaultRow = {
   vehicle_mileage_max_km: number | null;
   vehicle_class: string | null;
   claim_limit_cents: number | null;
+  claim_limit_type?: string | null;
+  claim_limit_amount_cents?: number | null;
+  provider_net_cost_cents?: number | null;
   deductible_cents: number;
   base_price_cents: number;
   dealer_cost_cents: number | null;
@@ -57,6 +61,10 @@ function toProduct(r: ProductsRow): Product {
     coverageMaxLtvPercent: r.coverage_max_ltv_percent ?? undefined,
     coverageDetails: r.coverage_details ?? undefined,
     exclusions: r.exclusions ?? undefined,
+    classVehicleTypes:
+      r.class_vehicle_types && typeof r.class_vehicle_types === "object" && !Array.isArray(r.class_vehicle_types)
+        ? (r.class_vehicle_types as Record<string, string>)
+        : undefined,
     termMonths: r.term_months ?? undefined,
     termKm: r.term_km ?? undefined,
     deductibleCents: r.deductible_cents ?? undefined,
@@ -94,7 +102,7 @@ export const supabaseMarketplaceApi: MarketplaceApi = {
       const q = await supabase
         .from("product_pricing")
         .select(
-          "id, product_id, term_months, term_km, vehicle_mileage_min_km, vehicle_mileage_max_km, vehicle_class, claim_limit_cents, deductible_cents, base_price_cents, dealer_cost_cents, is_default",
+          "id, product_id, term_months, term_km, vehicle_mileage_min_km, vehicle_mileage_max_km, vehicle_class, claim_limit_cents, claim_limit_type, claim_limit_amount_cents, provider_net_cost_cents, deductible_cents, base_price_cents, dealer_cost_cents, is_default",
         )
         .in("product_id", productIds)
         .eq("is_default", true);
@@ -114,7 +122,7 @@ export const supabaseMarketplaceApi: MarketplaceApi = {
         termMonths: d.term_months === null ? undefined : d.term_months,
         termKm: d.term_km === null ? undefined : d.term_km,
         deductibleCents: d.deductible_cents,
-        basePriceCents: d.base_price_cents,
+        basePriceCents: typeof d.provider_net_cost_cents === "number" ? d.provider_net_cost_cents : d.base_price_cents,
         dealerCostCents: d.dealer_cost_cents === null ? undefined : d.dealer_cost_cents,
         pricingDefault: {
           productPricingId: d.id,
@@ -123,9 +131,14 @@ export const supabaseMarketplaceApi: MarketplaceApi = {
           vehicleMileageMinKm: typeof d.vehicle_mileage_min_km === "number" ? d.vehicle_mileage_min_km : undefined,
           vehicleMileageMaxKm: d.vehicle_mileage_max_km === null ? null : typeof d.vehicle_mileage_max_km === "number" ? d.vehicle_mileage_max_km : undefined,
           vehicleClass: typeof d.vehicle_class === "string" ? d.vehicle_class : undefined,
-          claimLimitCents: d.claim_limit_cents === null ? undefined : d.claim_limit_cents,
+          claimLimitCents:
+            typeof d.claim_limit_amount_cents === "number"
+              ? d.claim_limit_amount_cents
+              : d.claim_limit_cents === null
+                ? undefined
+                : d.claim_limit_cents,
           deductibleCents: d.deductible_cents,
-          basePriceCents: d.base_price_cents,
+          basePriceCents: typeof d.provider_net_cost_cents === "number" ? d.provider_net_cost_cents : d.base_price_cents,
           dealerCostCents: d.dealer_cost_cents === null ? undefined : d.dealer_cost_cents,
         },
       };
