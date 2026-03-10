@@ -8,7 +8,7 @@ import { PageShell } from "../components/PageShell";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
 import { getProductPricingApi } from "../lib/productPricing/productPricing";
 import { getProductAddonsApi } from "../lib/productAddons/productAddons";
-import { bestPricingRowForVehicleMileage, defaultPricingRow } from "../lib/productPricing/defaultRow";
+import { bestPricingRowForVehicleMileage } from "../lib/productPricing/defaultRow";
 import { isPricingEligibleForVehicle } from "../lib/productPricing/eligibility";
 import { resolveFinanceMatrixPricingRow } from "../lib/productPricing/financeMatrix";
 import type { ProductPricing } from "../lib/productPricing/types";
@@ -17,6 +17,7 @@ import { getProvidersApi } from "../lib/providers/providers";
 import type { ProviderPublic } from "../lib/providers/types";
 import { costFromProductOrPricing, retailFromCost } from "../lib/dealerPricing";
 import { useDealerMarkupPct } from "../lib/dealerMarkup";
+import { decodeVin } from "../lib/vin/decodeVin";
 import {
   getDealerProductAddonRetailCents,
   getDealerProductPricingRetailCents,
@@ -70,10 +71,102 @@ function money(cents?: number) {
   return `$${dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function claimLimitLabel(row: ProductPricing) {
+  const type = typeof (row as any).claimLimitType === "string" ? String((row as any).claimLimitType).trim() : "";
+  if (type === "FMV") return "FMV";
+  if (type === "MAX_RETAIL") return "Max retail";
+  if (type === "TOTAL_COVERAGE") return money(row.claimLimitCents);
+  if (type === "PER_CLAIM") return money(row.claimLimitCents);
+  return money(row.claimLimitCents);
+}
+
+function classTypesFor(product: Product, vehicleClass: string | null | undefined) {
+  const c = (vehicleClass ?? "").trim().toUpperCase();
+  const map = product.classVehicleTypes ?? undefined;
+  if (map && typeof map === "object") {
+    const direct = (map[c] ?? "").toString().trim();
+    if (direct) return direct;
+  }
+  if (c === "CLASS_1") return (product.class1VehicleTypes ?? "").trim();
+  if (c === "CLASS_2") return (product.class2VehicleTypes ?? "").trim();
+  if (c === "CLASS_3") return (product.class3VehicleTypes ?? "").trim();
+  return "";
+}
+
 function allowListLabel(items?: string[]) {
   const list = (items ?? []).map((x) => x.trim()).filter(Boolean);
   if (list.length === 0) return "All";
   return list.slice(0, 6).join(", ") + (list.length > 6 ? "…" : "");
+}
+
+function norm(v: string) {
+  return (v ?? "").toString().trim().toLowerCase();
+}
+
+function normToken(v: string) {
+  return norm(v).replace(/\s+/g, " ").trim();
+}
+
+function resolveVehicleClassForProduct(product: Product, decoded: Awaited<ReturnType<typeof decodeVin>> | null) {
+  if (!decoded) return null as string | null;
+  if (product.pricingStructure !== "MILEAGE_CLASS") return null as string | null;
+
+  const vMake = normToken(decoded.vehicleMake ?? "");
+  const vModel = normToken(decoded.vehicleModel ?? "");
+  if (!vMake) return null as string | null;
+
+  const map = (product as any).classVehicleTypes as Record<string, string> | undefined;
+  if (!map || typeof map !== "object") return null as string | null;
+
+  type Candidate = { classCode: string; score: number };
+  const candidates: Candidate[] = [];
+
+  const entryMatches = (raw: string) => {
+    const t = String(raw ?? "").trim();
+    if (!t) return { ok: false, score: 0 } as const;
+
+    const exMatch = t.match(/^(.+?)\s*\(\s*excluding\s+(.+?)\s*\)$/i);
+    const base = normToken(exMatch ? exMatch[1] : t);
+    const exclusion = normToken(exMatch ? exMatch[2] : "");
+
+    const parts = base.split(" ").filter(Boolean);
+    const make = parts[0] ?? "";
+    const modelPrefix = parts.slice(1).join(" ").trim();
+
+    if (!make || make !== vMake) return { ok: false, score: 0 } as const;
+    if (exclusion && vModel && vModel.includes(exclusion)) return { ok: false, score: 0 } as const;
+
+    if (modelPrefix) {
+      if (!vModel) return { ok: false, score: 0 } as const;
+      const ok = vModel.includes(modelPrefix) || modelPrefix.includes(vModel);
+      return { ok, score: ok ? 2 : 0 } as const;
+    }
+
+    return { ok: true, score: 1 } as const;
+  };
+
+  for (const [classCodeRaw, rulesRaw] of Object.entries(map)) {
+    const classCode = String(classCodeRaw ?? "").trim().toUpperCase();
+    if (!classCode) continue;
+
+    const ruleText = String(rulesRaw ?? "");
+    const tokens = ruleText
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+
+    for (const token of tokens) {
+      const res = entryMatches(token);
+      if (res.ok) {
+        candidates.push({ classCode, score: res.score });
+        break;
+      }
+    }
+  }
+
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => b.score - a.score || a.classCode.localeCompare(b.classCode));
+  return candidates[0]!.classCode;
 }
 
 export function DealerMarketplaceProductDetailPage() {
@@ -179,6 +272,22 @@ export function DealerMarketplaceProductDetailPage() {
     queryFn: () => productPricingApi.list({ productId }),
   });
 
+  const vinDecodedQuery = useQuery({
+    queryKey: ["vin-decode", vin],
+    enabled: Boolean(vin),
+    queryFn: () => decodeVin(vin),
+    staleTime: 1000 * 60 * 60,
+  });
+
+  const inferredVehicleClass = useMemo(() => {
+    if (!product) return null as string | null;
+    if (vehicleClass.trim()) return null as string | null;
+    if (!vinDecodedQuery.data) return null as string | null;
+    return resolveVehicleClassForProduct(product, vinDecodedQuery.data);
+  }, [product, vehicleClass, vinDecodedQuery.data]);
+
+  const effectiveVehicleClass = (vehicleClass.trim() || (inferredVehicleClass ?? "")).trim();
+
   const pricingRows = (pricingQuery.data ?? []) as ProductPricing[];
 
   const eligibleFinanceTerms = useMemo(() => {
@@ -219,11 +328,9 @@ export function DealerMarketplaceProductDetailPage() {
 
   const allAddons = ((addonsQuery.data ?? []) as ProductAddon[]).filter((a) => a.active);
 
-  const defaultRow = useMemo(() => defaultPricingRow(pricingRows), [pricingRows]);
-
-  const eligiblePrimaryRow = useMemo(() => {
+  const primaryRow = useMemo(() => {
     if (product?.pricingStructure === "FINANCE_MATRIX") {
-      if (!selectedFinanceTermMonths) return null;
+      if (!loanAmountCents) return null;
       const resolved = resolveFinanceMatrixPricingRow({
         rows: pricingRows,
         loanAmountCents,
@@ -232,11 +339,17 @@ export function DealerMarketplaceProductDetailPage() {
       return resolved.ok ? resolved.row : null;
     }
     if (typeof mileageKm !== "number") return null;
-    const eligible = pricingRows.filter((r) => isPricingEligibleForVehicle({ pricing: r, vehicleMileageKm: mileageKm, vehicleClass }));
-    return bestPricingRowForVehicleMileage(eligible);
-  }, [loanAmountCents, mileageKm, pricingRows, product?.pricingStructure, selectedFinanceTermMonths, vehicleClass]);
+    const eligible = pricingRows.filter((r) =>
+      isPricingEligibleForVehicle({ pricing: r, vehicleMileageKm: mileageKm, vehicleClass: effectiveVehicleClass }),
+    );
 
-  const primaryRow = eligiblePrimaryRow ?? defaultRow;
+    if ((product?.pricingStructure ?? "") === "MILEAGE_CLASS" && effectiveVehicleClass.trim()) {
+      const code = effectiveVehicleClass.trim();
+      const classSpecific = eligible.filter((r) => (r.vehicleClass ?? "").toString().trim() === code);
+      if (classSpecific.length > 0) return bestPricingRowForVehicleMileage(classSpecific);
+    }
+    return bestPricingRowForVehicleMileage(eligible);
+  }, [effectiveVehicleClass, loanAmountCents, mileageKm, pricingRows, product?.pricingStructure, selectedFinanceTermMonths]);
 
   const [selectedPricingId, setSelectedPricingId] = useState<string>("");
 
@@ -305,8 +418,18 @@ export function DealerMarketplaceProductDetailPage() {
     }
 
     if (typeof mileageKm !== "number") return pricingRows;
-    return pricingRows.filter((r) => isPricingEligibleForVehicle({ pricing: r, vehicleMileageKm: mileageKm, vehicleClass }));
-  }, [loanAmountCents, mileageKm, pricingRows, product, selectedFinanceTermMonths, vehicleClass]);
+    const eligible = pricingRows.filter((r) =>
+      isPricingEligibleForVehicle({ pricing: r, vehicleMileageKm: mileageKm, vehicleClass: effectiveVehicleClass }),
+    );
+
+    if (product.pricingStructure === "MILEAGE_CLASS" && effectiveVehicleClass.trim()) {
+      const code = effectiveVehicleClass.trim();
+      const classSpecific = eligible.filter((r) => (r.vehicleClass ?? "").toString().trim() === code);
+      if (classSpecific.length > 0) return classSpecific;
+    }
+
+    return eligible;
+  }, [effectiveVehicleClass, loanAmountCents, mileageKm, pricingRows, product, selectedFinanceTermMonths]);
 
   const sortedPricingRows = eligiblePricingRows
     .slice()
@@ -365,7 +488,7 @@ export function DealerMarketplaceProductDetailPage() {
             <div className="h-16 w-16 md:h-20 md:w-20 rounded-2xl border bg-white/70 overflow-hidden flex items-center justify-center">
               {provider?.logoUrl ? <img src={provider.logoUrl} alt="" className="h-full w-full object-contain" /> : null}
             </div>
-            <div className="text-sm text-muted-foreground">
+            <div className="text-base md:text-lg font-semibold text-foreground">
               {providerName} • {product.name}
             </div>
           </div>
@@ -557,7 +680,7 @@ export function DealerMarketplaceProductDetailPage() {
                                       </span>
                                     </div>
                                   </td>
-                                  <td className="px-4 py-3 pr-3 text-muted-foreground">{(r.vehicleClass ?? "").trim() || "—"}</td>
+                                  <td className="px-4 py-3 pr-3 text-muted-foreground">{(r.vehicleClass ?? "").trim() || "All classes"}</td>
                                   <td className="px-4 py-3 pr-3 text-muted-foreground">
                                     {typeof r.vehicleMileageMinKm === "number" ? r.vehicleMileageMinKm.toLocaleString() : "—"}–
                                     {r.vehicleMileageMaxKm === null
@@ -566,7 +689,7 @@ export function DealerMarketplaceProductDetailPage() {
                                         ? r.vehicleMileageMaxKm.toLocaleString()
                                         : "—"}
                                   </td>
-                                  <td className="px-4 py-3 pr-3 text-muted-foreground">{money(r.claimLimitCents)}</td>
+                                  <td className="px-4 py-3 pr-3 text-muted-foreground">{claimLimitLabel(r)}</td>
                                   <td className="px-4 py-3 pr-3 text-muted-foreground">{money(r.deductibleCents)}</td>
                                   <td className="px-4 py-3 pr-3 font-medium text-foreground">
                                     <div>{money(baseRetail)}</div>
@@ -706,18 +829,37 @@ export function DealerMarketplaceProductDetailPage() {
                       </div>
                     </div>
                     <div className="pt-2 border-t" />
-                    <div>
-                      <div className="text-xs text-muted-foreground">Make</div>
-                      <div className="font-medium text-foreground">{allowListLabel(product.eligibilityMakeAllowlist)}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Model</div>
-                      <div className="font-medium text-foreground">{allowListLabel(product.eligibilityModelAllowlist)}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Trim</div>
-                      <div className="font-medium text-foreground">{allowListLabel(product.eligibilityTrimAllowlist)}</div>
-                    </div>
+                    {product.pricingStructure === "MILEAGE_CLASS" ? (
+                      (() => {
+                        const code = (effectiveVehicleClass ?? "").toString().trim();
+                        const types = code ? classTypesFor(product, code) : "";
+                        const labelMatch = code.toUpperCase().match(/^CLASS_(\d+)$/);
+                        const label = labelMatch ? `Class ${labelMatch[1]}` : code || "Class";
+                        return (
+                          <>
+                            <div>
+                              <div className="text-xs text-muted-foreground">{label}</div>
+                              <div className="font-medium text-foreground">{types.trim() ? types : "—"}</div>
+                            </div>
+                          </>
+                        );
+                      })()
+                    ) : (
+                      <>
+                        <div>
+                          <div className="text-xs text-muted-foreground">Make</div>
+                          <div className="font-medium text-foreground">{allowListLabel(product.eligibilityMakeAllowlist)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">Model</div>
+                          <div className="font-medium text-foreground">{allowListLabel(product.eligibilityModelAllowlist)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">Trim</div>
+                          <div className="font-medium text-foreground">{allowListLabel(product.eligibilityTrimAllowlist)}</div>
+                        </div>
+                      </>
+                    )}
                   </>
                 )}
               </div>

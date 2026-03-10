@@ -17,6 +17,17 @@ function readProducts(): Product[] {
         const updatedAt = p.updatedAt ?? createdAt;
         const id = p.id ?? crypto.randomUUID();
         const providerId = p.providerId ?? "";
+
+        const classVehicleTypesRaw = (p as any).classVehicleTypes;
+        const classVehicleTypes: Record<string, string> | undefined =
+          classVehicleTypesRaw && typeof classVehicleTypesRaw === "object" && !Array.isArray(classVehicleTypesRaw)
+            ? (Object.fromEntries(
+                Object.entries(classVehicleTypesRaw as Record<string, unknown>)
+                  .filter(([k, v]) => typeof k === "string" && typeof v === "string")
+                  .map(([k, v]) => [k, String(v)])
+              ) as Record<string, string>)
+            : undefined;
+
         return {
           id,
           providerId,
@@ -32,6 +43,10 @@ function readProducts(): Product[] {
                 : undefined,
           coverageDetails: p.coverageDetails,
           exclusions: p.exclusions,
+          class1VehicleTypes: typeof (p as any).class1VehicleTypes === "string" ? (p as any).class1VehicleTypes : undefined,
+          class2VehicleTypes: typeof (p as any).class2VehicleTypes === "string" ? (p as any).class2VehicleTypes : undefined,
+          class3VehicleTypes: typeof (p as any).class3VehicleTypes === "string" ? (p as any).class3VehicleTypes : undefined,
+          classVehicleTypes,
           termMonths: typeof p.termMonths === "number" ? p.termMonths : undefined,
           termKm: typeof p.termKm === "number" ? p.termKm : undefined,
           deductibleCents: typeof p.deductibleCents === "number" ? p.deductibleCents : undefined,

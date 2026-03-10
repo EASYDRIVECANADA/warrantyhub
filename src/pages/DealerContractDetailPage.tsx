@@ -191,7 +191,7 @@ export function DealerContractDetailPage() {
     setVehicleTrim(contract.vehicleTrim ?? "");
     setVehicleMileageKm(typeof contract.vehicleMileageKm === "number" ? String(contract.vehicleMileageKm) : "");
     setVehicleBodyClass(contract.vehicleBodyClass ?? "");
-    setVehicleClass("");
+    setVehicleClass((contract.pricingVehicleClass ?? "").toString().trim());
     setVehicleEngine(contract.vehicleEngine ?? "");
     setVehicleTransmission(contract.vehicleTransmission ?? "");
     setProductId(contract.productId ?? "");
@@ -420,6 +420,7 @@ export function DealerContractDetailPage() {
       typeof termOverride === "number" ? termOverride : typeof override === "number" ? override : retailFromCost(costCents, markupPct) ?? costCents;
 
     setPricingId(row.id);
+    setVehicleClass((row.vehicleClass ?? "").toString().trim());
     await updateMutation.mutateAsync({
       productPricingId: row.id,
       pricingTermMonths: row.termMonths,
@@ -433,6 +434,14 @@ export function DealerContractDetailPage() {
       pricingDealerCostCents: costCents,
     });
   };
+
+  const vehicleClassLabel = useMemo(() => {
+    const t = (vehicleClass ?? "").toString().trim();
+    if (!t) return "All classes";
+    const m = t.toUpperCase().match(/^CLASS_(\d+)$/);
+    if (m) return `Class ${m[1]}`;
+    return t;
+  }, [vehicleClass]);
 
   const canEdit = (contract?.status ?? "DRAFT") === "DRAFT";
   const selectedProductId = (productId || contract?.productId || "").trim();
@@ -845,17 +854,9 @@ export function DealerContractDetailPage() {
 
                   <div>
                     <div className="text-xs text-muted-foreground mb-1">Vehicle class</div>
-                    <select
-                      value={vehicleClass}
-                      onChange={(e) => setVehicleClass(e.target.value)}
-                      className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
-                      disabled={!canEdit}
-                    >
-                      <option value="">Select (optional)</option>
-                      <option value="CLASS_1">Class 1</option>
-                      <option value="CLASS_2">Class 2</option>
-                      <option value="CLASS_3">Class 3</option>
-                    </select>
+                    <div className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm flex items-center text-muted-foreground">
+                      {vehicleClassLabel}
+                    </div>
                   </div>
                 </div>
 

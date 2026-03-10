@@ -122,8 +122,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (import.meta.env.DEV) {
         localStorage.removeItem(DEV_BYPASS_KEY);
       }
-      await api.signOut();
       setUser(null);
+      try {
+        await Promise.race([
+          api.signOut(),
+          new Promise<void>((resolve) => {
+            window.setTimeout(() => resolve(), 2500);
+          }),
+        ]);
+      } catch {
+      }
     } finally {
       setIsLoading(false);
     }

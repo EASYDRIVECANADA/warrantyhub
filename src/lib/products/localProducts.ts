@@ -48,6 +48,17 @@ function read(): Product[] {
         const updatedAt = p.updatedAt ?? createdAt;
         const id = p.id ?? crypto.randomUUID();
         const providerId = p.providerId ?? "";
+
+        const classVehicleTypesRaw = (p as any).classVehicleTypes;
+        const classVehicleTypes: Record<string, string> | undefined =
+          classVehicleTypesRaw && typeof classVehicleTypesRaw === "object" && !Array.isArray(classVehicleTypesRaw)
+            ? (Object.fromEntries(
+                Object.entries(classVehicleTypesRaw as Record<string, unknown>)
+                  .filter(([k, v]) => typeof k === "string" && typeof v === "string")
+                  .map(([k, v]) => [k, String(v)])
+              ) as Record<string, string>)
+            : undefined;
+
         return {
           id,
           providerId,
@@ -65,6 +76,10 @@ function read(): Product[] {
           coverageDetails: p.coverageDetails,
           exclusions: p.exclusions,
           internalNotes: typeof p.internalNotes === "string" ? p.internalNotes : undefined,
+          class1VehicleTypes: typeof (p as any).class1VehicleTypes === "string" ? (p as any).class1VehicleTypes : undefined,
+          class2VehicleTypes: typeof (p as any).class2VehicleTypes === "string" ? (p as any).class2VehicleTypes : undefined,
+          class3VehicleTypes: typeof (p as any).class3VehicleTypes === "string" ? (p as any).class3VehicleTypes : undefined,
+          classVehicleTypes,
           termMonths: typeof p.termMonths === "number" ? p.termMonths : undefined,
           termKm: typeof p.termKm === "number" ? p.termKm : undefined,
           deductibleCents: typeof p.deductibleCents === "number" ? p.deductibleCents : undefined,
@@ -133,6 +148,10 @@ export const localProductsApi: ProductsApi = {
       coverageMaxLtvPercent: input.coverageMaxLtvPercent,
       coverageDetails: input.coverageDetails,
       exclusions: input.exclusions,
+      class1VehicleTypes: input.class1VehicleTypes,
+      class2VehicleTypes: input.class2VehicleTypes,
+      class3VehicleTypes: input.class3VehicleTypes,
+      classVehicleTypes: input.classVehicleTypes,
       termMonths: input.termMonths,
       termKm: input.termKm,
       deductibleCents: input.deductibleCents,

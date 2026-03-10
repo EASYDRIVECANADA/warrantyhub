@@ -98,6 +98,16 @@ export function RootLayout() {
   const navigate = useNavigate();
   const prevRoleRef = useRef<Role | null>(null);
 
+  const dashboardPathForRole = (role: Role) => {
+    return role === "ADMIN" || role === "SUPER_ADMIN"
+      ? "/company-dashboard"
+      : role === "PROVIDER"
+        ? "/provider-dashboard"
+        : role === "DEALER_ADMIN"
+          ? "/dealer-admin"
+          : "/dealer-dashboard";
+  };
+
   const isDealerAdminSidebarCollapsed = false;
   const isProviderSidebarCollapsed = false;
 
@@ -145,6 +155,19 @@ export function RootLayout() {
 
     navigate(dashboardPath, { replace: true });
   }, [location.pathname, navigate, user]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (!user) return;
+    if (user.role === "UNASSIGNED") return;
+
+    const path = location.pathname;
+    const isPublicLanding = path === "/" || path === "/find-insurance";
+    const isAuthRoute = path === "/sign-in" || path === "/login";
+    if (!isPublicLanding && !isAuthRoute) return;
+
+    navigate(dashboardPathForRole(user.role), { replace: true });
+  }, [isLoading, location.pathname, navigate, user]);
 
   if (!isLoading && user?.role === "UNASSIGNED") {
     const path = location.pathname;
@@ -227,96 +250,112 @@ export function RootLayout() {
             className="hidden lg:grid min-h-screen"
             style={{ gridTemplateColumns: isDealerAdminSidebarCollapsed ? "88px minmax(0, 1fr)" : "260px minmax(0, 1fr)" }}
           >
-            <aside className="relative z-20 flex flex-col border-r bg-card/95 backdrop-blur-xl">
-              <div className={`h-14 px-4 flex items-center border-b ${isDealerAdminSidebarCollapsed ? "justify-center" : "justify-start"}`}>
-                <Link to="/dealer-admin" className={`flex items-center gap-2 ${isDealerAdminSidebarCollapsed ? "justify-center" : ""}`}>
-                  <img src={BRAND.logoUrl} alt={BRAND.name} className="h-9 w-auto object-contain" />
-                  {!isDealerAdminSidebarCollapsed ? (
-                    <div className="leading-tight">
-                      <div className="font-semibold text-sm">{BRAND.name}</div>
-                      <div className="text-[11px] text-muted-foreground">Dealer Admin</div>
-                    </div>
-                  ) : null}
-                </Link>
-              </div>
+            <aside className="relative isolate z-20 flex flex-col border-r text-white overflow-hidden">
+              <div className="pointer-events-none absolute inset-0 hero-gradient" />
+              <div className="pointer-events-none absolute inset-0 bg-white/10" />
+              <div
+                className="pointer-events-none absolute inset-0 opacity-12"
+                style={{
+                  backgroundImage: "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.35) 1px, transparent 0)",
+                  backgroundSize: "44px 44px",
+                }}
+              />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/0 via-white/0 to-black/8" />
 
-              <div className={`px-2 py-3 flex-1 ${isDealerAdminSidebarCollapsed ? "" : ""}`}>
-                <div className="space-y-1">
-                  {dealerAdminNavItems.map((item) => (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      onClick={(e) => {
-                        setIsDealerAdminMobileNavOpen(false);
-                        if (location.pathname.startsWith("/dealer-marketplace/compare")) {
-                          e.preventDefault();
-                          window.location.assign(item.to);
-                        }
-                      }}
-                      className={cn(
-                        buttonVariants({ variant: "ghost", size: "sm" }),
-                        `w-full ${isDealerAdminSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium`,
-                        item.active
-                          ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
-                          : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10",
-                      )}
-                    >
-                      <span className="flex items-center gap-2" title={isDealerAdminSidebarCollapsed ? item.label : undefined}>
-                        <item.icon className="h-4 w-4" />
-                        {!isDealerAdminSidebarCollapsed ? <span>{item.label}</span> : null}
-                      </span>
-                    </Link>
-                  ))}
+              <div className="relative z-10 flex flex-col flex-1">
+                <div className={`h-14 px-4 flex items-center border-b border-white/15 ${isDealerAdminSidebarCollapsed ? "justify-center" : "justify-start"}`}>
+                  <Link to="/dealer-admin" className={`flex items-center gap-2 ${isDealerAdminSidebarCollapsed ? "justify-center" : ""}`}>
+                    <img src="/images/warrantyhubwhite.png" alt={BRAND.name} className="h-9 w-auto object-contain" />
+                    {!isDealerAdminSidebarCollapsed ? (
+                      <div className="leading-tight">
+                        <div className="font-semibold text-sm">{BRAND.name}</div>
+                        <div className="text-[11px] text-white/80">Dealer Admin</div>
+                      </div>
+                    ) : null}
+                  </Link>
                 </div>
 
-                <div className="pt-3 mt-3 border-t" />
-                <div className="space-y-1">
-                  {dealerAdminSecondaryItems.map((item) => (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      onClick={(e) => {
-                        setIsDealerAdminMobileNavOpen(false);
-                        if (location.pathname.startsWith("/dealer-marketplace/compare")) {
-                          e.preventDefault();
-                          window.location.assign(item.to);
-                        }
-                      }}
-                      className={cn(
-                        buttonVariants({ variant: "ghost", size: "sm" }),
-                        `w-full ${isDealerAdminSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium`,
-                        item.active
-                          ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
-                          : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10",
-                      )}
-                    >
-                      <span className="flex items-center gap-2" title={isDealerAdminSidebarCollapsed ? item.label : undefined}>
-                        <item.icon className="h-4 w-4" />
-                        {!isDealerAdminSidebarCollapsed ? <span>{item.label}</span> : null}
-                      </span>
-                    </Link>
-                  ))}
+                <div className={`px-2 py-3 flex-1 ${isDealerAdminSidebarCollapsed ? "" : ""}`}>
+                  <div className="space-y-1">
+                    {dealerAdminNavItems.map((item) => (
+                      <Link
+                        key={item.to}
+                        to={item.to}
+                        onClick={(e) => {
+                          setIsDealerAdminMobileNavOpen(false);
+                          if (location.pathname.startsWith("/dealer-marketplace/compare")) {
+                            e.preventDefault();
+                            window.location.assign(item.to);
+                          }
+                        }}
+                        className={cn(
+                          buttonVariants({ variant: "ghost", size: "sm" }),
+                          `w-full ${isDealerAdminSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium`,
+                          item.active
+                            ? "bg-white/15 text-white hover:bg-white/20"
+                            : "text-white/85 hover:text-white hover:bg-white/10",
+                        )}
+                      >
+                        <span className="flex items-center gap-2" title={isDealerAdminSidebarCollapsed ? item.label : undefined}>
+                          <item.icon className="h-4 w-4" />
+                          {!isDealerAdminSidebarCollapsed ? <span>{item.label}</span> : null}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
 
-                  <Button
-                    variant={isDealerAdminSidebarCollapsed ? "ghost" : "default"}
-                    size={isDealerAdminSidebarCollapsed ? "icon" : "sm"}
-                    className={cn(
-                      isDealerAdminSidebarCollapsed
-                        ? "text-muted-foreground hover:text-foreground hover:bg-red-500/10"
-                        : "bg-red-500/10 text-red-600 hover:bg-red-500/15 hover:text-red-600",
-                    )}
-                    title={isDealerAdminSidebarCollapsed ? "Sign Out" : undefined}
-                    onClick={() => {
-                      void (async () => {
-                        if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
-                        await signOut();
-                        window.location.assign("/find-insurance");
-                      })();
-                    }}
-                  >
-                    <LogOut className={isDealerAdminSidebarCollapsed ? "h-4 w-4" : "h-4 w-4"} />
-                    {isDealerAdminSidebarCollapsed ? null : <span>Sign Out</span>}
-                  </Button>
+                  <div className="pt-3 mt-3 border-t border-white/15" />
+                  <div className="space-y-1">
+                    {dealerAdminSecondaryItems.map((item) => (
+                      <Link
+                        key={item.to}
+                        to={item.to}
+                        onClick={(e) => {
+                          setIsDealerAdminMobileNavOpen(false);
+                          if (location.pathname.startsWith("/dealer-marketplace/compare")) {
+                            e.preventDefault();
+                            window.location.assign(item.to);
+                          }
+                        }}
+                        className={cn(
+                          buttonVariants({ variant: "ghost", size: "sm" }),
+                          `w-full ${isDealerAdminSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium`,
+                          item.active
+                            ? "bg-white/15 text-white hover:bg-white/20"
+                            : "text-white/85 hover:text-white hover:bg-white/10",
+                        )}
+                      >
+                        <span className="flex items-center gap-2" title={isDealerAdminSidebarCollapsed ? item.label : undefined}>
+                          <item.icon className="h-4 w-4" />
+                          {!isDealerAdminSidebarCollapsed ? <span>{item.label}</span> : null}
+                        </span>
+                      </Link>
+                    ))}
+
+                    <Button
+                      variant={isDealerAdminSidebarCollapsed ? "ghost" : "default"}
+                      size={isDealerAdminSidebarCollapsed ? "icon" : "sm"}
+                      className={cn(
+                        isDealerAdminSidebarCollapsed
+                          ? "text-white/85 hover:text-white hover:bg-red-500/20"
+                          : "bg-red-500/20 text-white hover:bg-red-500/25 hover:text-white",
+                      )}
+                      title={isDealerAdminSidebarCollapsed ? "Sign Out" : undefined}
+                      onClick={() => {
+                        void (async () => {
+                          if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
+                          try {
+                            await signOut();
+                          } finally {
+                            window.location.assign("/find-insurance");
+                          }
+                        })();
+                      }}
+                    >
+                      <LogOut className={isDealerAdminSidebarCollapsed ? "h-4 w-4" : "h-4 w-4"} />
+                      {isDealerAdminSidebarCollapsed ? null : <span>Sign Out</span>}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </aside>
@@ -358,8 +397,20 @@ export function RootLayout() {
                   className="absolute inset-0 bg-black/40"
                   onClick={() => setIsDealerAdminMobileNavOpen(false)}
                 />
-                <div className="absolute left-0 top-0 bottom-0 w-[280px] max-w-[85vw] bg-card border-r shadow-xl flex flex-col">
-                  <div className="h-14 px-4 border-b flex items-center justify-between">
+                <div className="absolute left-0 top-0 bottom-0 w-[280px] max-w-[85vw] border-r shadow-xl flex flex-col text-white overflow-hidden">
+                  <div className="pointer-events-none absolute inset-0 hero-gradient" />
+                  <div className="pointer-events-none absolute inset-0 bg-white/10" />
+                  <div
+                    className="pointer-events-none absolute inset-0 opacity-12"
+                    style={{
+                      backgroundImage: "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.35) 1px, transparent 0)",
+                      backgroundSize: "44px 44px",
+                    }}
+                  />
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/0 via-white/0 to-black/8" />
+
+                  <div className="relative z-10 flex flex-col flex-1">
+                  <div className="h-14 px-4 border-b border-white/15 flex items-center justify-between">
                     <div className="font-semibold text-sm">Menu</div>
                     <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setIsDealerAdminMobileNavOpen(false)}>
                       <X className="h-5 w-5" />
@@ -383,8 +434,8 @@ export function RootLayout() {
                             buttonVariants({ variant: "ghost", size: "sm" }),
                             "w-full justify-start h-9 text-[13px] font-medium",
                             item.active
-                              ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
-                              : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10",
+                              ? "bg-white/15 text-white hover:bg-white/20"
+                              : "text-white/85 hover:text-white hover:bg-white/10",
                           )}
                         >
                           <span className="flex items-center gap-2">
@@ -395,7 +446,7 @@ export function RootLayout() {
                       ))}
                     </div>
 
-                    <div className="pt-3 mt-3 border-t" />
+                    <div className="pt-3 mt-3 border-t border-white/15" />
                     <div className="space-y-1">
                       {dealerAdminSecondaryItems.map((item) => (
                         <Link
@@ -425,12 +476,15 @@ export function RootLayout() {
 
                       <Button
                         variant="ghost"
-                        className="w-full justify-start h-9 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-red-500/10"
+                        className="w-full justify-start h-9 text-[13px] font-medium text-white/85 hover:text-white hover:bg-red-500/20"
                         onClick={() => {
                           void (async () => {
                             if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
-                            await signOut();
-                            window.location.assign("/find-insurance");
+                            try {
+                              await signOut();
+                            } finally {
+                              window.location.assign("/find-insurance");
+                            }
                           })();
                         }}
                       >
@@ -438,6 +492,7 @@ export function RootLayout() {
                         <span>Sign Out</span>
                       </Button>
                     </div>
+                  </div>
                   </div>
                 </div>
               </div>
@@ -450,17 +505,29 @@ export function RootLayout() {
             className="hidden lg:grid min-h-screen"
             style={{ gridTemplateColumns: isProviderSidebarCollapsed ? "88px minmax(0, 1fr)" : "260px minmax(0, 1fr)" }}
           >
-            <aside className="flex flex-col border-r bg-card/95 backdrop-blur-xl">
-              <div className={`h-14 px-4 flex items-center border-b ${isProviderSidebarCollapsed ? "justify-center" : "justify-start"}`}>
+            <aside className="relative isolate flex flex-col border-r text-white overflow-hidden">
+              <div className="pointer-events-none absolute inset-0 hero-gradient" />
+              <div className="pointer-events-none absolute inset-0 bg-white/10" />
+              <div
+                className="pointer-events-none absolute inset-0 opacity-12"
+                style={{
+                  backgroundImage: "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.35) 1px, transparent 0)",
+                  backgroundSize: "44px 44px",
+                }}
+              />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/0 via-white/0 to-black/8" />
+
+              <div className="relative z-10 flex flex-col flex-1">
+              <div className={`h-14 px-4 flex items-center border-b border-white/15 ${isProviderSidebarCollapsed ? "justify-center" : "justify-start"}`}>
                 <Link
                   to="/provider-dashboard"
                   className={`flex items-center gap-2 ${isProviderSidebarCollapsed ? "justify-center" : ""}`}
                 >
-                  <img src={BRAND.logoUrl} alt={BRAND.name} className="h-9 w-auto object-contain" />
+                  <img src="/images/warrantyhubwhite.png" alt={BRAND.name} className="h-9 w-auto object-contain" />
                   {!isProviderSidebarCollapsed ? (
                     <div className="leading-tight">
                       <div className="font-semibold text-sm">{BRAND.name}</div>
-                      <div className="text-[11px] text-muted-foreground">Provider Portal</div>
+                      <div className="text-[11px] text-white/80">Provider Portal</div>
                     </div>
                   ) : null}
                 </Link>
@@ -477,8 +544,8 @@ export function RootLayout() {
                         buttonVariants({ variant: "ghost", size: "sm" }),
                         `w-full ${isProviderSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium`,
                         item.active
-                          ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
-                          : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10",
+                          ? "bg-white/15 text-white hover:bg-white/20"
+                          : "text-white/85 hover:text-white hover:bg-white/10",
                       )}
                     >
                       <span className="flex items-center gap-2" title={isProviderSidebarCollapsed ? item.label : undefined}>
@@ -489,7 +556,7 @@ export function RootLayout() {
                   ))}
                 </div>
 
-                <div className="pt-3 mt-3 border-t" />
+                <div className="pt-3 mt-3 border-t border-white/15" />
                 <div className="space-y-1">
                   {providerSecondaryItems.map((item) => (
                     <Link
@@ -500,8 +567,8 @@ export function RootLayout() {
                         buttonVariants({ variant: "ghost", size: "sm" }),
                         `w-full ${isProviderSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium`,
                         item.active
-                          ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
-                          : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10",
+                          ? "bg-white/15 text-white hover:bg-white/20"
+                          : "text-white/85 hover:text-white hover:bg-white/10",
                       )}
                     >
                       <span className="flex items-center gap-2" title={isProviderSidebarCollapsed ? item.label : undefined}>
@@ -516,15 +583,18 @@ export function RootLayout() {
                     size={isProviderSidebarCollapsed ? "icon" : "sm"}
                     className={cn(
                       isProviderSidebarCollapsed
-                        ? "text-muted-foreground hover:text-foreground hover:bg-red-500/10"
-                        : "bg-red-500/10 text-red-600 hover:bg-red-500/15 hover:text-red-600",
+                        ? "text-white/85 hover:text-white hover:bg-red-500/20"
+                        : "bg-red-500/20 text-white hover:bg-red-500/25 hover:text-white",
                     )}
                     title={isProviderSidebarCollapsed ? "Sign Out" : undefined}
                     onClick={() => {
                       void (async () => {
                         if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
-                        await signOut();
-                        window.location.assign("/find-insurance");
+                        try {
+                          await signOut();
+                        } finally {
+                          window.location.assign("/find-insurance");
+                        }
                       })();
                     }}
                   >
@@ -532,6 +602,7 @@ export function RootLayout() {
                     {isProviderSidebarCollapsed ? null : <span>Sign Out</span>}
                   </Button>
                 </div>
+              </div>
               </div>
             </aside>
 
@@ -568,73 +639,89 @@ export function RootLayout() {
             {isProviderMobileNavOpen ? (
               <div className="fixed inset-0 z-50">
                 <button type="button" className="absolute inset-0 bg-black/40" onClick={() => setIsProviderMobileNavOpen(false)} />
-                <div className="absolute left-0 top-0 bottom-0 w-[280px] max-w-[85vw] bg-card border-r shadow-xl flex flex-col">
-                  <div className="h-14 px-4 border-b flex items-center justify-between">
-                    <div className="font-semibold text-sm">Menu</div>
-                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setIsProviderMobileNavOpen(false)}>
-                      <X className="h-5 w-5" />
-                    </Button>
-                  </div>
+                <div className="absolute left-0 top-0 bottom-0 w-[280px] max-w-[85vw] border-r shadow-xl flex flex-col text-white overflow-hidden">
+                  <div className="pointer-events-none absolute inset-0 hero-gradient" />
+                  <div className="pointer-events-none absolute inset-0 bg-white/10" />
+                  <div
+                    className="pointer-events-none absolute inset-0 opacity-12"
+                    style={{
+                      backgroundImage: "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.35) 1px, transparent 0)",
+                      backgroundSize: "44px 44px",
+                    }}
+                  />
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/0 via-white/0 to-black/8" />
 
-                  <div className="p-3 flex-1">
-                    <div className="space-y-1">
-                      {providerNavItems.map((item) => (
-                        <Link
-                          key={item.to}
-                          to={item.to}
-                          onClick={() => setIsProviderMobileNavOpen(false)}
-                          className={cn(
-                            buttonVariants({ variant: "ghost", size: "sm" }),
-                            "w-full justify-start h-9 text-[13px] font-medium",
-                            item.active
-                              ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
-                              : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10",
-                          )}
-                        >
-                          <span className="flex items-center gap-2">
-                            <item.icon className="h-4 w-4" />
-                            <span>{item.label}</span>
-                          </span>
-                        </Link>
-                      ))}
+                  <div className="relative z-10 flex flex-col flex-1">
+                    <div className="h-14 px-4 border-b border-white/15 flex items-center justify-between">
+                      <div className="font-semibold text-sm">Menu</div>
+                      <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setIsProviderMobileNavOpen(false)}>
+                        <X className="h-5 w-5" />
+                      </Button>
                     </div>
 
-                    <div className="pt-3 mt-3 border-t" />
-                    <div className="space-y-1">
-                      {providerSecondaryItems.map((item) => (
-                        <Link
-                          key={item.to}
-                          to={item.to}
-                          onClick={() => setIsProviderMobileNavOpen(false)}
-                          className={cn(
-                            buttonVariants({ variant: "ghost", size: "sm" }),
-                            "w-full justify-start h-9 text-[13px] font-medium",
-                            item.active
-                              ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
-                              : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10",
-                          )}
-                        >
-                          <span className="flex items-center gap-2">
-                            <item.icon className="h-4 w-4" />
-                            <span>{item.label}</span>
-                          </span>
-                        </Link>
-                      ))}
+                    <div className="p-3 flex-1">
+                      <div className="space-y-1">
+                        {providerNavItems.map((item) => (
+                          <Link
+                            key={item.to}
+                            to={item.to}
+                            onClick={() => setIsProviderMobileNavOpen(false)}
+                            className={cn(
+                              buttonVariants({ variant: "ghost", size: "sm" }),
+                              "w-full justify-start h-9 text-[13px] font-medium",
+                              item.active
+                                ? "bg-white/15 text-white hover:bg-white/20"
+                                : "text-white/85 hover:text-white hover:bg-white/10",
+                            )}
+                          >
+                            <span className="flex items-center gap-2">
+                              <item.icon className="h-4 w-4" />
+                              <span>{item.label}</span>
+                            </span>
+                          </Link>
+                        ))}
+                      </div>
 
-                      <Button
-                        variant="ghost"
-                        className="w-full justify-start h-9 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-red-500/10"
-                        onClick={() => {
-                          void (async () => {
-                            if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
-                            await signOut();
-                            window.location.assign("/find-insurance");
-                          })();
-                        }}
-                      >
-                        <LogOut className="h-4 w-4" />
-                        <span>Sign Out</span>
-                      </Button>
+                      <div className="pt-3 mt-3 border-t border-white/15" />
+                      <div className="space-y-1">
+                        {providerSecondaryItems.map((item) => (
+                          <Link
+                            key={item.to}
+                            to={item.to}
+                            onClick={() => setIsProviderMobileNavOpen(false)}
+                            className={cn(
+                              buttonVariants({ variant: "ghost", size: "sm" }),
+                              "w-full justify-start h-9 text-[13px] font-medium",
+                              item.active
+                                ? "bg-white/15 text-white hover:bg-white/20"
+                                : "text-white/85 hover:text-white hover:bg-white/10",
+                            )}
+                          >
+                            <span className="flex items-center gap-2">
+                              <item.icon className="h-4 w-4" />
+                              <span>{item.label}</span>
+                            </span>
+                          </Link>
+                        ))}
+
+                        <Button
+                          variant="ghost"
+                          className="w-full justify-start h-9 text-[13px] font-medium text-white/85 hover:text-white hover:bg-red-500/20"
+                          onClick={() => {
+                            void (async () => {
+                              if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
+                              try {
+                                await signOut();
+                              } finally {
+                                window.location.assign("/find-insurance");
+                              }
+                            })();
+                          }}
+                        >
+                          <LogOut className="h-4 w-4" />
+                          <span>Sign Out</span>
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>

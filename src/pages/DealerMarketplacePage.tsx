@@ -11,7 +11,6 @@ import {
   CircleCheck,
   DollarSign,
   Gauge,
-  Search as SearchIcon,
   SlidersHorizontal,
   Shapes,
   X,
@@ -121,7 +120,6 @@ type PersistedMarketplaceState = {
   vehicleClass?: string;
   loanAmount?: string;
   decoded?: Awaited<ReturnType<typeof decodeVin>> | null;
-  search?: string;
   providerId?: string;
   productType?: string;
   priceSort?: string;
@@ -161,21 +159,24 @@ export function DealerMarketplacePage() {
 
   const [vin, setVin] = useState(() => (searchParams.get("vin") ?? persisted?.vin ?? ""));
   const [mileageKm, setMileageKm] = useState(() => (searchParams.get("mileageKm") ?? persisted?.mileageKm ?? ""));
-  const [vehicleClass, setVehicleClass] = useState(() => (searchParams.get("vehicleClass") ?? persisted?.vehicleClass ?? ""));
+  const [vehicleClass, setVehicleClass] = useState(() => {
+    const hasVin = Boolean((searchParams.get("vin") ?? "").trim());
+    if (hasVin) return "";
+    return searchParams.get("vehicleClass") ?? persisted?.vehicleClass ?? "";
+  });
   const [decoded, setDecoded] = useState<Awaited<ReturnType<typeof decodeVin>> | null>(() => persisted?.decoded ?? null);
   const [decodeError, setDecodeError] = useState<string | null>(null);
 
-  const [search, setSearch] = useState(() => persisted?.search ?? "");
   const [providerId, setProviderId] = useState(() => persisted?.providerId ?? "");
   const [productType, setProductType] = useState<string>(() => persisted?.productType ?? "");
   const [priceSort, setPriceSort] = useState<string>(() => persisted?.priceSort ?? "");
   const [showVehicleDetails, setShowVehicleDetails] = useState(() => persisted?.showVehicleDetails ?? false);
-  const [maxPrice, setMaxPrice] = useState(() => persisted?.maxPrice ?? "");
-  const [maxYears, setMaxYears] = useState(() => persisted?.maxYears ?? "");
-  const [maxKm, setMaxKm] = useState(() => persisted?.maxKm ?? "");
-  const [minTermMonths, setMinTermMonths] = useState(() => persisted?.minTermMonths ?? "");
-  const [minTermKm, setMinTermKm] = useState(() => persisted?.minTermKm ?? "");
-  const [maxDeductible, setMaxDeductible] = useState(() => persisted?.maxDeductible ?? "");
+  const [maxPrice] = useState(() => persisted?.maxPrice ?? "");
+  const [maxYears] = useState(() => persisted?.maxYears ?? "");
+  const [maxKm] = useState(() => persisted?.maxKm ?? "");
+  const [minTermMonths] = useState(() => persisted?.minTermMonths ?? "");
+  const [minTermKm] = useState(() => persisted?.minTermKm ?? "");
+  const [maxDeductible] = useState(() => persisted?.maxDeductible ?? "");
   const [loanAmount, setLoanAmount] = useState(() => (searchParams.get("loanAmount") ?? persisted?.loanAmount ?? ""));
 
   const dealerId = (mode === "local" ? (user?.dealerId ?? user?.id ?? "") : (user?.dealerId ?? "")).trim();
@@ -218,6 +219,7 @@ export function DealerMarketplacePage() {
     onSuccess: (d) => {
       setDecoded(d);
       setVin(d.vin);
+      setVehicleClass("");
       setDecodeError(null);
     },
     onError: (err) => {
@@ -234,14 +236,18 @@ export function DealerMarketplacePage() {
   }, [decoded, decodeMutation, vin]);
 
   useEffect(() => {
+    if (!decoded) return;
+    setVehicleClass("");
+  }, [decoded]);
+
+  useEffect(() => {
     try {
       const next: PersistedMarketplaceState = {
         vin,
         mileageKm,
-        vehicleClass,
+        vehicleClass: decoded ? "" : vehicleClass,
         loanAmount,
         decoded,
-        search,
         providerId,
         productType,
         priceSort,
@@ -270,7 +276,6 @@ export function DealerMarketplacePage() {
     priceSort,
     productType,
     providerId,
-    search,
     showVehicleDetails,
     vehicleClass,
     vin,
@@ -318,7 +323,72 @@ export function DealerMarketplacePage() {
     return providerItems.find((p) => p.id === pid) ?? null;
   }, [providerId, providerItems]);
 
-  const q = norm(search);
+  const normToken = (v: string) => norm(v).replace(/\s+/g, " ").trim();
+
+  const resolveVehicleClassForProduct = (p: Product, decoded: Awaited<ReturnType<typeof decodeVin>> | null) => {
+    if (!decoded) return null as string | null;
+    if (p.pricingStructure !== "MILEAGE_CLASS") return null as string | null;
+
+    const vMake = normToken(decoded.vehicleMake ?? "");
+    const vModel = normToken(decoded.vehicleModel ?? "");
+    if (!vMake) return null as string | null;
+
+    const map = (p as any).classVehicleTypes as Record<string, string> | undefined;
+    if (!map || typeof map !== "object") return null as string | null;
+
+    type Candidate = { classCode: string; score: number };
+    const candidates: Candidate[] = [];
+
+    const entryMatches = (raw: string) => {
+      const t = String(raw ?? "").trim();
+      if (!t) return { ok: false, score: 0 } as const;
+
+      const exMatch = t.match(/^(.+?)\s*\(\s*excluding\s+(.+?)\s*\)$/i);
+      const base = normToken(exMatch ? exMatch[1] : t);
+      const exclusion = normToken(exMatch ? exMatch[2] : "");
+
+      // base supports either:
+      // - "Honda"
+      // - "Infiniti QX" (make + model prefix)
+      const parts = base.split(" ").filter(Boolean);
+      const make = parts[0] ?? "";
+      const modelPrefix = parts.slice(1).join(" ").trim();
+
+      if (!make || make !== vMake) return { ok: false, score: 0 } as const;
+      if (exclusion && vModel && vModel.includes(exclusion)) return { ok: false, score: 0 } as const;
+
+      if (modelPrefix) {
+        if (!vModel) return { ok: false, score: 0 } as const;
+        const ok = vModel.includes(modelPrefix) || modelPrefix.includes(vModel);
+        return { ok, score: ok ? 2 : 0 } as const;
+      }
+
+      return { ok: true, score: 1 } as const;
+    };
+
+    for (const [classCodeRaw, rulesRaw] of Object.entries(map)) {
+      const classCode = String(classCodeRaw ?? "").trim().toUpperCase();
+      if (!classCode) continue;
+
+      const ruleText = String(rulesRaw ?? "");
+      const tokens = ruleText
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+
+      for (const token of tokens) {
+        const res = entryMatches(token);
+        if (res.ok) {
+          candidates.push({ classCode, score: res.score });
+          break;
+        }
+      }
+    }
+
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => b.score - a.score || a.classCode.localeCompare(b.classCode));
+    return candidates[0]!.classCode;
+  };
 
   const parsedMileage = parseNum(mileageKm);
   const vehicleYear = parseNum(decoded?.vehicleYear ?? "");
@@ -399,11 +469,6 @@ export function DealerMarketplacePage() {
       const mp = p as MarketplaceProduct;
       if (isGapProduct(mp) && mp.pricingStructure === "FINANCE_MATRIX" && !loanAmountCents) return false;
       return true;
-    })
-    .filter((p) => {
-      if (!q) return true;
-      const hay = norm(`${p.name} ${p.coverageDetails ?? ""} ${p.exclusions ?? ""}`);
-      return hay.includes(q);
     })
     .filter((p) => {
       const v = parseNum(maxYears);
@@ -493,18 +558,22 @@ export function DealerMarketplacePage() {
             return [pid, null] as const;
           }
 
-          const eligibleRows = treatClassAsWildcard
-            ? rows.filter((r) => isEligibleIgnoringClass(r))
-            : rows.filter((r) =>
+          const inferredClass = treatClassAsWildcard ? resolveVehicleClassForProduct(product as any, decoded) : null;
+          const effectiveVehicleClass = treatClassAsWildcard ? (inferredClass ?? "") : vehicleClass;
+          const canApplyClass = !treatClassAsWildcard || Boolean(inferredClass);
+
+          const eligibleRows = canApplyClass
+            ? rows.filter((r) =>
                 isPricingEligibleForVehicleWithConstraints({
                   pricing: r,
                   vehicleMileageKm: parsedMileage as number,
-                  vehicleClass,
+                  vehicleClass: effectiveVehicleClass,
                   minTermMonths: minTermMonthsNum ?? null,
                   minTermKm: minTermKmNum ?? null,
                   maxDeductibleCents: maxDeductibleCents ?? null,
                 }),
-              );
+              )
+            : rows.filter((r) => isEligibleIgnoringClass(r));
           const primary = bestPricingRowForVehicleMileage(eligibleRows);
           return [pid, primary] as const;
         }),
@@ -521,7 +590,6 @@ export function DealerMarketplacePage() {
     setVin("");
     setMileageKm("");
     setVehicleClass("");
-    setProviderId("");
     setLoanAmount("");
     setDecoded(null);
     setDecodeError(null);
@@ -593,7 +661,7 @@ export function DealerMarketplacePage() {
     const params = new URLSearchParams();
     if (decoded?.vin) params.set("vin", decoded.vin);
     if (mileageKm.trim()) params.set("mileageKm", mileageKm.trim());
-    if (vehicleClass.trim()) params.set("vehicleClass", vehicleClass.trim());
+    if (!decoded && vehicleClass.trim()) params.set("vehicleClass", vehicleClass.trim());
     if (loanAmount.trim()) params.set("loanAmount", loanAmount.trim());
     const qs = params.toString();
     return `/dealer-marketplace/products/${productId}${qs ? `?${qs}` : ""}`;
@@ -603,7 +671,7 @@ export function DealerMarketplacePage() {
     const params = new URLSearchParams();
     if (vin.trim()) params.set("vin", vin.trim());
     if (mileageKm.trim()) params.set("mileageKm", mileageKm.trim());
-    if (vehicleClass.trim()) params.set("vehicleClass", vehicleClass.trim());
+    if (!decoded && vehicleClass.trim()) params.set("vehicleClass", vehicleClass.trim());
     if (loanAmount.trim()) params.set("loanAmount", loanAmount.trim());
     const qs = params.toString();
     return `/dealer-marketplace/compare${qs ? `?${qs}` : ""}`;
@@ -634,7 +702,7 @@ export function DealerMarketplacePage() {
 
                   <div className="p-5">
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                      <div className="md:col-span-7">
+                      <div className="md:col-span-9">
                         <div className="text-xs font-semibold text-foreground">VIN</div>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <Input
@@ -661,7 +729,7 @@ export function DealerMarketplacePage() {
                         </div>
                       </div>
 
-                      <div className="md:col-span-2">
+                      <div className="md:col-span-3">
                         <div className="text-xs font-semibold text-foreground">Mileage (km)</div>
                         <div className="mt-2 relative">
                           <Input
@@ -672,27 +740,6 @@ export function DealerMarketplacePage() {
                             className="h-10 text-sm pr-12"
                           />
                           <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">km</div>
-                        </div>
-                      </div>
-
-                      <div className="md:col-span-3">
-                        <div className="text-xs font-semibold text-foreground">Provider</div>
-                        <div className="mt-2 relative">
-                          <Building2 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <select
-                            value={providerId}
-                            onChange={(e) => setProviderId(e.target.value)}
-                            disabled={!canUseFilters}
-                            className="h-10 w-full appearance-none rounded-md border border-input bg-transparent pl-10 pr-10 text-sm shadow-sm disabled:opacity-60"
-                          >
-                            <option value="">All providers</option>
-                            {providerItems.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name}
-                              </option>
-                            ))}
-                          </select>
                         </div>
                       </div>
                     </div>
@@ -893,15 +940,23 @@ export function DealerMarketplacePage() {
                     </div>
 
                     <div>
-                      <div className="text-xs font-semibold text-foreground">Search products</div>
+                      <div className="text-xs font-semibold text-foreground">Provider</div>
                       <div className="mt-2 relative">
-                        <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          value={search}
-                          onChange={(e) => setSearch(e.target.value)}
-                          placeholder="Product name"
-                          className={"h-10 text-sm pl-9 " + (!canUseFilters ? "opacity-60 pointer-events-none" : "")}
-                        />
+                        <Building2 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <select
+                          value={providerId}
+                          onChange={(e) => setProviderId(e.target.value)}
+                          disabled={!canUseFilters}
+                          className="h-10 w-full appearance-none rounded-md border border-input bg-transparent pl-10 pr-10 text-sm shadow-sm disabled:opacity-60"
+                        >
+                          <option value="">All providers</option>
+                          {providerItems.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
                   </div>
@@ -961,19 +1016,7 @@ export function DealerMarketplacePage() {
                       </div>
                     ) : null}
 
-                    {search.trim() ? (
-                      <div className="flex items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2 text-sm">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <SearchIcon className="h-4 w-4 text-muted-foreground" />
-                          <div className="truncate">Search: {search.trim()}</div>
-                        </div>
-                        <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setSearch("")}> 
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ) : null}
-
-                    {!mileageKm.trim() && !productType.trim() && !providerId.trim() && !loanAmount.trim() && !search.trim() ? (
+                    {!mileageKm.trim() && !productType.trim() && !providerId.trim() && !loanAmount.trim() ? (
                       <div className="text-sm text-muted-foreground">No active filters.</div>
                     ) : null}
 
@@ -984,7 +1027,6 @@ export function DealerMarketplacePage() {
                         disabled={!canUseFilters}
                         onClick={() => {
                           setMileageKm("");
-                          setSearch("");
                           setProviderId("");
                           setPriceSort("");
                           setProductType("");
@@ -1082,6 +1124,8 @@ export function DealerMarketplacePage() {
                             const mp = p as MarketplaceProduct;
                             const primaryPricing = eligibleVariantPricingByProductId[p.id] ?? null;
 
+                            const matrixNeedsLoanDetails = mp.pricingStructure === "FINANCE_MATRIX" && !loanAmountCents;
+
                             const shownMonths =
                               primaryPricing
                                 ? primaryPricing.termMonths === null
@@ -1136,10 +1180,6 @@ export function DealerMarketplacePage() {
                                     "Deductible reimbursement (up to $1,000)",
                                     `Vehicles up to ${gapMaxAgeYears} years eligible`,
                                   ];
-
-                            const matrixNeedsLoanDetails = mp.pricingStructure === "FINANCE_MATRIX" && !loanAmountCents;
-                            const matrixNoBand = false;
-                            const canSelect = !(matrixNeedsLoanDetails || matrixNoBand);
 
                             const accent = accentForIndex(cardIdx++);
 
@@ -1222,23 +1262,10 @@ export function DealerMarketplacePage() {
                                         )}
                                       </div>
 
-                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                        <Button size="sm" variant="outline" asChild className="h-11">
-                                          <Link to={detailHrefFor(mp.id)}>View details</Link>
+                                      <div className="grid grid-cols-1 gap-2">
+                                        <Button size="sm" asChild className="h-11 bg-yellow-400 text-black hover:bg-yellow-300">
+                                          <Link to={detailHrefFor(mp.id)}>View</Link>
                                         </Button>
-                                        {canSelect ? (
-                                          <Button size="sm" asChild className="h-11 bg-yellow-400 text-black hover:bg-yellow-300">
-                                            <Link
-                                              to={`/dealer-contracts?productId=${encodeURIComponent(mp.id)}&vin=${encodeURIComponent(decoded!.vin)}`}
-                                            >
-                                              Select Protection
-                                            </Link>
-                                          </Button>
-                                        ) : (
-                                          <Button size="sm" disabled className="h-11 bg-yellow-400 text-black hover:bg-yellow-300 opacity-60">
-                                            Select Protection
-                                          </Button>
-                                        )}
                                       </div>
                                     </div>
                                   ) : (
@@ -1274,12 +1301,9 @@ export function DealerMarketplacePage() {
                                         </div>
                                       </div>
 
-                                      <div className="mt-4 flex items-center justify-end gap-2">
-                                        <Button size="sm" variant="outline" asChild className="whitespace-nowrap">
-                                          <Link to={detailHrefFor(mp.id)}>View</Link>
-                                        </Button>
+                                      <div className="mt-4 flex items-center justify-end">
                                         <Button size="sm" asChild className="bg-yellow-400 text-black hover:bg-yellow-300 whitespace-nowrap">
-                                          <Link to={`/dealer-contracts?productId=${encodeURIComponent(mp.id)}&vin=${encodeURIComponent(decoded!.vin)}`}>Select</Link>
+                                          <Link to={detailHrefFor(mp.id)}>View</Link>
                                         </Button>
                                       </div>
                                     </div>
@@ -1299,22 +1323,15 @@ export function DealerMarketplacePage() {
             {!productsQuery.isLoading && !productsQuery.isError && eligibleFlat.length === 0 ? (
               <div className="px-2 py-10 text-sm text-muted-foreground">
                 <div className="font-medium text-foreground">No eligible products found</div>
-                <div className="mt-2">Try clearing filters or adjusting your search.</div>
+                <div className="mt-2">Try clearing filters or adjusting your selections.</div>
                 <div className="mt-4">
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => {
-                      setSearch("");
                       setProviderId("");
                       setProductType("");
                       setPriceSort("");
-                      setMaxPrice("");
-                      setMaxYears("");
-                      setMaxKm("");
-                      setMinTermMonths("");
-                      setMinTermKm("");
-                      setMaxDeductible("");
                     }}
                   >
                     Clear filters

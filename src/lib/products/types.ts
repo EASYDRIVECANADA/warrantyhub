@@ -14,6 +14,10 @@ export type Product = {
   coverageDetails?: string;
   exclusions?: string;
   internalNotes?: string;
+  class1VehicleTypes?: string;
+  class2VehicleTypes?: string;
+  class3VehicleTypes?: string;
+  classVehicleTypes?: Record<string, string>;
   termMonths?: number;
   termKm?: number;
   deductibleCents?: number;
@@ -37,6 +41,10 @@ export type CreateProductInput = {
   coverageMaxLtvPercent?: number | null;
   coverageDetails?: string;
   exclusions?: string;
+  class1VehicleTypes?: string;
+  class2VehicleTypes?: string;
+  class3VehicleTypes?: string;
+  classVehicleTypes?: Record<string, string>;
   termMonths?: number;
   termKm?: number;
   deductibleCents?: number;

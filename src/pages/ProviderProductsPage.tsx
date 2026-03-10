@@ -201,6 +201,7 @@ type EditorState = {
   pricingStructure: PricingStructure;
   pricingVariesByMileageBand: boolean;
   pricingVariesByVehicleClass: boolean;
+  classVehicleTypes: Array<{ key: string; classCode: string; vehicleTypes: string }>;
   financeBands: FinanceBand[];
   financeDefaultBandId: string;
   financeDefaultTermMonths: FinanceTermMonths;
@@ -254,6 +255,23 @@ function emptyEditor(): EditorState {
     pricingStructure: "FLAT",
     pricingVariesByMileageBand: false,
     pricingVariesByVehicleClass: false,
+    classVehicleTypes: [
+      {
+        key: crypto.randomUUID(),
+        classCode: "CLASS_1",
+        vehicleTypes: "",
+      },
+      {
+        key: crypto.randomUUID(),
+        classCode: "CLASS_2",
+        vehicleTypes: "",
+      },
+      {
+        key: crypto.randomUUID(),
+        classCode: "CLASS_3",
+        vehicleTypes: "",
+      },
+    ],
     financeBands: [
       {
         id: crypto.randomUUID(),
@@ -319,6 +337,29 @@ function editorFromProduct(p: Product): EditorState {
     deductible: "",
     providerCost: "",
   };
+
+  const toClassVehicleTypes = (): EditorState["classVehicleTypes"] => {
+    const raw = (p.classVehicleTypes ?? null) as Record<string, string> | null;
+    const fromMap = raw
+      ? Object.entries(raw)
+          .map(([k, v]) => ({ classCode: String(k), vehicleTypes: String(v ?? "") }))
+          .filter((x) => x.classCode.trim())
+      : [];
+
+    if (fromMap.length > 0) {
+      return fromMap
+        .sort((a, b) => a.classCode.localeCompare(b.classCode))
+        .map((x) => ({ key: crypto.randomUUID(), classCode: x.classCode, vehicleTypes: x.vehicleTypes }));
+    }
+
+    // Back-compat for previously saved class1/2/3 fields.
+    return [
+      { key: crypto.randomUUID(), classCode: "CLASS_1", vehicleTypes: (p.class1VehicleTypes ?? "").toString() },
+      { key: crypto.randomUUID(), classCode: "CLASS_2", vehicleTypes: (p.class2VehicleTypes ?? "").toString() },
+      { key: crypto.randomUUID(), classCode: "CLASS_3", vehicleTypes: (p.class3VehicleTypes ?? "").toString() },
+    ];
+  };
+
   return {
     id: p.id,
     name: p.name,
@@ -327,6 +368,7 @@ function editorFromProduct(p: Product): EditorState {
     pricingStructure: p.productType === "GAP" ? (p.pricingStructure ?? "FINANCE_MATRIX") : (p.pricingStructure ?? "FLAT"),
     pricingVariesByMileageBand: false,
     pricingVariesByVehicleClass: false,
+    classVehicleTypes: toClassVehicleTypes(),
     financeBands: [
       {
         id: crypto.randomUUID(),
@@ -906,6 +948,12 @@ export function ProviderProductsPage() {
           coverageMaxLtvPercent: parseOptionalInt(editor.coverageMaxLtvPercent),
           coverageDetails: editor.coverageDetails.trim() || undefined,
           exclusions: editor.exclusions.trim() || undefined,
+          classVehicleTypes: Object.fromEntries(
+            editor.classVehicleTypes
+              .map((x) => ({ classCode: (x.classCode ?? "").trim(), vehicleTypes: (x.vehicleTypes ?? "").trim() }))
+              .filter((x) => x.classCode && x.vehicleTypes)
+              .map((x) => [x.classCode, x.vehicleTypes])
+          ),
           eligibilityMaxVehicleAgeYears: parseOptionalInt(editor.eligibilityMaxVehicleAgeYears),
           eligibilityMaxMileageKm: parseOptionalInt(editor.eligibilityMaxMileageKm),
           eligibilityMakeAllowlist: parseAllowlist(editor.eligibilityMakeAllowlist),
@@ -942,6 +990,7 @@ export function ProviderProductsPage() {
               coverageMaxLtvPercent: input.coverageMaxLtvPercent ?? null,
               coverageDetails: input.coverageDetails ?? "",
               exclusions: input.exclusions ?? "",
+              classVehicleTypes: input.classVehicleTypes ?? {},
               ...overviewExtrasPatch,
               ...(input.coverageMaxLtvPercent === null ? { coverageMaxLtvPercent: null } : {}),
               eligibilityMaxVehicleAgeYears: parseOptionalIntOrNull(editor.eligibilityMaxVehicleAgeYears),
@@ -1235,6 +1284,12 @@ export function ProviderProductsPage() {
       coverageMaxLtvPercent: parseOptionalInt(editor.coverageMaxLtvPercent),
       coverageDetails: editor.coverageDetails.trim() || undefined,
       exclusions: editor.exclusions.trim() || undefined,
+      classVehicleTypes: Object.fromEntries(
+        editor.classVehicleTypes
+          .map((x) => ({ classCode: (x.classCode ?? "").trim(), vehicleTypes: (x.vehicleTypes ?? "").trim() }))
+          .filter((x) => x.classCode && x.vehicleTypes)
+          .map((x) => [x.classCode, x.vehicleTypes])
+      ),
       termMonths: primary && typeof primary.termMonths === "number" ? primary.termMonths : undefined,
       termKm: primary && typeof primary.termKm === "number" ? primary.termKm : undefined,
       deductibleCents: primary && typeof primary.deductibleCents === "number" ? primary.deductibleCents : undefined,
@@ -1312,6 +1367,7 @@ export function ProviderProductsPage() {
             coverageMaxLtvPercent: input.coverageMaxLtvPercent ?? null,
             coverageDetails: input.coverageDetails ?? "",
             exclusions: input.exclusions ?? "",
+            classVehicleTypes: input.classVehicleTypes ?? {},
             ...overviewExtrasPatch,
             ...(typeof input.termMonths === "number" ? { termMonths: input.termMonths } : {}),
             ...(typeof input.termKm === "number" ? { termKm: input.termKm } : {}),
@@ -1798,6 +1854,85 @@ export function ProviderProductsPage() {
                     />
                   </div>
                 </div>
+
+                {editor.pricingStructure === "MILEAGE_CLASS" ? (
+                  <div className="rounded-xl border p-4">
+                    <div className="font-semibold">Vehicle Classes</div>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      These descriptions will show to dealerships on Marketplace for Mileage + Class products.
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {editor.classVehicleTypes.map((row) => (
+                        <div key={row.key} className="grid grid-cols-1 md:grid-cols-12 gap-2">
+                          <div className="md:col-span-3">
+                            <Input
+                              value={row.classCode}
+                              onChange={(e) =>
+                                setEditor((s) => ({
+                                  ...s,
+                                  classVehicleTypes: s.classVehicleTypes.map((x) =>
+                                    x.key === row.key ? { ...x, classCode: e.target.value } : x
+                                  ),
+                                }))
+                              }
+                              placeholder="CLASS_4"
+                              disabled={busy}
+                            />
+                          </div>
+                          <div className="md:col-span-8">
+                            <Input
+                              value={row.vehicleTypes}
+                              onChange={(e) =>
+                                setEditor((s) => ({
+                                  ...s,
+                                  classVehicleTypes: s.classVehicleTypes.map((x) =>
+                                    x.key === row.key ? { ...x, vehicleTypes: e.target.value } : x
+                                  ),
+                                }))
+                              }
+                              placeholder="Vehicle types (example: Mid-size SUV, Pickup)"
+                              disabled={busy}
+                            />
+                          </div>
+                          <div className="md:col-span-1 flex">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-10 w-full"
+                              disabled={busy || editor.classVehicleTypes.length <= 1}
+                              onClick={() =>
+                                setEditor((s) => ({
+                                  ...s,
+                                  classVehicleTypes: s.classVehicleTypes.filter((x) => x.key !== row.key),
+                                }))
+                              }
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() =>
+                          setEditor((s) => ({
+                            ...s,
+                            classVehicleTypes: [
+                              ...s.classVehicleTypes,
+                              { key: crypto.randomUUID(), classCode: `CLASS_${s.classVehicleTypes.length + 1}`, vehicleTypes: "" },
+                            ],
+                          }))
+                        }
+                      >
+                        Add class
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -2803,10 +2938,23 @@ export function ProviderProductsPage() {
                                           disabled={busy}
                                         >
                                           <option value="ALL">All</option>
-                                          <option value="CLASS_1">Class 1</option>
-                                          <option value="CLASS_2">Class 2</option>
-                                          <option value="CLASS_3">Class 3</option>
-                                          <option value="CLASS_4">Class 4</option>
+                                          {Array.from(
+                                            new Set(
+                                              editor.classVehicleTypes
+                                                .map((x) => (x.classCode ?? "").trim())
+                                                .filter(Boolean)
+                                            )
+                                          )
+                                            .sort((a, b) => a.localeCompare(b))
+                                            .map((code) => {
+                                              const labelMatch = code.match(/^CLASS_(\d+)$/i);
+                                              const label = labelMatch ? `Class ${labelMatch[1]}` : code;
+                                              return (
+                                                <option key={code} value={code}>
+                                                  {label}
+                                                </option>
+                                              );
+                                            })}
                                         </select>
                                       </td>
                                     ) : null}

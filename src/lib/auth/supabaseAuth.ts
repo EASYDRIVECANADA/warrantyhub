@@ -233,8 +233,11 @@ export const supabaseAuthApi: AuthApi = {
   async signOut() {
     const supabase = getSupabaseClient();
     if (!supabase) return;
-    const { error } = await supabase.auth.signOut();
-    if (error) throw new Error(error.message);
+    try {
+      const { error } = await supabase.auth.signOut({ scope: "local" });
+      if (error) throw new Error(error.message);
+    } catch {
+    }
   },
 
   onAuthStateChange(cb) {
