@@ -558,23 +558,35 @@ export function DealerMarketplacePage() {
             return [pid, null] as const;
           }
 
+          const isMileageClass = (product?.pricingStructure ?? "") === "MILEAGE_CLASS";
           const inferredClass = treatClassAsWildcard ? resolveVehicleClassForProduct(product as any, decoded) : null;
           const effectiveVehicleClass = treatClassAsWildcard ? (inferredClass ?? "") : vehicleClass;
-          const canApplyClass = !treatClassAsWildcard || Boolean(inferredClass);
 
-          const eligibleRows = canApplyClass
-            ? rows.filter((r) =>
-                isPricingEligibleForVehicleWithConstraints({
-                  pricing: r,
-                  vehicleMileageKm: parsedMileage as number,
-                  vehicleClass: effectiveVehicleClass,
-                  minTermMonths: minTermMonthsNum ?? null,
-                  minTermKm: minTermKmNum ?? null,
-                  maxDeductibleCents: maxDeductibleCents ?? null,
-                }),
-              )
-            : rows.filter((r) => isEligibleIgnoringClass(r));
-          const primary = bestPricingRowForVehicleMileage(eligibleRows);
+          // IMPORTANT:
+          // For MILEAGE_CLASS products, class is REQUIRED.
+          // If the dealer didn't select a class and we can't infer it from the VIN,
+          // we must treat the product as NOT eligible (do NOT ignore class).
+          if (isMileageClass && !effectiveVehicleClass.trim()) {
+            return [pid, null] as const;
+          }
+
+          const eligibleRows = rows.filter((r) =>
+            isPricingEligibleForVehicleWithConstraints({
+              pricing: r,
+              vehicleMileageKm: parsedMileage as number,
+              vehicleClass: effectiveVehicleClass,
+              minTermMonths: minTermMonthsNum ?? null,
+              minTermKm: minTermKmNum ?? null,
+              maxDeductibleCents: maxDeductibleCents ?? null,
+            }),
+          );
+
+          // For non-MILEAGE_CLASS products (e.g. term + mileage), allow pricing rows to match
+          // even when the dealer didn't select a class (class is not part of the constraint).
+          const finalEligibleRows = !isMileageClass && treatClassAsWildcard && !effectiveVehicleClass.trim()
+            ? rows.filter((r) => isEligibleIgnoringClass(r))
+            : eligibleRows;
+          const primary = bestPricingRowForVehicleMileage(finalEligibleRows);
           return [pid, primary] as const;
         }),
       );

@@ -345,6 +345,11 @@ export function DealerMarketplaceProductDetailPage() {
       return resolved.ok ? resolved.row : null;
     }
     if (typeof mileageKm !== "number") return null;
+
+    if ((product?.pricingStructure ?? "") === "MILEAGE_CLASS" && !effectiveVehicleClass.trim()) {
+      return null;
+    }
+
     const eligible = pricingRows.filter((r) =>
       isPricingEligibleForVehicle({ pricing: r, vehicleMileageKm: mileageKm, vehicleClass: effectiveVehicleClass }),
     );
@@ -424,6 +429,11 @@ export function DealerMarketplaceProductDetailPage() {
     }
 
     if (typeof mileageKm !== "number") return pricingRows;
+
+    if (product.pricingStructure === "MILEAGE_CLASS" && !effectiveVehicleClass.trim()) {
+      return [] as ProductPricing[];
+    }
+
     const eligible = pricingRows.filter((r) =>
       isPricingEligibleForVehicle({ pricing: r, vehicleMileageKm: mileageKm, vehicleClass: effectiveVehicleClass }),
     );
