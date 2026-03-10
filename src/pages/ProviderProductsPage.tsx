@@ -271,6 +271,16 @@ function emptyEditor(): EditorState {
         classCode: "CLASS_3",
         vehicleTypes: "",
       },
+      {
+        key: crypto.randomUUID(),
+        classCode: "CLASS_4",
+        vehicleTypes: "",
+      },
+      {
+        key: crypto.randomUUID(),
+        classCode: "CLASS_5",
+        vehicleTypes: "",
+      },
     ],
     financeBands: [
       {
@@ -347,9 +357,19 @@ function editorFromProduct(p: Product): EditorState {
       : [];
 
     if (fromMap.length > 0) {
-      return fromMap
+      const rows = fromMap
         .sort((a, b) => a.classCode.localeCompare(b.classCode))
         .map((x) => ({ key: crypto.randomUUID(), classCode: x.classCode, vehicleTypes: x.vehicleTypes }));
+
+      const existing = new Set(rows.map((r) => (r.classCode ?? "").trim().toUpperCase()).filter(Boolean));
+      const ensure = ["CLASS_1", "CLASS_2", "CLASS_3", "CLASS_4", "CLASS_5"];
+      for (const code of ensure) {
+        if (!existing.has(code)) {
+          rows.push({ key: crypto.randomUUID(), classCode: code, vehicleTypes: "" });
+        }
+      }
+
+      return rows.sort((a, b) => (a.classCode ?? "").localeCompare(b.classCode ?? ""));
     }
 
     // Back-compat for previously saved class1/2/3 fields.
@@ -357,6 +377,8 @@ function editorFromProduct(p: Product): EditorState {
       { key: crypto.randomUUID(), classCode: "CLASS_1", vehicleTypes: (p.class1VehicleTypes ?? "").toString() },
       { key: crypto.randomUUID(), classCode: "CLASS_2", vehicleTypes: (p.class2VehicleTypes ?? "").toString() },
       { key: crypto.randomUUID(), classCode: "CLASS_3", vehicleTypes: (p.class3VehicleTypes ?? "").toString() },
+      { key: crypto.randomUUID(), classCode: "CLASS_4", vehicleTypes: ((p as any).class4VehicleTypes ?? "").toString() },
+      { key: crypto.randomUUID(), classCode: "CLASS_5", vehicleTypes: ((p as any).class5VehicleTypes ?? "").toString() },
     ];
   };
 
@@ -438,6 +460,8 @@ function normalizeVehicleClassLabel(v: string | undefined): string {
   if (t === "CLASS_1" || t === "CLASS 1" || t === "1") return "CLASS_1";
   if (t === "CLASS_2" || t === "CLASS 2" || t === "2") return "CLASS_2";
   if (t === "CLASS_3" || t === "CLASS 3" || t === "3") return "CLASS_3";
+  if (t === "CLASS_4" || t === "CLASS 4" || t === "4") return "CLASS_4";
+  if (t === "CLASS_5" || t === "CLASS 5" || t === "5") return "CLASS_5";
   return "ALL";
 }
 
