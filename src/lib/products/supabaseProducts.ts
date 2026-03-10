@@ -11,6 +11,7 @@ type ProductsRow = {
   pricing_structure?: string | null;
   coverage_details?: string | null;
   exclusions?: string | null;
+  class_vehicle_types?: Record<string, string> | null;
   term_months?: number | null;
   term_km?: number | null;
   deductible_cents?: number | null;
@@ -41,6 +42,10 @@ function toProduct(r: ProductsRow): Product {
     coverageDetails: r.coverage_details ?? undefined,
     exclusions: r.exclusions ?? undefined,
     internalNotes: undefined,
+    classVehicleTypes:
+      r.class_vehicle_types && typeof r.class_vehicle_types === "object" && !Array.isArray(r.class_vehicle_types)
+        ? (r.class_vehicle_types as Record<string, string>)
+        : undefined,
     termMonths: r.term_months ?? undefined,
     termKm: r.term_km ?? undefined,
     deductibleCents: r.deductible_cents ?? undefined,
@@ -117,6 +122,7 @@ export const supabaseProductsApi: ProductsApi = {
       coverage_max_ltv_percent: input.coverageMaxLtvPercent,
       coverage_details: input.coverageDetails,
       exclusions: input.exclusions,
+      class_vehicle_types: input.classVehicleTypes,
       term_months: input.termMonths,
       term_km: input.termKm,
       deductible_cents: input.deductibleCents,
@@ -152,6 +158,9 @@ export const supabaseProductsApi: ProductsApi = {
     }
     if (typeof patch.coverageDetails === "string") updateRow.coverage_details = patch.coverageDetails;
     if (typeof patch.exclusions === "string") updateRow.exclusions = patch.exclusions;
+    if ((patch as any).classVehicleTypes && typeof (patch as any).classVehicleTypes === "object") {
+      updateRow.class_vehicle_types = (patch as any).classVehicleTypes;
+    }
     if (typeof patch.termMonths === "number") updateRow.term_months = patch.termMonths;
     if (typeof patch.termKm === "number") updateRow.term_km = patch.termKm;
     if (typeof patch.deductibleCents === "number") updateRow.deductible_cents = patch.deductibleCents;

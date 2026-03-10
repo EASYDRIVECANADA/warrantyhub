@@ -90,6 +90,8 @@ function classTypesFor(product: Product, vehicleClass: string | null | undefined
   if (c === "CLASS_1") return (product.class1VehicleTypes ?? "").trim();
   if (c === "CLASS_2") return (product.class2VehicleTypes ?? "").trim();
   if (c === "CLASS_3") return (product.class3VehicleTypes ?? "").trim();
+  if (c === "CLASS_4") return (((product as any).class4VehicleTypes ?? "") as string).trim();
+  if (c === "CLASS_5") return (((product as any).class5VehicleTypes ?? "") as string).trim();
   return "";
 }
 
