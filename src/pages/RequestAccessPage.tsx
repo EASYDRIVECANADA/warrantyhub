@@ -107,33 +107,59 @@ export function RequestAccessPage() {
   useEffect(() => {
     if (!user) return;
     if (mode !== "supabase") return;
-    if (signupIntent !== "DEALER_EMPLOYEE") return;
+    if (signupIntent !== "DEALER_EMPLOYEE" && user.role !== "DEALER_EMPLOYEE") {
+      // allow metadata-driven invite joins even if localStorage intent is missing (e.g., different device)
+    }
     if (autoJoinError) return;
     if (autoJoined || autoJoining) return;
 
-    const code = (localStorage.getItem(SIGNUP_INVITE_CODE_KEY) ?? "").trim().toUpperCase();
-    if (!code) return;
-    if (user.role !== "UNASSIGNED") {
-      setAutoJoined(true);
-      try {
-        localStorage.removeItem(SIGNUP_INTENT_KEY);
-        localStorage.removeItem(SIGNUP_INVITE_CODE_KEY);
-      } catch {
-      }
-      return;
-    }
+    const localCode = (localStorage.getItem(SIGNUP_INVITE_CODE_KEY) ?? "").trim().toUpperCase();
 
-    setAutoJoining(true);
-    setError(null);
-    setAutoJoinError(null);
+    const getMetadataCode = async () => {
+      try {
+        const supabase = getSupabaseClient();
+        if (!supabase) return "";
+        const { data, error } = await supabase.auth.getUser();
+        if (error) return "";
+        const meta = ((data.user as any)?.user_metadata ?? {}) as any;
+        const intent = (meta?.signup_intent ?? "").toString();
+        const code = (meta?.invite_code ?? "").toString().trim().toUpperCase();
+        if (intent !== "DEALER_EMPLOYEE") return "";
+        return code;
+      } catch {
+        return "";
+      }
+    };
 
     void (async () => {
+      const code = localCode || (await getMetadataCode());
+      if (!code) return;
+
       try {
         const supabase = getSupabaseClient();
         if (!supabase) throw new Error("Supabase is not configured");
 
+        if (user.role !== "UNASSIGNED") {
+          setAutoJoined(true);
+          try {
+            localStorage.removeItem(SIGNUP_INTENT_KEY);
+            localStorage.removeItem(SIGNUP_INVITE_CODE_KEY);
+          } catch {
+          }
+          return;
+        }
+
+        setAutoJoining(true);
+        setError(null);
+        setAutoJoinError(null);
+
         const { error: joinError } = await supabase.rpc("join_dealer_by_invite", { invite_code: code });
         if (joinError) throw new Error(joinError.message);
+
+        try {
+          await supabase.auth.updateUser({ data: { signup_intent: null, invite_code: null } });
+        } catch {
+        }
 
         try {
           localStorage.removeItem(SIGNUP_INTENT_KEY);
@@ -354,6 +380,8 @@ export function RequestAccessPage() {
   const isApprovedView = !loadingMyRequest && myRequest?.status === "APPROVED";
   const isRejectedView = !loadingMyRequest && myRequest?.status === "REJECTED";
 
+  const isInviteJoinFlow = mode === "supabase" && user?.role === "UNASSIGNED" && (signupIntent === "DEALER_EMPLOYEE" || autoJoining || Boolean(autoJoinError));
+
   const submittedAtLabel = myRequest?.createdAt ? new Date(myRequest.createdAt).toLocaleString() : loadingMyRequest ? "Loading…" : "";
   const requestTypeLabel = myRequest?.requestType === "PROVIDER" ? "Provider" : loadingMyRequest ? "Loading…" : "Dealer";
 
@@ -361,12 +389,12 @@ export function RequestAccessPage() {
     <div className="min-h-screen bg-slate-50">
       <div className="container mx-auto px-4 py-12">
         <div className="max-w-4xl mx-auto">
-          {isPendingView ? null : (
+          {isInviteJoinFlow ? null : (isPendingView ? null : (
             <>
               <h1 className="text-3xl font-semibold tracking-tight">Request Access</h1>
               <p className="text-muted-foreground mt-2">Your account is created, but access must be approved by an admin.</p>
             </>
-          )}
+          ))}
 
         {autoJoining ? (
           <div className="mt-6 rounded-lg border bg-card p-4 text-sm">Joining your dealership…</div>
@@ -391,11 +419,11 @@ export function RequestAccessPage() {
           </div>
         ) : null}
 
-          {loadingMyRequest && !isPendingView ? (
+          {isInviteJoinFlow ? null : loadingMyRequest && !isPendingView ? (
             <div className="mt-6 rounded-lg border bg-card p-4 text-sm">Loading request status…</div>
           ) : null}
 
-          {isPendingView ? (
+          {isInviteJoinFlow ? null : isPendingView ? (
             <div className="mt-6">
               <div className="text-center">
                 <div className="inline-flex items-center gap-2 rounded-full border border-yellow-300/40 bg-yellow-100 px-4 py-1 text-[11px] font-semibold tracking-wide text-slate-900">
@@ -567,7 +595,7 @@ export function RequestAccessPage() {
           </div>
           ) : null}
 
-          {signupIntent === "DEALERSHIP" || autoJoining ? null : (isPendingView ? null : (
+          {isInviteJoinFlow ? null : signupIntent === "DEALERSHIP" || autoJoining ? null : (isPendingView ? null : (
           <form className="mt-6 space-y-4" onSubmit={onSubmit}>
           <div className="space-y-2">
             <label className="text-sm font-medium">I am a…</label>

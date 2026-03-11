@@ -135,14 +135,39 @@ export function DealerEmployeeSignupPage() {
         localStorage.setItem(SIGNUP_INTENT_KEY, "DEALER_EMPLOYEE");
         localStorage.setItem(SIGNUP_INVITE_CODE_KEY, normalizedCode);
 
-        await signUp(email, password);
-
         const supabase = getSupabaseClient();
         if (!supabase) throw new Error("Supabase is not configured");
 
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) throw new Error(sessionError.message);
-        if (!sessionData.session) {
+        const trimmedEmail = email.trim();
+        const trimmedPassword = password.trim();
+        if (!trimmedEmail) throw new Error("Email is required");
+        if (!trimmedPassword) throw new Error("Password is required");
+
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email: trimmedEmail,
+          password: trimmedPassword,
+          options: {
+            emailRedirectTo: `${window.location.origin}/sign-in`,
+            data: {
+              signup_intent: "DEALER_EMPLOYEE",
+              invite_code: normalizedCode,
+            },
+          },
+        });
+
+        if (signUpError) throw new Error(signUpError.message);
+
+        const newUser = data.user;
+        if (!newUser?.id || !newUser.email) throw new Error("No user returned");
+
+        const insertRes = await supabase
+          .from("profiles")
+          .insert({ id: newUser.id, role: "UNASSIGNED", email: newUser.email, is_active: false });
+        if (insertRes.error && (insertRes.error as any).code !== "23505") {
+          throw new Error(insertRes.error.message);
+        }
+
+        if (!data.session) {
           throw new Error("Account created. Please confirm your email, then sign in.");
         }
 

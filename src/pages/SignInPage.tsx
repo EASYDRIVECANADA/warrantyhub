@@ -5,6 +5,8 @@ import { Shield } from "lucide-react";
 
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { getAppMode } from "../lib/runtime";
+import { getSupabaseClient } from "../lib/supabase/client";
 import type { Role } from "../lib/auth/types";
 import { useAuth } from "../providers/AuthProvider";
 
@@ -23,7 +25,7 @@ function roleToDashboardPath(role: string) {
 }
 
 export function SignInPage() {
-  const { signIn, isLoading, user, devSignInAs } = useAuth();
+  const { signIn, isLoading, user, devSignInAs, refreshUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -31,6 +33,7 @@ export function SignInPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [completingInvite, setCompletingInvite] = useState(false);
 
   useEffect(() => {
     try {
@@ -47,6 +50,33 @@ export function SignInPage() {
     setError(null);
     try {
       await signIn(email, password);
+
+      const mode = getAppMode();
+      if (mode !== "supabase") return;
+
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+
+      const { data: userData, error: userErr } = await supabase.auth.getUser();
+      if (userErr) return;
+
+      const meta = (userData.user as any)?.user_metadata ?? {};
+      const intent = (meta?.signup_intent ?? "").toString();
+      const inviteCode = (meta?.invite_code ?? "").toString().trim();
+      if (intent !== "DEALER_EMPLOYEE" || !inviteCode) return;
+
+      setCompletingInvite(true);
+      setNotice("Confirming your dealership invite…");
+      try {
+        await supabase.rpc("join_dealer_by_invite", { invite_code: inviteCode });
+        try {
+          await supabase.auth.updateUser({ data: { signup_intent: null, invite_code: null } });
+        } catch {
+        }
+        await refreshUser();
+      } finally {
+        setCompletingInvite(false);
+      }
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
@@ -66,8 +96,9 @@ export function SignInPage() {
 
   useEffect(() => {
     if (!user) return;
+    if (completingInvite && user.role === "UNASSIGNED") return;
     navigate(roleToDashboardPath(user.role), { replace: true });
-  }, [navigate, user]);
+  }, [completingInvite, navigate, user]);
 
   useEffect(() => {
     const state = location.state as { fromSignup?: boolean; emailConfirmed?: boolean } | null;
