@@ -344,8 +344,8 @@ export function RootLayout() {
                       onClick={() => {
                         void (async () => {
                           if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
+                          await signOut();
                           window.location.assign("/find-insurance");
-                          void signOut();
                         })();
                       }}
                     >
@@ -483,9 +483,9 @@ export function RootLayout() {
                         variant="ghost"
                         className="w-full justify-start h-9 text-[13px] font-medium text-white/85 hover:text-white hover:bg-red-500/20"
                         onClick={() => {
-                          void (async () => {
+                          (async () => {
                             if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
-                            void signOut();
+                            await signOut();
                             window.location.assign("/find-insurance");
                           })();
                         }}
@@ -590,9 +590,9 @@ export function RootLayout() {
                     )}
                     title={isProviderSidebarCollapsed ? "Sign Out" : undefined}
                     onClick={() => {
-                      void (async () => {
+                      (async () => {
                         if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
-                        void signOut();
+                        await signOut();
                         window.location.assign("/find-insurance");
                       })();
                     }}
@@ -715,9 +715,9 @@ export function RootLayout() {
                           variant="ghost"
                           className="w-full justify-start h-9 text-[13px] font-medium text-white/85 hover:text-white hover:bg-red-500/20"
                           onClick={() => {
-                            void (async () => {
+                            (async () => {
                               if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
-                              void signOut();
+                              await signOut();
                               window.location.assign("/find-insurance");
                             })();
                           }}

@@ -170,6 +170,24 @@ create policy "profiles_select_own"
     )
   );
 
+drop policy if exists "profiles_select_dealer_admin_team" on public.profiles;
+create policy "profiles_select_dealer_admin_team"
+  on public.profiles
+  for select
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.dealer_members dm_target
+      join public.dealer_members dm_admin
+        on dm_admin.dealer_id = dm_target.dealer_id
+      where dm_target.user_id = profiles.id
+        and dm_admin.user_id = auth.uid()
+        and dm_admin.status = 'ACTIVE'
+        and dm_admin.role = 'DEALER_ADMIN'
+    )
+  );
+
 create table if not exists public.support_conversations (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
@@ -672,6 +690,22 @@ create policy "dealer_members_member_select"
   for select
   to authenticated
   using (user_id = auth.uid());
+
+drop policy if exists "dealer_members_dealer_admin_select_team" on public.dealer_members;
+create policy "dealer_members_dealer_admin_select_team"
+  on public.dealer_members
+  for select
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.dealer_members dm_admin
+      where dm_admin.dealer_id = dealer_members.dealer_id
+        and dm_admin.user_id = auth.uid()
+        and dm_admin.status = 'ACTIVE'
+        and dm_admin.role = 'DEALER_ADMIN'
+    )
+  );
 
 create table if not exists public.dealer_employee_invites (
   dealer_id uuid primary key references public.dealers(id) on delete cascade,

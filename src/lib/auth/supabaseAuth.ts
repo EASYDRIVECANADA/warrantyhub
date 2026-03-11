@@ -234,8 +234,11 @@ export const supabaseAuthApi: AuthApi = {
     const supabase = getSupabaseClient();
     if (!supabase) return;
     try {
-      const { error } = await supabase.auth.signOut({ scope: "local" });
-      if (error) throw new Error(error.message);
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        const { error: fallbackError } = await supabase.auth.signOut({ scope: "global" });
+        if (fallbackError) throw new Error(fallbackError.message);
+      }
     } catch {
     }
   },

@@ -219,10 +219,34 @@ export function DealerTeamPage() {
     queryKey: ["dealer-team"],
     queryFn: async () => {
       if (!dealerId) return [];
-      if (mode !== "local") return [];
-      return read()
-        .filter((m) => m.dealerId === dealerId)
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      if (mode === "local") {
+        return read()
+          .filter((m) => m.dealerId === dealerId)
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      }
+
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error("Supabase is not configured");
+
+      const { data, error } = await supabase
+        .from("dealer_members")
+        .select("id, dealer_id, user_id, role, status, created_at, profiles:profiles(email)")
+        .eq("dealer_id", dealerId)
+        .order("created_at", { ascending: false });
+
+      if (error) throw new Error(error.message);
+
+      return ((data ?? []) as any[]).map(
+        (r): DealerTeamMember => ({
+          id: (r?.id ?? "").toString(),
+          dealerId: (r?.dealer_id ?? "").toString(),
+          email: ((r?.profiles?.email ?? "") as string).toString(),
+          role: (r?.role === "DEALER_ADMIN" ? "DEALER_ADMIN" : "DEALER_EMPLOYEE") as DealerTeamRole,
+          status:
+            r?.status === "ACTIVE" ? "ACTIVE" : r?.status === "DISABLED" ? "DISABLED" : ("INVITED" as DealerTeamStatus),
+          createdAt: (r?.created_at ?? new Date().toISOString()).toString(),
+        }),
+      );
     },
   });
 

@@ -245,6 +245,8 @@ type PendingAddon = {
   description: string;
   price: string;
   pricingType: "FIXED" | "PER_TERM" | "PER_CLAIM";
+  appliesToAllPricingRows: boolean;
+  applicableTermMonths: string[];
 };
 
 function emptyEditor(): EditorState {
@@ -557,6 +559,26 @@ export function ProviderProductsPage() {
 
   const editorProductId = (editor.id ?? "").trim();
 
+  const pricingRowsQuery = useQuery({
+    queryKey: ["provider-product-pricing", editorProductId],
+    enabled: showEditor && !!editorProductId,
+    queryFn: () => pricingApi.list({ productId: editorProductId }),
+  });
+
+  const pricingRowsFromApi = (pricingRowsQuery.data ?? []) as ProductPricing[];
+
+  const pricingRowTermMonthsById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const r of pricingRowsFromApi) {
+      const id = (r.id ?? "").trim();
+      if (!id) continue;
+      if (typeof r.termMonths === "number" && Number.isFinite(r.termMonths) && r.termMonths > 0) {
+        map.set(id, r.termMonths);
+      }
+    }
+    return map;
+  }, [pricingRowsFromApi]);
+
   const addonsQuery = useQuery({
     queryKey: ["product-addons", editorProductId],
     enabled: showEditor && !!editorProductId,
@@ -581,13 +603,37 @@ export function ProviderProductsPage() {
 
     if (!editorProductId) {
       hasHydratedAddons.current = false;
-      setPendingAddons((s) => (s.length > 0 ? s : [{ key: crypto.randomUUID(), name: "", description: "", pricingType: "FIXED", price: "" }]));
+      setPendingAddons((s) =>
+        s.length > 0
+          ? s
+          : [
+              {
+                key: crypto.randomUUID(),
+                name: "",
+                description: "",
+                pricingType: "FIXED",
+                price: "",
+                appliesToAllPricingRows: true,
+                applicableTermMonths: [],
+              },
+            ],
+      );
       return;
     }
 
     if (addonsQuery.isLoading || addonsQuery.isError) return;
+    if (pricingRowsQuery.isLoading || pricingRowsQuery.isError) return;
     if (hasHydratedAddons.current) return;
-    hasHydratedAddons.current = true;
+
+    const needsPricingMap = addons.some((a) => {
+      const appliesToAll = typeof (a as any).appliesToAllPricingRows === "boolean" ? Boolean((a as any).appliesToAllPricingRows) : true;
+      if (appliesToAll) return false;
+      const ids = Array.isArray((a as any).applicablePricingRowIds)
+        ? ((a as any).applicablePricingRowIds as unknown[]).filter((x) => typeof x === "string")
+        : [];
+      return ids.length > 0;
+    });
+    if (needsPricingMap && pricingRowTermMonthsById.size === 0) return;
 
     const mapped = addons
       .slice()
@@ -598,23 +644,67 @@ export function ProviderProductsPage() {
         description: a.description ?? "",
         pricingType: ((a as any).pricingType ?? "FIXED") as any,
         price: centsToDollars(typeof a.dealerCostCents === "number" ? a.dealerCostCents : a.basePriceCents),
+        appliesToAllPricingRows:
+          typeof (a as any).appliesToAllPricingRows === "boolean" ? Boolean((a as any).appliesToAllPricingRows) : true,
+        applicableTermMonths: (() => {
+          const appliesToAll =
+            typeof (a as any).appliesToAllPricingRows === "boolean" ? Boolean((a as any).appliesToAllPricingRows) : true;
+          if (appliesToAll) return [] as string[];
+          const ids = Array.isArray((a as any).applicablePricingRowIds)
+            ? ((a as any).applicablePricingRowIds as unknown[]).filter((x) => typeof x === "string")
+            : [];
+          const terms = new Set<number>();
+          for (const id of ids) {
+            const t = pricingRowTermMonthsById.get(id);
+            if (typeof t === "number") terms.add(t);
+          }
+          return Array.from(terms.values())
+            .sort((x, y) => x - y)
+            .map((n) => String(n));
+        })(),
       }));
 
-    setPendingAddons(mapped.length > 0 ? mapped : [{ key: crypto.randomUUID(), name: "", description: "", pricingType: "FIXED", price: "" }]);
-  }, [addons, addonsQuery.isError, addonsQuery.isLoading, editorProductId, showEditor]);
+    hasHydratedAddons.current = true;
+    setPendingAddons(
+      mapped.length > 0
+        ? mapped
+        : [
+            {
+              key: crypto.randomUUID(),
+              name: "",
+              description: "",
+              pricingType: "FIXED",
+              price: "",
+              appliesToAllPricingRows: true,
+              applicableTermMonths: [],
+            },
+          ],
+    );
+  }, [
+    addons,
+    addonsQuery.isError,
+    addonsQuery.isLoading,
+    editorProductId,
+    pricingRowTermMonthsById,
+    pricingRowsQuery.isError,
+    pricingRowsQuery.isLoading,
+    showEditor,
+  ]);
 
   const productsQuery = useQuery({
     queryKey: ["provider-products"],
     queryFn: () => api.list(),
   });
 
-  const pricingRowsQuery = useQuery({
-    queryKey: ["provider-product-pricing", editorProductId],
-    enabled: showEditor && !!editorProductId,
-    queryFn: () => pricingApi.list({ productId: editorProductId }),
-  });
-
-  const pricingRowsFromApi = (pricingRowsQuery.data ?? []) as ProductPricing[];
+  const uniqueTermMonthsOptions = useMemo(() => {
+    const set = new Set<number>();
+    for (const r of editor.pricingRows) {
+      const raw = (r.termMonths ?? "").trim();
+      const n = raw ? Number(raw) : NaN;
+      if (Number.isFinite(n) && n > 0) set.add(Math.round(n));
+    }
+    return Array.from(set.values()).sort((a, b) => a - b);
+  }, [editor.pricingRows]);
   useEffect(() => {
     if (!showEditor) return;
     if (!editorProductId) return;
@@ -1344,6 +1434,10 @@ export function ProviderProductsPage() {
         description: r.description.trim(),
         pricingType: r.pricingType,
         priceRaw: r.price,
+        appliesToAllPricingRows: r.appliesToAllPricingRows === true,
+        applicableTermMonths: Array.isArray(r.applicableTermMonths)
+          ? r.applicableTermMonths.map((x) => String(x ?? "").trim()).filter(Boolean)
+          : ([] as string[]),
       }))
       .filter((r) => !!r.name);
 
@@ -1356,17 +1450,25 @@ export function ProviderProductsPage() {
       }
     }
 
-    {
-      const seenNames = new Set<string>();
-      for (const r of normalizedAddons) {
-        const k = r.name.toLowerCase();
-        if (seenNames.has(k)) {
-          setError(`Duplicate add-on name detected: "${r.name}".`);
-          setActiveTab("ADDONS");
-          return;
-        }
-        seenNames.add(k);
+    const seenAddonKeys = new Set<string>();
+    for (const r of normalizedAddons) {
+      const nameKey = r.name.toLowerCase();
+      const termsKey = r.appliesToAllPricingRows
+        ? "ALL"
+        : (r.applicableTermMonths ?? [])
+            .map((x) => Number(x))
+            .filter((n) => Number.isFinite(n) && n > 0)
+            .map((n) => Math.round(n))
+            .sort((a, b) => a - b)
+            .join(",");
+      const key = `${nameKey}::${termsKey}`;
+
+      if (seenAddonKeys.has(key)) {
+        setError(`Duplicate add-on detected for the same terms: "${r.name}".`);
+        setActiveTab("ADDONS");
+        return;
       }
+      seenAddonKeys.add(key);
     }
 
     saveInFlightRef.current = true;
@@ -1530,6 +1632,18 @@ export function ProviderProductsPage() {
 
       if (productId) {
         try {
+          const latestPricing = (await pricingApi.list({ productId })) as ProductPricing[];
+          const idsByTerm = (() => {
+            const map = new Map<number, string[]>();
+            for (const pr of latestPricing) {
+              if (typeof pr.termMonths !== "number" || !Number.isFinite(pr.termMonths) || pr.termMonths <= 0) continue;
+              const id = (pr.id ?? "").trim();
+              if (!id) continue;
+              map.set(pr.termMonths, [...(map.get(pr.termMonths) ?? []), id]);
+            }
+            return map;
+          })();
+
           const existingAddons = await addonsApi.list({ productId });
           for (const a of existingAddons) {
             await addonsApi.remove(a.id);
@@ -1537,11 +1651,31 @@ export function ProviderProductsPage() {
 
           for (const row of normalizedAddons) {
             const price = dollarsToCents(row.priceRaw) as number;
+
+            const applicablePricingRowIds = (() => {
+              if (row.appliesToAllPricingRows) return undefined;
+              const selectedTerms = row.applicableTermMonths
+                .map((x) => Number(x))
+                .filter((n) => Number.isFinite(n) && n > 0)
+                .map((n) => Math.round(n));
+              const ids: string[] = [];
+              for (const t of selectedTerms) {
+                ids.push(...(idsByTerm.get(t) ?? []));
+              }
+              return ids.length > 0 ? Array.from(new Set(ids)) : [];
+            })();
+
+            if (!row.appliesToAllPricingRows && Array.isArray(applicablePricingRowIds) && applicablePricingRowIds.length === 0) {
+              throw new Error(`Select at least one term for add-on "${row.name}", or set it to apply to all terms.`);
+            }
+
             await addonsApi.create({
               productId,
               name: row.name,
               description: row.description || undefined,
               pricingType: row.pricingType,
+              appliesToAllPricingRows: row.appliesToAllPricingRows,
+              applicablePricingRowIds,
               basePriceCents: price,
               minPriceCents: undefined,
               maxPriceCents: undefined,
@@ -2016,6 +2150,71 @@ export function ProviderProductsPage() {
                             placeholder="Description (optional)"
                             disabled={busy}
                           />
+                          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
+                            <div className="md:col-span-5">
+                              <div className="text-xs text-muted-foreground mb-1">Applies to</div>
+                              <select
+                                value={row.appliesToAllPricingRows ? "ALL" : "TERMS"}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setPendingAddons((s) =>
+                                    s.map((x) => {
+                                      if (x.key !== row.key) return x;
+                                      const nextAll = v === "ALL";
+                                      return {
+                                        ...x,
+                                        appliesToAllPricingRows: nextAll,
+                                        applicableTermMonths: nextAll ? [] : x.applicableTermMonths,
+                                      };
+                                    }),
+                                  );
+                                }}
+                                className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
+                                disabled={busy}
+                              >
+                                <option value="ALL">All terms</option>
+                                <option value="TERMS">Selected terms</option>
+                              </select>
+                            </div>
+                            <div className="md:col-span-7">
+                              {!row.appliesToAllPricingRows ? (
+                                <div>
+                                  <div className="text-xs text-muted-foreground mb-1">Terms (months)</div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {uniqueTermMonthsOptions.length === 0 ? (
+                                      <div className="text-xs text-muted-foreground">Add pricing rows first, then select terms.</div>
+                                    ) : (
+                                      uniqueTermMonthsOptions.map((m) => {
+                                        const checked = row.applicableTermMonths.includes(String(m));
+                                        return (
+                                          <label key={m} className="inline-flex items-center gap-2 text-xs">
+                                            <input
+                                              type="checkbox"
+                                              checked={checked}
+                                              disabled={busy}
+                                              onChange={(e) => {
+                                                const on = e.target.checked;
+                                                setPendingAddons((s) =>
+                                                  s.map((x) => {
+                                                    if (x.key !== row.key) return x;
+                                                    const set = new Set(x.applicableTermMonths.map((t) => String(t)));
+                                                    if (on) set.add(String(m));
+                                                    else set.delete(String(m));
+                                                    return { ...x, applicableTermMonths: Array.from(set.values()).sort((a, b) => Number(a) - Number(b)) };
+                                                  }),
+                                                );
+                                              }}
+                                            />
+                                            {m}
+                                          </label>
+                                        );
+                                      })
+                                    )}
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
                           <select
                             value={row.pricingType}
                             onChange={(e) =>
@@ -2052,7 +2251,15 @@ export function ProviderProductsPage() {
                       onClick={() =>
                         setPendingAddons((s) => [
                           ...s,
-                          { key: crypto.randomUUID(), name: "", description: "", pricingType: "FIXED", price: "" },
+                          {
+                            key: crypto.randomUUID(),
+                            name: "",
+                            description: "",
+                            pricingType: "FIXED",
+                            price: "",
+                            appliesToAllPricingRows: true,
+                            applicableTermMonths: [],
+                          },
                         ])
                       }
                     >
