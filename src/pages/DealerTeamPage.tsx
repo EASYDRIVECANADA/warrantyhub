@@ -8,7 +8,7 @@ import { PageShell } from "../components/PageShell";
 import { logAuditEvent } from "../lib/auditLog";
 import { getAppMode } from "../lib/runtime";
 import { getSupabaseClient } from "../lib/supabase/client";
-import { alertMissing, confirmProceed } from "../lib/utils";
+import { confirmProceed } from "../lib/utils";
 import { useAuth } from "../providers/AuthProvider";
 
 type DealerTeamRole = "DEALER_ADMIN" | "DEALER_EMPLOYEE";
@@ -210,9 +210,6 @@ export function DealerTeamPage() {
 
   const inviteCode = (inviteQuery.data?.code ?? "").trim();
   const inviteLink = inviteCode ? `${window.location.origin}/dealer-employee-signup?code=${encodeURIComponent(inviteCode)}` : "";
-
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState<DealerTeamRole>("DEALER_EMPLOYEE");
   const [error, setError] = useState<string | null>(null);
 
   const listQuery = useQuery({
@@ -247,48 +244,6 @@ export function DealerTeamPage() {
           createdAt: (r?.created_at ?? new Date().toISOString()).toString(),
         }),
       );
-    },
-  });
-
-  const inviteMutation = useMutation({
-    mutationFn: async () => {
-      if (mode !== "local") throw new Error("Invite by email is not enabled in Supabase mode yet");
-      const em = normalizeEmail(email);
-      if (!em) throw new Error("Email is required");
-      if (!dealerId) throw new Error("Not authenticated");
-
-      const items = read();
-      const exists = items.find((m) => m.dealerId === dealerId && normalizeEmail(m.email) === em);
-      if (exists) throw new Error("That email is already in your team list");
-
-      const now = new Date().toISOString();
-      const item: DealerTeamMember = {
-        id: crypto.randomUUID(),
-        dealerId,
-        email: em,
-        role,
-        status: "INVITED",
-        createdAt: now,
-      };
-
-      write([item, ...items]);
-
-      logAuditEvent({
-        kind: "DEALER_STAFF_INVITED",
-        actorUserId: user?.id,
-        actorEmail: user?.email,
-        actorRole: user?.role,
-        dealerId,
-        entityType: "dealer_team_member",
-        entityId: item.id,
-        message: `Invited ${em} as ${item.role}`,
-      });
-      return item;
-    },
-    onSuccess: async () => {
-      setEmail("");
-      setRole("DEALER_EMPLOYEE");
-      await qc.invalidateQueries({ queryKey: ["dealer-team"] });
     },
   });
 
@@ -471,7 +426,7 @@ export function DealerTeamPage() {
   });
 
   const members = (listQuery.data ?? []) as DealerTeamMember[];
-  const busy = inviteMutation.isPending || updateRoleMutation.isPending || disableMutation.isPending || enableMutation.isPending;
+  const busy = updateRoleMutation.isPending || disableMutation.isPending || enableMutation.isPending;
 
   return (
     <PageShell
@@ -480,51 +435,6 @@ export function DealerTeamPage() {
       {error ? <div className="text-sm text-destructive">{error}</div> : null}
 
       <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden">
-        <div className="px-6 py-4 border-b">
-          <div className="font-semibold">Invite New Member</div>
-        </div>
-        <div className="p-6">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
-            <div className="lg:col-span-5">
-              <div className="text-xs text-muted-foreground mb-1">Email</div>
-              <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter email address" disabled={busy} />
-            </div>
-            <div className="lg:col-span-5">
-              <div className="text-xs text-muted-foreground mb-1" title="Admins can manage team, remittances, and reporting. Employees focus on find products and contracts.">
-                Role
-              </div>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value as DealerTeamRole)}
-                className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
-                disabled={busy}
-              >
-                <option value="DEALER_EMPLOYEE">Dealer Employee</option>
-                <option value="DEALER_ADMIN">Dealer Admin</option>
-              </select>
-            </div>
-            <div className="lg:col-span-2 flex lg:justify-end">
-              <Button
-                onClick={() => {
-                  void (async () => {
-                    setError(null);
-                    const em = email.trim();
-                    if (!em) return alertMissing("Email is required.");
-                    if (!(await confirmProceed(`Invite ${em}?`))) return;
-                    inviteMutation.mutate();
-                  })();
-                }}
-                disabled={busy}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 w-full lg:w-auto"
-              >
-                Send Invite
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-6 rounded-2xl border bg-card shadow-card overflow-hidden">
         <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap">
           <div className="font-semibold">Quick Invite Link</div>
           <div className="flex items-center gap-2 flex-wrap">
