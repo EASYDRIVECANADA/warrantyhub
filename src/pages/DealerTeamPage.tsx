@@ -436,7 +436,7 @@ export function DealerTeamPage() {
 
       <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden">
         <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap">
-          <div className="font-semibold">Quick Invite Link</div>
+          <div className="font-semibold">Invite Employee</div>
           <div className="flex items-center gap-2 flex-wrap">
             <Button
               variant="outline"
@@ -507,36 +507,12 @@ export function DealerTeamPage() {
             >
               Copy link
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!inviteCode}
-              onClick={() => {
-                void (async () => {
-                  if (!inviteCode) return;
-                  try {
-                    await navigator.clipboard.writeText(inviteCode);
-                  } catch {
-                  }
-                })();
-              }}
-            >
-              Copy code
-            </Button>
           </div>
         </div>
 
         <div className="p-6 space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
-            <div className="lg:col-span-4">
-              <div className="text-xs text-muted-foreground mb-1">Invite code</div>
-              <Input
-                value={inviteCode || "Not generated yet"}
-                readOnly
-                className="font-mono"
-              />
-            </div>
-            <div className="lg:col-span-8">
+            <div className="lg:col-span-12">
               <div className="text-xs text-muted-foreground mb-1">Invite Link</div>
               <div className="flex items-center gap-2">
                 <div className="flex-1">
