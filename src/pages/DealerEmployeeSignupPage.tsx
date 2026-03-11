@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
-import { Shield } from "lucide-react";
+import { Eye, EyeOff, Shield } from "lucide-react";
 
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -112,6 +112,7 @@ export function DealerEmployeeSignupPage() {
   const [inviteCode, setInviteCode] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [suppressRedirect, setSuppressRedirect] = useState(false);
 
@@ -160,15 +161,15 @@ export function DealerEmployeeSignupPage() {
         const newUser = data.user;
         if (!newUser?.id || !newUser.email) throw new Error("No user returned");
 
+        if (!data.session) {
+          throw new Error("Account created. Please confirm your email, then sign in.");
+        }
+
         const insertRes = await supabase
           .from("profiles")
           .insert({ id: newUser.id, role: "UNASSIGNED", email: newUser.email, is_active: false });
         if (insertRes.error && (insertRes.error as any).code !== "23505") {
           throw new Error(insertRes.error.message);
-        }
-
-        if (!data.session) {
-          throw new Error("Account created. Please confirm your email, then sign in.");
         }
 
         const { error: joinError } = await supabase.rpc("join_dealer_by_invite", { invite_code: normalizedCode });
@@ -386,14 +387,25 @@ export function DealerEmployeeSignupPage() {
                       <label className="text-sm font-medium" htmlFor="password">
                         Password
                       </label>
-                      <Input
-                        id="password"
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Password"
-                        required
-                      />
+                      <div className="relative">
+                        <Input
+                          id="password"
+                          type={showPassword ? "text" : "password"}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="Password"
+                          required
+                          className="pr-10"
+                        />
+                        <button
+                          type="button"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          onClick={() => setShowPassword((s) => !s)}
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
                     </div>
 
                     {error ? (
