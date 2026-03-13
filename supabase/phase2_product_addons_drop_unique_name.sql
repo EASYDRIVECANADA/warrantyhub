@@ -60,11 +60,13 @@ drop index if exists public.product_addons_unique_scope;
 create unique index product_addons_unique_scope
   on public.product_addons (
     product_id,
-    lower(name),
+    (lower(name)),
+    (
     case
       when applies_to_all_pricing_rows then 'ALL'
       when applicable_pricing_row_ids is not null and cardinality(applicable_pricing_row_ids) > 0 then 'SCOPE:' || public._sorted_uuid_array_text(applicable_pricing_row_ids)
       when applicable_term_months is not null and cardinality(applicable_term_months) > 0 then 'TERM:' || public._sorted_int_array_text(applicable_term_months)
       else 'UNSCOPED'
     end
+    )
   );

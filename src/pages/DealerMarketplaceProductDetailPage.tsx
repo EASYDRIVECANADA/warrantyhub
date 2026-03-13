@@ -824,7 +824,7 @@ export function DealerMarketplaceProductDetailPage() {
                       ? `${product.eligibilityMaxVehicleAgeYears} years`
                       : product.productType === "GAP"
                         ? "10 years"
-                        : "—"}
+                        : "Any"}
                   </div>
                 </div>
                 {isGap ? (
@@ -841,7 +841,7 @@ export function DealerMarketplaceProductDetailPage() {
                     <div>
                       <div className="text-xs text-muted-foreground">Max Mileage</div>
                       <div className="font-medium text-foreground">
-                        {typeof product.eligibilityMaxMileageKm === "number" ? `${product.eligibilityMaxMileageKm.toLocaleString()} km` : "—"}
+                        {typeof product.eligibilityMaxMileageKm === "number" ? `${product.eligibilityMaxMileageKm.toLocaleString()} km` : "Any"}
                       </div>
                     </div>
                     <div className="pt-2 border-t" />
