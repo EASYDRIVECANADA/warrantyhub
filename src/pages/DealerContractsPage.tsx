@@ -51,7 +51,7 @@ function dealershipUserIds(dealerId: string) {
   return ids;
 }
 
-type QuickFilterKey = "ALL" | "DRAFT" | "ACTIVE" | "COMPLETED" | "MISSING_INFO" | "READY_TO_REMIT";
+type QuickFilterKey = "ALL" | "DRAFT" | "ACTIVE" | "PRINTABLE" | "COMPLETED" | "MISSING_INFO" | "READY_TO_REMIT";
 
 function uiStatusLabel(s: ContractStatus) {
   if (s === "DRAFT") return "Draft";
@@ -390,11 +390,13 @@ export function DealerContractsPage() {
   );
 
   const isActive = useCallback((c: Contract) => c.status === "SOLD" || c.status === "REMITTED", []);
+  const isPrintable = useCallback((c: Contract) => c.status !== "DRAFT", []);
 
   const filtered = useMemo(() => {
     if (quickFilter === "ALL") return searched;
     if (quickFilter === "DRAFT") return searched.filter((c) => c.status === "DRAFT");
     if (quickFilter === "ACTIVE") return searched.filter(isActive);
+    if (quickFilter === "PRINTABLE") return searched.filter(isPrintable);
     if (quickFilter === "COMPLETED") return searched.filter((c) => c.status === "PAID");
     if (quickFilter === "MISSING_INFO") return searched.filter(isMissingInfo);
     if (quickFilter === "READY_TO_REMIT") {
@@ -402,7 +404,7 @@ export function DealerContractsPage() {
       return searched.filter(isReadyToRemit);
     }
     return searched;
-  }, [isActive, isDealerAdmin, isMissingInfo, isReadyToRemit, quickFilter, searched]);
+  }, [isActive, isDealerAdmin, isMissingInfo, isPrintable, isReadyToRemit, quickFilter, searched]);
 
   useEffect(() => {
     setSelectedContractIds((prev) => {
@@ -438,6 +440,7 @@ export function DealerContractsPage() {
     const all = base.length;
     const draft = base.filter((c) => c.status === "DRAFT").length;
     const active = base.filter(isActive).length;
+    const printable = base.filter(isPrintable).length;
     const completed = base.filter((c) => c.status === "PAID").length;
     const missing = base.filter(isMissingInfo).length;
     const ready = isDealerAdmin ? base.filter(isReadyToRemit).length : 0;
@@ -445,11 +448,12 @@ export function DealerContractsPage() {
       ALL: all,
       DRAFT: draft,
       ACTIVE: active,
+      PRINTABLE: printable,
       COMPLETED: completed,
       MISSING_INFO: missing,
       READY_TO_REMIT: ready,
     };
-  }, [isActive, isDealerAdmin, isMissingInfo, isReadyToRemit, searched]);
+  }, [isActive, isDealerAdmin, isMissingInfo, isPrintable, isReadyToRemit, searched]);
 
   const providerIds = Array.from(
     new Set(
@@ -590,6 +594,22 @@ export function DealerContractsPage() {
                 <button
                   type="button"
                   onClick={() => {
+                    setQuickFilter("PRINTABLE");
+                  }}
+                  className={
+                    "text-sm px-3 py-1.5 rounded-lg border transition-colors " +
+                    (quickFilter === "PRINTABLE"
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background hover:bg-muted text-muted-foreground")
+                  }
+                  title="Non-draft contracts that can be printed"
+                >
+                  Printable Contract
+                  <span className="ml-2 text-xs opacity-70">{quickFilterCounts.PRINTABLE}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
                     setQuickFilter("COMPLETED");
                   }}
                   className={
@@ -725,6 +745,15 @@ export function DealerContractsPage() {
                       </td>
                       <td className="px-6 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          {c.status === "DRAFT" ? (
+                            <Button size="sm" variant="outline" disabled title="Only Active/Completed contracts can be printed.">
+                              Print
+                            </Button>
+                          ) : (
+                            <Button size="sm" variant="outline" asChild>
+                              <Link to={`/dealer-contracts/${c.id}/print/dealer`}>Print</Link>
+                            </Button>
+                          )}
                           <Button size="sm" variant="outline" asChild>
                             <Link to={`/dealer-contracts/${c.id}`}>Edit</Link>
                           </Button>

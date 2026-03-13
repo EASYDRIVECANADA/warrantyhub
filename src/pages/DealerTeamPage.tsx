@@ -247,65 +247,6 @@ export function DealerTeamPage() {
     },
   });
 
-  const updateRoleMutation = useMutation({
-    mutationFn: async (input: { id: string; role: DealerTeamRole }) => {
-      if (mode !== "local") throw new Error("Role changes are not enabled in Supabase mode yet");
-      const items = read();
-      const idx = items.findIndex((m) => m.id === input.id);
-      if (idx < 0) throw new Error("Team member not found");
-      const current = items[idx]!;
-      if (current.dealerId !== dealerId) throw new Error("Not authorized");
-      const next: DealerTeamMember = { ...current, role: input.role };
-      const updated = [...items];
-      updated[idx] = next;
-      write(updated);
-
-      const users = readLocalUsersRaw();
-      const uidx = users.findIndex((u) => normalizeEmail((u?.email ?? "").toString()) === normalizeEmail(current.email));
-      if (uidx >= 0) {
-        const nextUsers = [...users];
-        nextUsers[uidx] = {
-          ...nextUsers[uidx],
-          role: input.role,
-          isActive: true,
-          dealerId,
-        };
-        writeLocalUsersRaw(nextUsers);
-
-        const userId = (nextUsers[uidx]?.id ?? "").toString();
-        if (userId) {
-          const memberships = readLocalDealerMemberships();
-          const midx = memberships.findIndex((m) => (m?.dealerId ?? "") === dealerId && (m?.userId ?? "") === userId);
-          if (midx >= 0) {
-            const nextM = [...memberships];
-            nextM[midx] = { ...nextM[midx], role: input.role, status: "ACTIVE" };
-            writeLocalDealerMemberships(nextM);
-          } else {
-            writeLocalDealerMemberships([
-              { id: crypto.randomUUID(), dealerId, userId, role: input.role, status: "ACTIVE", createdAt: new Date().toISOString() },
-              ...memberships,
-            ]);
-          }
-        }
-      }
-
-      logAuditEvent({
-        kind: "DEALER_STAFF_ROLE_CHANGED",
-        actorUserId: user?.id,
-        actorEmail: user?.email,
-        actorRole: user?.role,
-        dealerId,
-        entityType: "dealer_team_member",
-        entityId: input.id,
-        message: `Changed ${current.email} role to ${input.role}`,
-      });
-      return next;
-    },
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ["dealer-team"] });
-    },
-  });
-
   const disableMutation = useMutation({
     mutationFn: async (id: string) => {
       if (mode !== "local") throw new Error("Disabling staff is not enabled in Supabase mode yet");
@@ -426,7 +367,7 @@ export function DealerTeamPage() {
   });
 
   const members = (listQuery.data ?? []) as DealerTeamMember[];
-  const busy = updateRoleMutation.isPending || disableMutation.isPending || enableMutation.isPending;
+  const busy = disableMutation.isPending || enableMutation.isPending;
 
   return (
     <PageShell
@@ -561,29 +502,21 @@ export function DealerTeamPage() {
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                 <div className="md:col-span-5 text-sm text-foreground">{m.email}</div>
                 <div className="md:col-span-3">
-                  <select
-                    value={m.role}
-                    onChange={(e) => {
-                      void (async () => {
-                        setError(null);
-                        const nextRole = e.target.value as DealerTeamRole;
-                        if (!(await confirmProceed(`Change role for ${m.email} to ${roleLabel(nextRole)}?`))) return;
-                        updateRoleMutation.mutate({ id: m.id, role: nextRole });
-                      })();
-                    }}
-                    className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-sm"
-                    disabled={busy}
-                  >
-                    <option value="DEALER_ADMIN">{roleLabel("DEALER_ADMIN")}</option>
-                    <option value="DEALER_EMPLOYEE">{roleLabel("DEALER_EMPLOYEE")}</option>
-                  </select>
+                  <div className="h-9 w-full rounded-md border border-input bg-white/80 px-2 text-sm shadow-sm flex items-center">
+                    {roleLabel(m.role)}
+                  </div>
                 </div>
                 <div className="md:col-span-2">
-                  <span className={"inline-flex items-center text-xs px-2 py-1 rounded-md border " + statusBadgeClass(m.status)}>
+                  <div
+                    className={
+                      "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold " +
+                      statusBadgeClass(m.status)
+                    }
+                  >
                     {statusLabel(m.status)}
-                  </span>
+                  </div>
                 </div>
-                <div className="md:col-span-2 flex md:justify-end">
+                <div className="md:col-span-2 md:text-right">
                   <Button
                     variant="outline"
                     size="sm"

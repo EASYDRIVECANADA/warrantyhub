@@ -237,7 +237,7 @@ type EditorState = {
   published: boolean;
 };
 
-type ProductEditorTab = "OVERVIEW" | "ELIGIBILITY" | "PRICING" | "ADDONS" | "DOCUMENTS";
+type ProductEditorTab = "OVERVIEW" | "ELIGIBILITY" | "PRICING" | "ADDONS";
 
 type PendingAddon = {
   key: string;
@@ -532,6 +532,97 @@ function parseFinanceMatrixPaste(rawText: string): FinanceBand[] {
   return out;
 }
 
+function normalizeAddonPricingType(v: string | undefined): PendingAddon["pricingType"] {
+  const t = (v ?? "").trim().toUpperCase();
+  if (!t) return "FIXED";
+  if (t === "FIXED" || t === "1X" || t === "ONE_TIME" || t === "ONE TIME") return "FIXED";
+  if (t === "PER_TERM" || t === "PER TERM") return "PER_TERM";
+  if (t === "PER_CLAIM" || t === "PER CLAIM") return "PER_CLAIM";
+  return "FIXED";
+}
+
+function parseAddonsPaste(rawText: string): Array<{
+  name: string;
+  description: string;
+  pricingType: PendingAddon["pricingType"];
+  price: string;
+  termMonths?: string;
+}> {
+  const raw = (rawText ?? "").trim();
+  if (!raw) throw new Error("Paste add-ons table text first.");
+
+  const lines = raw
+    .split(/\r?\n/g)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length === 0) throw new Error("Paste add-ons table text first.");
+
+  const first = splitTableRow(lines[0]!);
+  const header = first.map((h) => h.replace(/\s+/g, "").toLowerCase());
+
+  const idxName = header.findIndex((h) => h === "name" || h === "addon" || h === "addonname" || h === "add-on" || h === "add-onname");
+  const idxPrice = header.findIndex((h) => h === "price" || h === "amount" || h === "dealerprice" || h === "dealer_cost" || h === "dealercost");
+  const idxDesc = header.findIndex((h) => h === "description" || h === "desc");
+  const idxType = header.findIndex((h) => h === "pricingtype" || h === "type" || h === "pricing");
+  const idxTerm = header.findIndex((h) => h === "termmonths" || h === "term" || h === "months");
+
+  const hasHeader = idxName >= 0 || idxPrice >= 0;
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+
+  const parseNoHeaderRow = (cols: string[]) => {
+    const c = cols.map((x) => String(x ?? "").trim());
+    if (c.length < 2) return null;
+    if (c.length === 2) {
+      return { name: c[0] ?? "", description: "", pricingType: "FIXED" as const, price: sanitizeMoney(c[1] ?? "") };
+    }
+    if (c.length === 3) {
+      const maybePrice = sanitizeMoney(c[2] ?? "");
+      return { name: c[0] ?? "", description: c[1] ?? "", pricingType: "FIXED" as const, price: maybePrice };
+    }
+    const name = c[0] ?? "";
+    const description = c[1] ?? "";
+    const pricingType = normalizeAddonPricingType(c[2]);
+    const price = sanitizeMoney(c[3] ?? "");
+    return { name, description, pricingType, price };
+  };
+
+  const out: Array<{ name: string; description: string; pricingType: PendingAddon["pricingType"]; price: string; termMonths?: string }> = [];
+  for (const line of dataLines) {
+    const cols = splitTableRow(line);
+    if (cols.length === 0) continue;
+
+    const parsed = hasHeader
+      ? (() => {
+          const name = String(cols[idxName >= 0 ? idxName : 0] ?? "").trim();
+          const description = idxDesc >= 0 ? String(cols[idxDesc] ?? "").trim() : "";
+          const pricingType = normalizeAddonPricingType(idxType >= 0 ? String(cols[idxType] ?? "") : "");
+          const priceRaw = idxPrice >= 0 ? String(cols[idxPrice] ?? "") : String(cols[cols.length - 1] ?? "");
+          const price = sanitizeMoney(priceRaw);
+          const termMonths = idxTerm >= 0 ? String(cols[idxTerm] ?? "").trim() : "";
+          return { name, description, pricingType, price, termMonths: termMonths || undefined };
+        })()
+      : parseNoHeaderRow(cols);
+
+    if (!parsed) continue;
+    const name = (parsed.name ?? "").trim();
+    const price = sanitizeMoney(parsed.price ?? "");
+    if (!name) continue;
+    if (!price) continue;
+
+    const t = typeof (parsed as any).termMonths === "string" ? String((parsed as any).termMonths).trim() : "";
+    out.push({
+      name,
+      description: (parsed.description ?? "").trim(),
+      pricingType: parsed.pricingType ?? "FIXED",
+      price: formatMoneyInput(price),
+      termMonths: t ? t : undefined,
+    });
+  }
+
+  if (out.length === 0) throw new Error("No add-on rows found. Ensure you include at least name + price.");
+  return out;
+}
+
 export function ProviderProductsPage() {
   const api = useMemo(() => getProductsApi(), []);
   const pricingApi = useMemo(() => getProductPricingApi(), []);
@@ -552,7 +643,11 @@ export function ProviderProductsPage() {
   const [pasteFinanceOpen, setPasteFinanceOpen] = useState(false);
   const [pasteFinanceText, setPasteFinanceText] = useState("");
 
+  const [pasteAddonsOpen, setPasteAddonsOpen] = useState(false);
+  const [pasteAddonsText, setPasteAddonsText] = useState("");
+
   const [pendingAddons, setPendingAddons] = useState<PendingAddon[]>([]);
+  const [activeAddonTermTab, setActiveAddonTermTab] = useState<string>("ALL");
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "DRAFT" | "PUBLISHED">("ALL");
@@ -650,6 +745,19 @@ export function ProviderProductsPage() {
           const appliesToAll =
             typeof (a as any).appliesToAllPricingRows === "boolean" ? Boolean((a as any).appliesToAllPricingRows) : true;
           if (appliesToAll) return [] as string[];
+
+          const direct: number[] = Array.isArray((a as any).applicableTermMonths)
+            ? ((a as any).applicableTermMonths as unknown[])
+                .map((x) => Number(String(x ?? "").trim()))
+                .filter((n) => Number.isFinite(n) && n > 0)
+                .map((n) => Math.round(n))
+            : [];
+          if (direct.length > 0) {
+            return Array.from(new Set(direct))
+              .sort((x, y) => x - y)
+              .map((n) => String(n));
+          }
+
           const ids = Array.isArray((a as any).applicablePricingRowIds)
             ? ((a as any).applicablePricingRowIds as unknown[]).filter((x) => typeof x === "string")
             : [];
@@ -705,6 +813,35 @@ export function ProviderProductsPage() {
     }
     return Array.from(set.values()).sort((a, b) => a - b);
   }, [editor.pricingRows]);
+
+  const invalidAddonsCount = useMemo(() => {
+    const valid = new Set(uniqueTermMonthsOptions.map((n) => String(n)));
+    let c = 0;
+    for (const a of pendingAddons) {
+      if (a.appliesToAllPricingRows) continue;
+      const terms = Array.isArray(a.applicableTermMonths) ? a.applicableTermMonths.map((t) => String(t)) : [];
+      if (terms.length === 0) {
+        c++;
+        continue;
+      }
+      if (terms.some((t) => !valid.has(t))) c++;
+    }
+    return c;
+  }, [pendingAddons, uniqueTermMonthsOptions]);
+
+  useEffect(() => {
+    if (!showEditor) return;
+    if (activeAddonTermTab === "ALL") return;
+    if (activeAddonTermTab === "INVALID") return;
+    const n = Number(activeAddonTermTab);
+    if (!Number.isFinite(n)) {
+      setActiveAddonTermTab("ALL");
+      return;
+    }
+    if (!uniqueTermMonthsOptions.includes(n)) {
+      setActiveAddonTermTab("ALL");
+    }
+  }, [activeAddonTermTab, showEditor, uniqueTermMonthsOptions]);
   useEffect(() => {
     if (!showEditor) return;
     if (!editorProductId) return;
@@ -1428,17 +1565,23 @@ export function ProviderProductsPage() {
     };
 
     const normalizedAddons = pendingAddons
-      .map((r) => ({
-        key: r.key,
-        name: r.name.trim(),
-        description: r.description.trim(),
-        pricingType: r.pricingType,
-        priceRaw: r.price,
-        appliesToAllPricingRows: r.appliesToAllPricingRows === true,
-        applicableTermMonths: Array.isArray(r.applicableTermMonths)
+      .map((r) => {
+        const applicableTermMonths = Array.isArray(r.applicableTermMonths)
           ? r.applicableTermMonths.map((x) => String(x ?? "").trim()).filter(Boolean)
-          : ([] as string[]),
-      }))
+          : ([] as string[]);
+
+        const appliesToAllPricingRows = r.appliesToAllPricingRows === true || applicableTermMonths.length === 0;
+
+        return {
+          key: r.key,
+          name: r.name.trim(),
+          description: r.description.trim(),
+          pricingType: r.pricingType,
+          priceRaw: r.price,
+          appliesToAllPricingRows,
+          applicableTermMonths: appliesToAllPricingRows ? ([] as string[]) : applicableTermMonths,
+        };
+      })
       .filter((r) => !!r.name);
 
     for (const r of normalizedAddons) {
@@ -1666,6 +1809,26 @@ export function ProviderProductsPage() {
             })();
 
             if (!row.appliesToAllPricingRows && Array.isArray(applicablePricingRowIds) && applicablePricingRowIds.length === 0) {
+              const selectedTerms = (row.applicableTermMonths ?? [])
+                .map((x) => Number(x))
+                .filter((n) => Number.isFinite(n) && n > 0)
+                .map((n) => Math.round(n));
+              const availableTerms = Array.from(idsByTerm.keys()).sort((a, b) => a - b);
+
+              if (selectedTerms.length === 0) {
+                throw new Error(`Select at least one term for add-on "${row.name}", or set it to apply to all terms.`);
+              }
+
+              const missing = selectedTerms.filter((t) => (idsByTerm.get(t) ?? []).length === 0);
+              if (missing.length > 0) {
+                throw new Error(
+                  `Add-on "${row.name}" targets term(s) ${missing.join(", ")} month(s), but no pricing rows exist for those term(s). ` +
+                    (availableTerms.length > 0
+                      ? `Available pricing terms: ${availableTerms.join(", ")}.`
+                      : "Add pricing rows first."),
+                );
+              }
+
               throw new Error(`Select at least one term for add-on "${row.name}", or set it to apply to all terms.`);
             }
 
@@ -1675,6 +1838,12 @@ export function ProviderProductsPage() {
               description: row.description || undefined,
               pricingType: row.pricingType,
               appliesToAllPricingRows: row.appliesToAllPricingRows,
+              applicableTermMonths: row.appliesToAllPricingRows
+                ? undefined
+                : row.applicableTermMonths
+                    .map((x) => Number(String(x ?? "").trim()))
+                    .filter((n) => Number.isFinite(n) && n > 0)
+                    .map((n) => Math.round(n)),
               applicablePricingRowIds,
               basePriceCents: price,
               minPriceCents: undefined,
@@ -1835,19 +2004,6 @@ export function ProviderProductsPage() {
                   disabled={busy}
                 >
                   Pricing
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("DOCUMENTS")}
-                  className={
-                    "px-3 py-1.5 text-sm rounded-lg transition-colors " +
-                    (activeTab === "DOCUMENTS"
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground")
-                  }
-                  disabled={busy}
-                >
-                  Documents
                 </button>
                 <button
                   type="button"
@@ -2118,7 +2274,160 @@ export function ProviderProductsPage() {
                   ) : null}
 
                   <div className="mt-4 space-y-3">
-                    {pendingAddons.map((row, idx) => (
+                    <div className="flex gap-2 flex-wrap items-center">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => setPasteAddonsOpen((v) => !v)}
+                      >
+                        Paste Add-ons Table
+                      </Button>
+
+                      <label className="text-sm">
+                        <input
+                          type="file"
+                          accept=".csv,text/csv,.tsv,text/tab-separated-values"
+                          disabled={busy}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onload = () => {
+                              const text = typeof reader.result === "string" ? reader.result : "";
+                              setPasteAddonsText(text);
+                              setPasteAddonsOpen(true);
+                            };
+                            reader.readAsText(file);
+                          }}
+                          className="hidden"
+                        />
+                        <Button type="button" variant="outline" size="sm" disabled={busy} asChild>
+                          <span>Upload CSV</span>
+                        </Button>
+                      </label>
+                    </div>
+
+                    {pasteAddonsOpen ? (
+                      <div className="rounded-lg border p-3 space-y-3">
+                        <textarea
+                          value={pasteAddonsText}
+                          onChange={(e) => setPasteAddonsText(e.target.value)}
+                          className={textareaClassName()}
+                          placeholder={
+                            "Paste CSV/TSV. Columns (with optional header):\n" +
+                            "termMonths,name,description,pricingType,price\n" +
+                            "\n" +
+                            "Examples:\n" +
+                            "ALL,Music kit,,FIXED,150\n" +
+                            "12,Borrow,,FIXED,25\n" +
+                            "24,Borrow,,FIXED,50"
+                          }
+                          disabled={busy}
+                        />
+
+                        <div className="flex gap-2 flex-wrap">
+                          <Button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              setError(null);
+                              try {
+                                const parsed = parseAddonsPaste(pasteAddonsText);
+                                const defaultScope = activeAddonTermTab === "INVALID" ? "ALL" : activeAddonTermTab;
+
+                                const rows: PendingAddon[] = parsed.map((p) => {
+                                  const rawTerm = (p.termMonths ?? "").trim();
+                                  const isAll = !rawTerm
+                                    ? defaultScope === "ALL"
+                                    : rawTerm.toUpperCase() === "ALL" || rawTerm.toUpperCase() === "ALLTERMS" || rawTerm.toUpperCase() === "ALL_TERMS";
+                                  const termNum = !isAll && rawTerm ? Number(rawTerm) : Number(defaultScope);
+                                  const term = !isAll && Number.isFinite(termNum) && termNum > 0 ? String(Math.round(termNum)) : null;
+
+                                  return {
+                                    key: crypto.randomUUID(),
+                                    name: p.name,
+                                    description: p.description,
+                                    pricingType: p.pricingType,
+                                    price: p.price,
+                                    appliesToAllPricingRows: isAll || !term,
+                                    applicableTermMonths: isAll || !term ? [] : [term],
+                                  };
+                                });
+
+                                setPendingAddons((s) => [...s, ...rows]);
+                                setPasteAddonsOpen(false);
+                              } catch (e) {
+                                setError(e instanceof Error ? e.message : formatUnknownError(e));
+                              }
+                            }}
+                          >
+                            Parse & Add Rows
+                          </Button>
+                          <Button type="button" variant="outline" disabled={busy} onClick={() => setPasteAddonsOpen(false)}>
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant={activeAddonTermTab === "ALL" ? "default" : "outline"}
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => setActiveAddonTermTab("ALL")}
+                      >
+                        All terms
+                      </Button>
+                      {uniqueTermMonthsOptions.map((m) => (
+                        <Button
+                          key={m}
+                          type="button"
+                          variant={activeAddonTermTab === String(m) ? "default" : "outline"}
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => setActiveAddonTermTab(String(m))}
+                        >
+                          {m} mo
+                        </Button>
+                      ))}
+                      {invalidAddonsCount > 0 ? (
+                        <Button
+                          type="button"
+                          variant={activeAddonTermTab === "INVALID" ? "default" : "outline"}
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => setActiveAddonTermTab("INVALID")}
+                        >
+                          Invalid ({invalidAddonsCount})
+                        </Button>
+                      ) : null}
+                      {uniqueTermMonthsOptions.length === 0 ? (
+                        <div className="text-xs text-muted-foreground">Add pricing rows first to see term tabs here.</div>
+                      ) : null}
+                    </div>
+
+                    {pendingAddons
+                      .filter((row) => {
+                        const valid = new Set(uniqueTermMonthsOptions.map((n) => String(n)));
+                        if (activeAddonTermTab === "INVALID") {
+                          if (row.appliesToAllPricingRows) return false;
+                          const terms = Array.isArray(row.applicableTermMonths)
+                            ? row.applicableTermMonths.map((t) => String(t))
+                            : ([] as string[]);
+                          if (terms.length === 0) return true;
+                          return terms.some((t) => !valid.has(t));
+                        }
+
+                        if (activeAddonTermTab === "ALL") return row.appliesToAllPricingRows;
+                        const term = activeAddonTermTab;
+                        if (row.appliesToAllPricingRows) return false;
+                        return row.applicableTermMonths.includes(term);
+                      })
+                      .map((row, idx) => (
                       <div key={row.key} className="rounded-lg border p-3">
                         <div className="flex items-center justify-between gap-3">
                           <div className="text-sm font-medium">Row {idx + 1}</div>
@@ -2150,71 +2459,6 @@ export function ProviderProductsPage() {
                             placeholder="Description (optional)"
                             disabled={busy}
                           />
-                          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
-                            <div className="md:col-span-5">
-                              <div className="text-xs text-muted-foreground mb-1">Applies to</div>
-                              <select
-                                value={row.appliesToAllPricingRows ? "ALL" : "TERMS"}
-                                onChange={(e) => {
-                                  const v = e.target.value;
-                                  setPendingAddons((s) =>
-                                    s.map((x) => {
-                                      if (x.key !== row.key) return x;
-                                      const nextAll = v === "ALL";
-                                      return {
-                                        ...x,
-                                        appliesToAllPricingRows: nextAll,
-                                        applicableTermMonths: nextAll ? [] : x.applicableTermMonths,
-                                      };
-                                    }),
-                                  );
-                                }}
-                                className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
-                                disabled={busy}
-                              >
-                                <option value="ALL">All terms</option>
-                                <option value="TERMS">Selected terms</option>
-                              </select>
-                            </div>
-                            <div className="md:col-span-7">
-                              {!row.appliesToAllPricingRows ? (
-                                <div>
-                                  <div className="text-xs text-muted-foreground mb-1">Terms (months)</div>
-                                  <div className="flex flex-wrap gap-2">
-                                    {uniqueTermMonthsOptions.length === 0 ? (
-                                      <div className="text-xs text-muted-foreground">Add pricing rows first, then select terms.</div>
-                                    ) : (
-                                      uniqueTermMonthsOptions.map((m) => {
-                                        const checked = row.applicableTermMonths.includes(String(m));
-                                        return (
-                                          <label key={m} className="inline-flex items-center gap-2 text-xs">
-                                            <input
-                                              type="checkbox"
-                                              checked={checked}
-                                              disabled={busy}
-                                              onChange={(e) => {
-                                                const on = e.target.checked;
-                                                setPendingAddons((s) =>
-                                                  s.map((x) => {
-                                                    if (x.key !== row.key) return x;
-                                                    const set = new Set(x.applicableTermMonths.map((t) => String(t)));
-                                                    if (on) set.add(String(m));
-                                                    else set.delete(String(m));
-                                                    return { ...x, applicableTermMonths: Array.from(set.values()).sort((a, b) => Number(a) - Number(b)) };
-                                                  }),
-                                                );
-                                              }}
-                                            />
-                                            {m}
-                                          </label>
-                                        );
-                                      })
-                                    )}
-                                  </div>
-                                </div>
-                              ) : null}
-                            </div>
-                          </div>
                           <select
                             value={row.pricingType}
                             onChange={(e) =>
@@ -2257,8 +2501,9 @@ export function ProviderProductsPage() {
                             description: "",
                             pricingType: "FIXED",
                             price: "",
-                            appliesToAllPricingRows: true,
-                            applicableTermMonths: [],
+                            appliesToAllPricingRows: activeAddonTermTab === "ALL" || activeAddonTermTab === "INVALID",
+                            applicableTermMonths:
+                              activeAddonTermTab === "ALL" || activeAddonTermTab === "INVALID" ? [] : [String(activeAddonTermTab)],
                           },
                         ])
                       }
@@ -3411,17 +3656,6 @@ export function ProviderProductsPage() {
               </div>
             ) : null}
 
-            {activeTab === "DOCUMENTS" ? (
-              <div className="space-y-4">
-                <div className="rounded-xl border p-4">
-                  <div className="font-semibold">Documents</div>
-                  <div className="text-sm text-muted-foreground mt-1">Upload disclosures and PDFs in Documents, then link them to this product.</div>
-                  <Button variant="outline" asChild>
-                    <Link to="/provider-documents">Manage documents</Link>
-                  </Button>
-                </div>
-              </div>
-            ) : null}
             </div>
           </div>
         </div>

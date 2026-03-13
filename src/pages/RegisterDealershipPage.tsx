@@ -211,16 +211,26 @@ export function RegisterDealershipPage() {
           </div>
         </div>
 
-        <div className="flex items-center justify-center px-6 py-12 lg:py-0 bg-slate-50">
-          <div className="w-full max-w-lg">
-            <div className="flex flex-col space-y-1.5">
-              <h1 className="text-3xl font-semibold leading-none tracking-tight font-display">Register Your Dealership</h1>
-              <p className="text-sm text-muted-foreground">Create an account to secure early access and onboard your team.</p>
-            </div>
+        <div
+          className="relative flex items-center justify-center px-6 py-12 lg:py-0"
+          style={{
+            backgroundImage: "url('/images/Background.jpg')",
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+          }}
+        >
+          <div className="absolute inset-0 bg-white/45" />
+          <div className="relative w-full max-w-lg">
+            <div className="rounded-2xl border bg-white/82 backdrop-blur-md shadow-card p-6">
+              <div className="flex flex-col space-y-1.5">
+                <h1 className="text-3xl font-semibold leading-none tracking-tight font-display">Register Your Dealership</h1>
+                <p className="text-sm text-muted-foreground">Apply for dealership access before launch.</p>
+              </div>
 
-            <div className="mt-8">
-              <form className="space-y-4" onSubmit={onSubmit}>
-                <div className="rounded-xl border bg-white p-4">
+              <div className="mt-8">
+                <form className="space-y-4" onSubmit={onSubmit}>
+                  <div className="rounded-xl border bg-white p-4">
                   <div className="grid grid-cols-3 gap-3">
                     {[
                       { k: 1 as const, label: "Dealership" },
@@ -602,7 +612,8 @@ export function RegisterDealershipPage() {
                     Sign In
                   </Link>
                 </div>
-              </form>
+                </form>
+              </div>
             </div>
           </div>
         </div>

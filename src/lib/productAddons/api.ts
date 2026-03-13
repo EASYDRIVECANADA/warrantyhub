@@ -17,6 +17,7 @@ export type ProductAddonsApi = {
         | "pricingType"
         | "appliesToAllPricingRows"
         | "applicablePricingRowIds"
+        | "applicableTermMonths"
         | "basePriceCents"
         | "minPriceCents"
         | "maxPriceCents"

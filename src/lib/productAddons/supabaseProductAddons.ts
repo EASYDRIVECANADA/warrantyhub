@@ -12,6 +12,7 @@ type ProductAddonsRow = {
   pricing_type?: string | null;
   applies_to_all_pricing_rows?: boolean | null;
   applicable_pricing_row_ids?: string[] | null;
+  applicable_term_months?: number[] | null;
   base_price_cents: number;
   min_price_cents?: number | null;
   max_price_cents?: number | null;
@@ -37,6 +38,12 @@ function toAddon(r: ProductAddonsRow): ProductAddon {
     appliesToAllPricingRows: typeof (r as any).applies_to_all_pricing_rows === "boolean" ? Boolean((r as any).applies_to_all_pricing_rows) : undefined,
     applicablePricingRowIds: Array.isArray((r as any).applicable_pricing_row_ids)
       ? ((r as any).applicable_pricing_row_ids as unknown[]).filter((x) => typeof x === "string")
+      : undefined,
+    applicableTermMonths: Array.isArray((r as any).applicable_term_months)
+      ? ((r as any).applicable_term_months as unknown[])
+          .map((x) => Number(String(x ?? "").trim()))
+          .filter((n) => Number.isFinite(n) && n > 0)
+          .map((n) => Math.round(n))
       : undefined,
     basePriceCents: r.base_price_cents,
     minPriceCents: min,
@@ -140,6 +147,12 @@ export const supabaseProductAddonsApi: ProductAddonsApi = {
       applicable_pricing_row_ids: Array.isArray((input as any).applicablePricingRowIds)
         ? ((input as any).applicablePricingRowIds as unknown[]).filter((x) => typeof x === "string")
         : undefined,
+      applicable_term_months: Array.isArray((input as any).applicableTermMonths)
+        ? ((input as any).applicableTermMonths as unknown[])
+            .map((x) => Number(String(x ?? "").trim()))
+            .filter((n) => Number.isFinite(n) && n > 0)
+            .map((n) => Math.round(n))
+        : undefined,
       base_price_cents: input.basePriceCents,
       min_price_cents: typeof input.minPriceCents === "number" ? input.minPriceCents : undefined,
       max_price_cents: typeof input.maxPriceCents === "number" ? input.maxPriceCents : undefined,
@@ -168,6 +181,12 @@ export const supabaseProductAddonsApi: ProductAddonsApi = {
     }
     if (Array.isArray((patch as any).applicablePricingRowIds)) {
       updateRow.applicable_pricing_row_ids = ((patch as any).applicablePricingRowIds as unknown[]).filter((x) => typeof x === "string");
+    }
+    if (Array.isArray((patch as any).applicableTermMonths)) {
+      updateRow.applicable_term_months = ((patch as any).applicableTermMonths as unknown[])
+        .map((x) => Number(String(x ?? "").trim()))
+        .filter((n) => Number.isFinite(n) && n > 0)
+        .map((n) => Math.round(n));
     }
     if (typeof patch.basePriceCents === "number") updateRow.base_price_cents = patch.basePriceCents;
     if (typeof patch.minPriceCents === "number") updateRow.min_price_cents = patch.minPriceCents;

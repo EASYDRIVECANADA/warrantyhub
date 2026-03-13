@@ -9,6 +9,7 @@ export type ProductAddon = {
   pricingType?: AddonPricingType;
   appliesToAllPricingRows?: boolean;
   applicablePricingRowIds?: string[];
+  applicableTermMonths?: number[];
   basePriceCents: number;
   minPriceCents?: number;
   maxPriceCents?: number;
@@ -25,6 +26,7 @@ export type CreateProductAddonInput = {
   pricingType?: AddonPricingType;
   appliesToAllPricingRows?: boolean;
   applicablePricingRowIds?: string[];
+  applicableTermMonths?: number[];
   basePriceCents: number;
   minPriceCents?: number;
   maxPriceCents?: number;

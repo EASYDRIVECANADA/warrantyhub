@@ -8,6 +8,7 @@ import {
   Building2,
   Car,
   ChevronDown,
+  ChevronUp,
   CircleCheck,
   DollarSign,
   Gauge,
@@ -41,29 +42,6 @@ function productTypeLabel(t: ProductType) {
   if (t === "APPEARANCE") return "Appearance";
   if (t === "GAP") return "GAP Insurance";
   return "Other";
-}
-
-function bulletLinesFromText(text: string, max: number) {
-  const raw = (text ?? "").replace(/\r\n/g, "\n").trim();
-  if (!raw) return [] as string[];
-
-  const lines = raw
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((l) => l.replace(/^[-•*]+\s*/, ""))
-    .filter(Boolean);
-
-  return lines.slice(0, max);
-}
-
-function firstSentenceOrLine(text: string) {
-  const raw = (text ?? "").replace(/\r\n/g, "\n").trim();
-  if (!raw) return "";
-  const firstLine = raw.split("\n")[0] ?? "";
-  const idx = firstLine.indexOf(".");
-  if (idx >= 30 && idx <= 120) return firstLine.slice(0, idx + 1);
-  return firstLine;
 }
 
 function providerLabel(id: string) {
@@ -178,6 +156,7 @@ export function DealerMarketplacePage() {
   const [minTermKm] = useState(() => persisted?.minTermKm ?? "");
   const [maxDeductible] = useState(() => persisted?.maxDeductible ?? "");
   const [loanAmount, setLoanAmount] = useState(() => (searchParams.get("loanAmount") ?? persisted?.loanAmount ?? ""));
+  const [isSearchMinimized, setIsSearchMinimized] = useState(false);
 
   const dealerId = (mode === "local" ? (user?.dealerId ?? user?.id ?? "") : (user?.dealerId ?? "")).trim();
   const { markupPct } = useDealerMarkupPct(dealerId);
@@ -698,9 +677,31 @@ export function DealerMarketplacePage() {
 
         <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
           <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
-            <div className="font-semibold">Search</div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="font-semibold">Search</div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 bg-sky-50 border-sky-200 text-sky-800 hover:bg-sky-100 hover:border-sky-300"
+                onClick={() => setIsSearchMinimized((v) => !v)}
+              >
+                {isSearchMinimized ? (
+                  <>
+                    <ChevronDown className="h-4 w-4" />
+                    Expand
+                  </>
+                ) : (
+                  <>
+                    <ChevronUp className="h-4 w-4" />
+                    Minimize
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
 
+          {isSearchMinimized ? null : (
           <div className="p-6">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <div className="lg:col-span-8 space-y-6">
@@ -772,7 +773,7 @@ export function DealerMarketplacePage() {
                   <div className="px-5 py-4 border-b">
                     <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                       <DollarSign className="h-4 w-4" />
-                      Deal Finance
+                      Enter Gap Insurance Details
                     </div>
                   </div>
 
@@ -1081,12 +1082,16 @@ export function DealerMarketplacePage() {
               </div>
             </div>
           </div>
+          )}
         </div>
       </div>
 
-      <div className="mt-10 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
-        <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
-          <div className="font-semibold">Eligible Products</div>
+      <div className="mt-6 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
+        <div className="px-4 py-2.5 border-b bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
+          <div className="flex items-center justify-between gap-3">
+            <div className="font-semibold">Eligible Products</div>
+            {eligibleFlat.length ? <div className="text-xs text-muted-foreground">Showing {eligibleFlat.length}</div> : null}
+          </div>
         </div>
 
         {!decoded ? (
@@ -1102,14 +1107,8 @@ export function DealerMarketplacePage() {
         ) : eligibleVariantPricingByProductIdQuery.isError ? (
           <div className="px-6 py-10 text-sm text-destructive">Failed to load eligible plans.</div>
         ) : (
-          <div className="p-6">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="text-sm text-muted-foreground">
-                {eligibleFlat.length ? <span>Showing {eligibleFlat.length}</span> : null}
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-6">
+          <div className="p-4">
+            <div className="space-y-5">
               {(() => {
                 let cardIdx = 0;
                 return grouped.map((group) => {
@@ -1130,201 +1129,167 @@ export function DealerMarketplacePage() {
                         </div>
                       </div>
 
-                      <div className="p-5">
-                        <div className="flex gap-4 overflow-x-auto pb-2">
-                          {group.products.map((p) => {
-                            const mp = p as MarketplaceProduct;
-                            const primaryPricing = eligibleVariantPricingByProductId[p.id] ?? null;
+                      <div className="p-4 space-y-4">
+                        {(() => {
+                          const gapProducts = group.products.filter((p) => isGapProduct(p as any));
+                          const nonGapProducts = group.products.filter((p) => !isGapProduct(p as any));
 
-                            const matrixNeedsLoanDetails = mp.pricingStructure === "FINANCE_MATRIX" && !loanAmountCents;
-
-                            const shownMonths =
-                              primaryPricing
-                                ? primaryPricing.termMonths === null
-                                  ? "Unlimited"
-                                  : typeof primaryPricing.termMonths === "number"
-                                    ? `${primaryPricing.termMonths} mo`
-                                    : "—"
-                                : typeof mp.pricingDefault?.termMonths === "number"
-                                  ? `${mp.pricingDefault.termMonths} mo`
-                                  : "—";
-
-                            const shownKm =
-                              primaryPricing
-                                ? primaryPricing.termKm === null
-                                  ? "Unlimited"
-                                  : typeof primaryPricing.termKm === "number"
-                                    ? `${primaryPricing.termKm.toLocaleString()} km`
-                                    : "—"
-                                : typeof mp.pricingDefault?.termKm === "number"
-                                  ? `${mp.pricingDefault.termKm.toLocaleString()} km`
-                                  : "—";
-
-                            const shownDeductibleCents =
-                              typeof primaryPricing?.deductibleCents === "number"
-                                ? primaryPricing.deductibleCents
-                                : typeof mp.pricingDefault?.deductibleCents === "number"
-                                  ? mp.pricingDefault.deductibleCents
-                                  : undefined;
-
-                            const shownPrice = shownPriceFor(mp, primaryPricing);
-
-                            const isGap = isGapProduct(mp);
-                            const isGapPlus160 = isGap && norm(mp.name ?? "").includes("160");
-                            const gapLtvPct = isGap
-                              ? typeof (mp as any).coverageMaxLtvPercent === "number"
-                                ? (mp as any).coverageMaxLtvPercent
-                                : isGapPlus160
-                                  ? 160
-                                  : 130
-                              : null;
-                            const gapMaxAgeYears = typeof mp.eligibilityMaxVehicleAgeYears === "number" ? mp.eligibilityMaxVehicleAgeYears : 10;
-                            const gapDescription = firstSentenceOrLine(mp.coverageDetails ?? "") || "Protect your loan from total loss.";
-                            const gapBulletsFromProduct = bulletLinesFromText(mp.keyBenefits ?? "", 4);
-                            const gapBulletsFallback = bulletLinesFromText(mp.coverageDetails ?? "", 4);
-                            const gapBullets = gapBulletsFromProduct.length
-                              ? gapBulletsFromProduct
-                              : gapBulletsFallback.length
-                                ? gapBulletsFallback
-                                : [
-                                    "Covers loan balance after total loss",
-                                    "Up to $50,000 deficit coverage",
-                                    "Deductible reimbursement (up to $1,000)",
-                                    `Vehicles up to ${gapMaxAgeYears} years eligible`,
-                                  ];
-
-                            const accent = accentForIndex(cardIdx++);
-
+                          const renderRow = (label: string, items: typeof group.products) => {
+                            if (items.length === 0) return null;
                             return (
-                              <div
-                                key={p.id}
-                                className={
-                                  "shrink-0 w-[320px] rounded-2xl border bg-background overflow-hidden shadow-sm ring-1 transition-shadow hover:shadow-md " +
-                                  accent.ring +
-                                  " " +
-                                  accent.border
-                                }
-                              >
-                                <div className={"px-4 py-3 border-b bg-gradient-to-r " + accent.header}>
-                                  <div className="flex items-center justify-between gap-3">
-                                    <div className="min-w-0">
-                                      <div className="text-xs font-semibold text-foreground truncate">{group.providerName}</div>
-                                    </div>
-                                    <div className="h-7 w-7 rounded-md border bg-white/70 overflow-hidden flex items-center justify-center shrink-0">
-                                      {group.providerLogoUrl ? (
-                                        <img src={group.providerLogoUrl} alt="" className="h-full w-full object-contain" />
-                                      ) : null}
-                                    </div>
-                                  </div>
-                                </div>
+                              <div>
+                                <div className="text-xs font-semibold text-muted-foreground mb-2">{label}</div>
+                                <div className="flex gap-3 overflow-x-auto pb-2">
+                                  {items.map((p) => {
+                                    const mp = p as MarketplaceProduct;
+                                    const primaryPricing = eligibleVariantPricingByProductId[p.id] ?? null;
 
-                                <div className="p-4">
-                                  {isGap ? (
-                                    <div className="space-y-4">
-                                      <div className="flex items-start justify-between gap-4">
-                                        <div className="min-w-0">
-                                          <div className="flex items-center gap-2">
-                                            <div className="font-semibold text-foreground truncate">
-                                              <Link to={detailHrefFor(p.id)} className="hover:underline">
-                                                {p.name}{gapLtvPct ? ` ${gapLtvPct}%` : ""}
-                                              </Link>
+                                    const matrixNeedsLoanDetails = mp.pricingStructure === "FINANCE_MATRIX" && !loanAmountCents;
+
+                                    const shownMonths =
+                                      primaryPricing
+                                        ? primaryPricing.termMonths === null
+                                          ? "Unlimited"
+                                          : typeof primaryPricing.termMonths === "number"
+                                            ? `${primaryPricing.termMonths} mo`
+                                            : "—"
+                                        : typeof mp.pricingDefault?.termMonths === "number"
+                                          ? `${mp.pricingDefault.termMonths} mo`
+                                          : "—";
+
+                                    const shownKm =
+                                      primaryPricing
+                                        ? primaryPricing.termKm === null
+                                          ? "Unlimited"
+                                          : typeof primaryPricing.termKm === "number"
+                                            ? `${primaryPricing.termKm.toLocaleString()} km`
+                                            : "—"
+                                        : typeof mp.pricingDefault?.termKm === "number"
+                                          ? `${mp.pricingDefault.termKm.toLocaleString()} km`
+                                          : "—";
+
+                                    const shownDeductibleCents =
+                                      typeof primaryPricing?.deductibleCents === "number"
+                                        ? primaryPricing.deductibleCents
+                                        : typeof mp.pricingDefault?.deductibleCents === "number"
+                                          ? mp.pricingDefault.deductibleCents
+                                          : undefined;
+
+                                    const shownPrice = shownPriceFor(mp, primaryPricing);
+
+                                    const isGap = isGapProduct(mp);
+                                    const isGapPlus160 = isGap && norm(mp.name ?? "").includes("160");
+                                    const gapLtvPct = isGap
+                                      ? typeof (mp as any).coverageMaxLtvPercent === "number"
+                                        ? (mp as any).coverageMaxLtvPercent
+                                        : isGapPlus160
+                                          ? 160
+                                          : 130
+                                      : null;
+                                    const gapMaxAgeYears = typeof mp.eligibilityMaxVehicleAgeYears === "number" ? mp.eligibilityMaxVehicleAgeYears : 10;
+
+                                    const accent = accentForIndex(cardIdx++);
+
+                                    return (
+                                      <div
+                                        key={p.id}
+                                        className={
+                                          "shrink-0 w-[220px] rounded-2xl border bg-background overflow-hidden shadow-sm ring-1 transition-shadow hover:shadow-md " +
+                                          accent.ring +
+                                          " " +
+                                          accent.border
+                                        }
+                                      >
+                                        <div className={"px-4 py-3 border-b bg-gradient-to-r " + accent.header}>
+                                          <div className="flex items-center justify-between gap-3">
+                                            <div className="min-w-0">
+                                              <div className="text-xs font-semibold text-foreground truncate">
+                                                <Link to={detailHrefFor(p.id)} className="hover:underline">
+                                                  {p.name}{gapLtvPct ? ` ${gapLtvPct}%` : ""}
+                                                </Link>
+                                              </div>
                                             </div>
-                                            {isGapPlus160 ? (
-                                              <span className="inline-flex items-center rounded-full border bg-yellow-400/20 px-2 py-0.5 text-[11px] text-yellow-900">
-                                                160% LTV Coverage
-                                              </span>
-                                            ) : null}
+                                            <div className="h-7 w-7 rounded-md border bg-white/70 overflow-hidden flex items-center justify-center shrink-0">
+                                              {group.providerLogoUrl ? (
+                                                <img src={group.providerLogoUrl} alt="" className="h-full w-full object-contain" />
+                                              ) : null}
+                                            </div>
                                           </div>
-                                          <div className="mt-1 text-sm text-muted-foreground">{gapDescription}</div>
                                         </div>
 
-                                        <div className="shrink-0 text-right">
-                                          {matrixNeedsLoanDetails ? (
-                                            <>
-                                              <div className="text-[11px] text-muted-foreground whitespace-nowrap">Price</div>
-                                              <div className="text-sm font-semibold whitespace-nowrap leading-none mt-2 text-muted-foreground">Needs loan details</div>
-                                            </>
+                                        <div className="p-3">
+                                          {isGap ? (
+                                            <div className="space-y-4">
+                                              <div className="min-w-0">
+                                                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                                  <span className="inline-flex items-center rounded-full border bg-background px-1.5 py-0.5">GAP Insurance</span>
+                                                  {gapLtvPct ? (
+                                                    <span className="inline-flex items-center rounded-full border bg-background px-1.5 py-0.5">{gapLtvPct}% LTV</span>
+                                                  ) : null}
+                                                  <span className="inline-flex items-center rounded-full border bg-background px-1.5 py-0.5">
+                                                    Up to {gapMaxAgeYears} yrs
+                                                  </span>
+                                                  {matrixNeedsLoanDetails ? (
+                                                    <span className="inline-flex items-center rounded-full border bg-yellow-400/20 px-1.5 py-0.5 text-yellow-900">Needs loan</span>
+                                                  ) : null}
+                                                </div>
+                                              </div>
+
+                                              <div className="mt-4 flex items-center justify-between gap-3">
+                                                <div className="min-w-0">
+                                                  <div className="text-[11px] text-muted-foreground whitespace-nowrap">Price</div>
+                                                  <div className="text-xs font-semibold whitespace-nowrap leading-none mt-2 text-muted-foreground">
+                                                    {matrixNeedsLoanDetails ? "Enter loan details" : "Select term in View"}
+                                                  </div>
+                                                </div>
+                                                <Button size="sm" asChild className="h-10 bg-yellow-400 text-black hover:bg-yellow-300">
+                                                  <Link to={detailHrefFor(mp.id)}>View</Link>
+                                                </Button>
+                                              </div>
+                                            </div>
                                           ) : (
-                                            <>
-                                              <div className="text-[11px] text-muted-foreground whitespace-nowrap">Price</div>
-                                              <div className="text-sm font-semibold whitespace-nowrap leading-none mt-2 text-muted-foreground">Select term in View</div>
-                                            </>
+                                            <div className="space-y-4">
+                                              <div className="min-w-0">
+                                                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                                  <span className="inline-flex items-center rounded-full border bg-background px-1.5 py-0.5">
+                                                    {productTypeLabel(mp.productType)}
+                                                  </span>
+                                                  <span className="inline-flex items-center rounded-full border bg-background px-1.5 py-0.5">
+                                                    {shownMonths} / {shownKm}
+                                                  </span>
+                                                  <span className="inline-flex items-center rounded-full border bg-background px-1.5 py-0.5">
+                                                    Deductible {shownDeductibleCents ? money(shownDeductibleCents) : "—" }
+                                                  </span>
+                                                </div>
+                                              </div>
+
+                                              <div className="mt-4 flex items-center justify-between gap-3">
+                                                <div className="min-w-0">
+                                                  <div className="text-[11px] text-muted-foreground whitespace-nowrap">Price</div>
+                                                  <div className="text-xl font-bold whitespace-nowrap leading-none mt-1">{money(shownPrice)}</div>
+                                                </div>
+                                                <Button size="sm" asChild className="bg-yellow-400 text-black hover:bg-yellow-300 whitespace-nowrap">
+                                                  <Link to={detailHrefFor(mp.id)}>View</Link>
+                                                </Button>
+                                              </div>
+                                            </div>
                                           )}
                                         </div>
                                       </div>
-
-                                      <div className="rounded-lg border bg-muted/10 p-3">
-                                        <div className="grid grid-cols-1 gap-2 text-[12px] text-muted-foreground leading-snug">
-                                          {gapBullets.map((b) => (
-                                            <div key={b} className="flex items-start gap-2">
-                                              <span className="mt-0.5">✔</span>
-                                              <span>{b}</span>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
-
-                                      <div className="text-[11px] text-muted-foreground rounded-md border bg-background/70 px-3 py-2">
-                                        {loanAmountCents ? (
-                                          <span>
-                                            Based on: {money(loanAmountCents)} loan <span className="text-muted-foreground">•</span> select term in View
-                                          </span>
-                                        ) : (
-                                          <span>Enter loan amount to see GAP options</span>
-                                        )}
-                                      </div>
-
-                                      <div className="grid grid-cols-1 gap-2">
-                                        <Button size="sm" asChild className="h-11 bg-yellow-400 text-black hover:bg-yellow-300">
-                                          <Link to={detailHrefFor(mp.id)}>View</Link>
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="space-y-4">
-                                      <div className="flex items-start justify-between gap-4">
-                                        <div className="min-w-0">
-                                          <div className="font-semibold text-foreground leading-tight truncate">
-                                            <Link to={detailHrefFor(p.id)} className="hover:underline">
-                                              {p.name}
-                                            </Link>
-                                          </div>
-
-                                          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                                            <span className="inline-flex items-center rounded-full border bg-background px-2 py-0.5">
-                                              {productTypeLabel(mp.productType)}
-                                            </span>
-                                            <span className="inline-flex items-center rounded-full border bg-background px-2 py-0.5">
-                                              {shownMonths} / {shownKm}
-                                            </span>
-                                            {typeof shownDeductibleCents === "number" ? (
-                                              <span className="inline-flex items-center rounded-full border bg-background px-2 py-0.5">
-                                                Deductible {money(shownDeductibleCents)}
-                                              </span>
-                                            ) : null}
-                                          </div>
-                                        </div>
-
-                                        <div className="shrink-0 text-right">
-                                          <div className="flex flex-col items-end">
-                                            <div className="text-[11px] text-muted-foreground whitespace-nowrap">Price</div>
-                                            <div className="text-2xl font-bold whitespace-nowrap leading-none mt-1">{money(shownPrice)}</div>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      <div className="mt-4 flex items-center justify-end">
-                                        <Button size="sm" asChild className="bg-yellow-400 text-black hover:bg-yellow-300 whitespace-nowrap">
-                                          <Link to={detailHrefFor(mp.id)}>View</Link>
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  )}
+                                    );
+                                  })}
                                 </div>
                               </div>
                             );
-                          })}
-                        </div>
+                          };
+
+                          return (
+                            <>
+                              {renderRow("Extended Warranty", nonGapProducts)}
+                              {renderRow("GAP Insurance", gapProducts)}
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   );

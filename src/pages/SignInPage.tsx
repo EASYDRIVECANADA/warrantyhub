@@ -178,16 +178,26 @@ export function SignInPage() {
           </div>
         </div>
 
-        <div className="flex items-center justify-center px-6 py-12 lg:py-0 bg-slate-50">
-          <div className="w-full max-w-md">
-            <div className="flex flex-col space-y-1.5">
-              <h1 className="text-3xl font-semibold leading-none tracking-tight font-display">Welcome back</h1>
-              <p className="text-sm text-muted-foreground">Sign in to your dealership account</p>
-            </div>
+        <div
+          className="relative flex items-center justify-center px-6 py-12 lg:py-0"
+          style={{
+            backgroundImage: "url('/images/Background.jpg')",
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+          }}
+        >
+          <div className="absolute inset-0 bg-white/45" />
+          <div className="relative w-full max-w-md">
+            <div className="rounded-2xl border bg-white/82 backdrop-blur-md shadow-card p-6">
+              <div className="flex flex-col space-y-1.5">
+                <h1 className="text-3xl font-semibold leading-none tracking-tight font-display">Welcome back</h1>
+                <p className="text-sm text-muted-foreground">Sign in to your dealership account</p>
+              </div>
 
-            <div className="mt-8">
-              <form className="space-y-4" onSubmit={onSubmit}>
-                {notice ? <div className="text-sm text-muted-foreground">{notice}</div> : null}
+              <div className="mt-8">
+                <form className="space-y-4" onSubmit={onSubmit}>
+                  {notice ? <div className="text-sm text-muted-foreground">{notice}</div> : null}
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium" htmlFor="email">
@@ -234,31 +244,30 @@ export function SignInPage() {
                     Register Your Dealership
                   </Link>
                 </div>
-              </form>
+                </form>
 
-              {import.meta.env.DEV ? (
-                <div className="mt-6 rounded-lg border bg-white p-4">
-                  <div className="text-sm font-medium">Dev bypass</div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    Temporarily enter a portal without logging in.
+                {import.meta.env.DEV ? (
+                  <div className="mt-6 rounded-lg border bg-white/90 p-4">
+                    <div className="text-sm font-medium">Dev bypass</div>
+                    <div className="text-xs text-muted-foreground mt-1">Temporarily enter a portal without logging in.</div>
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {(["ADMIN", "SUPER_ADMIN", "DEALER_ADMIN", "DEALER_EMPLOYEE", "PROVIDER"] as Role[]).map((r) => (
+                        <Button
+                          key={r}
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            devSignInAs(r);
+                            navigate(roleToDashboardPath(r), { replace: true });
+                          }}
+                        >
+                          Enter as {r}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {(["ADMIN", "SUPER_ADMIN", "DEALER_ADMIN", "DEALER_EMPLOYEE", "PROVIDER"] as Role[]).map((r) => (
-                      <Button
-                        key={r}
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          devSignInAs(r);
-                          navigate(roleToDashboardPath(r), { replace: true });
-                        }}
-                      >
-                        Enter as {r}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
