@@ -1927,7 +1927,11 @@ export function ProviderProductsPage() {
                 for (const k of scopeKeys) {
                   ids.push(...(idsByScope.get(k) ?? []));
                 }
-                return ids.length > 0 ? Array.from(new Set(ids)) : [];
+                return ids.length > 0
+                  ? Array.from(new Set(ids))
+                      .slice()
+                      .sort((a, b) => a.localeCompare(b))
+                  : [];
               }
 
               const selectedTerms = row.applicableTermMonths
@@ -1938,7 +1942,11 @@ export function ProviderProductsPage() {
               for (const t of selectedTerms) {
                 ids.push(...(idsByTerm.get(t) ?? []));
               }
-              return ids.length > 0 ? Array.from(new Set(ids)) : [];
+              return ids.length > 0
+                ? Array.from(new Set(ids))
+                    .slice()
+                    .sort((a, b) => a.localeCompare(b))
+                : [];
             })();
 
             if (!row.appliesToAllPricingRows && Array.isArray(applicablePricingRowIds) && applicablePricingRowIds.length === 0) {
