@@ -247,6 +247,7 @@ type PendingAddon = {
   pricingType: "FIXED" | "PER_TERM" | "PER_CLAIM";
   appliesToAllPricingRows: boolean;
   applicableTermMonths: string[];
+  applicablePricingScopeKeys?: string[];
 };
 
 function emptyEditor(): EditorState {
@@ -547,6 +548,7 @@ function parseAddonsPaste(rawText: string): Array<{
   pricingType: PendingAddon["pricingType"];
   price: string;
   termMonths?: string;
+  termKm?: string;
 }> {
   const raw = (rawText ?? "").trim();
   if (!raw) throw new Error("Paste add-ons table text first.");
@@ -565,6 +567,7 @@ function parseAddonsPaste(rawText: string): Array<{
   const idxDesc = header.findIndex((h) => h === "description" || h === "desc");
   const idxType = header.findIndex((h) => h === "pricingtype" || h === "type" || h === "pricing");
   const idxTerm = header.findIndex((h) => h === "termmonths" || h === "term" || h === "months");
+  const idxKm = header.findIndex((h) => h === "termkm" || h === "km" || h === "termkilometers" || h === "termkilometres");
 
   const hasHeader = idxName >= 0 || idxPrice >= 0;
   const dataLines = hasHeader ? lines.slice(1) : lines;
@@ -586,7 +589,14 @@ function parseAddonsPaste(rawText: string): Array<{
     return { name, description, pricingType, price };
   };
 
-  const out: Array<{ name: string; description: string; pricingType: PendingAddon["pricingType"]; price: string; termMonths?: string }> = [];
+  const out: Array<{
+    name: string;
+    description: string;
+    pricingType: PendingAddon["pricingType"];
+    price: string;
+    termMonths?: string;
+    termKm?: string;
+  }> = [];
   for (const line of dataLines) {
     const cols = splitTableRow(line);
     if (cols.length === 0) continue;
@@ -599,7 +609,8 @@ function parseAddonsPaste(rawText: string): Array<{
           const priceRaw = idxPrice >= 0 ? String(cols[idxPrice] ?? "") : String(cols[cols.length - 1] ?? "");
           const price = sanitizeMoney(priceRaw);
           const termMonths = idxTerm >= 0 ? String(cols[idxTerm] ?? "").trim() : "";
-          return { name, description, pricingType, price, termMonths: termMonths || undefined };
+          const termKm = idxKm >= 0 ? String(cols[idxKm] ?? "").trim() : "";
+          return { name, description, pricingType, price, termMonths: termMonths || undefined, termKm: termKm || undefined };
         })()
       : parseNoHeaderRow(cols);
 
@@ -610,12 +621,14 @@ function parseAddonsPaste(rawText: string): Array<{
     if (!price) continue;
 
     const t = typeof (parsed as any).termMonths === "string" ? String((parsed as any).termMonths).trim() : "";
+    const k = typeof (parsed as any).termKm === "string" ? String((parsed as any).termKm).trim() : "";
     out.push({
       name,
       description: (parsed.description ?? "").trim(),
       pricingType: parsed.pricingType ?? "FIXED",
       price: formatMoneyInput(price),
       termMonths: t ? t : undefined,
+      termKm: k ? k : undefined,
     });
   }
 
@@ -661,6 +674,77 @@ export function ProviderProductsPage() {
   });
 
   const pricingRowsFromApi = (pricingRowsQuery.data ?? []) as ProductPricing[];
+
+  const pricingRowScopeKeyById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of pricingRowsFromApi) {
+      const id = (r.id ?? "").trim();
+      if (!id) continue;
+      const mk = r.termMonths === null ? "UNL" : typeof r.termMonths === "number" ? String(Math.round(r.termMonths)) : "UNL";
+      const kk = r.termKm === null ? "UNL" : typeof r.termKm === "number" ? String(Math.round(r.termKm)) : "UNL";
+      map.set(id, `${mk}|${kk}`);
+    }
+    return map;
+  }, [pricingRowsFromApi]);
+
+  const pricingScopesFromApi = useMemo(() => {
+    const byKey = new Map<string, { scopeKey: string; termMonths: number | null; termKm: number | null; pricingRowIds: string[] }>();
+    for (const r of pricingRowsFromApi) {
+      const id = (r.id ?? "").trim();
+      if (!id) continue;
+      const mk = r.termMonths === null ? "UNL" : typeof r.termMonths === "number" ? String(Math.round(r.termMonths)) : "UNL";
+      const kk = r.termKm === null ? "UNL" : typeof r.termKm === "number" ? String(Math.round(r.termKm)) : "UNL";
+      const scopeKey = `${mk}|${kk}`;
+      const existing = byKey.get(scopeKey);
+      if (existing) {
+        existing.pricingRowIds.push(id);
+      } else {
+        byKey.set(scopeKey, {
+          scopeKey,
+          termMonths: typeof r.termMonths === "number" && Number.isFinite(r.termMonths) ? Math.round(r.termMonths) : null,
+          termKm: typeof r.termKm === "number" && Number.isFinite(r.termKm) ? Math.round(r.termKm) : null,
+          pricingRowIds: [id],
+        });
+      }
+    }
+
+    return Array.from(byKey.values()).sort((a, b) => {
+      const am = a.termMonths === null ? Number.POSITIVE_INFINITY : a.termMonths;
+      const bm = b.termMonths === null ? Number.POSITIVE_INFINITY : b.termMonths;
+      const ak = a.termKm === null ? Number.POSITIVE_INFINITY : a.termKm;
+      const bk = b.termKm === null ? Number.POSITIVE_INFINITY : b.termKm;
+      return (am - bm) || (ak - bk) || a.scopeKey.localeCompare(b.scopeKey);
+    });
+  }, [pricingRowsFromApi]);
+
+  const pricingScopesFromEditor = useMemo(() => {
+    const byKey = new Map<string, { scopeKey: string; termMonths: number | null; termKm: number | null; pricingRowIds: string[] }>();
+    for (const r of editor.pricingRows) {
+      const termMonths = r.termMonthsUnlimited ? null : parsePositiveInt(r.termMonths);
+      const termKm = r.termKmUnlimited ? null : parsePositiveInt(r.termKm);
+      if (termMonths === undefined && termKm === undefined) continue;
+
+      const mk = termMonths === null ? "UNL" : typeof termMonths === "number" ? String(Math.round(termMonths)) : "UNL";
+      const kk = termKm === null ? "UNL" : typeof termKm === "number" ? String(Math.round(termKm)) : "UNL";
+      const scopeKey = `${mk}|${kk}`;
+      if (!byKey.has(scopeKey)) {
+        byKey.set(scopeKey, {
+          scopeKey,
+          termMonths: typeof termMonths === "number" && Number.isFinite(termMonths) ? Math.round(termMonths) : null,
+          termKm: typeof termKm === "number" && Number.isFinite(termKm) ? Math.round(termKm) : null,
+          pricingRowIds: [],
+        });
+      }
+    }
+
+    return Array.from(byKey.values()).sort((a, b) => {
+      const am = a.termMonths === null ? Number.POSITIVE_INFINITY : a.termMonths;
+      const bm = b.termMonths === null ? Number.POSITIVE_INFINITY : b.termMonths;
+      const ak = a.termKm === null ? Number.POSITIVE_INFINITY : a.termKm;
+      const bk = b.termKm === null ? Number.POSITIVE_INFINITY : b.termKm;
+      return (am - bm) || (ak - bk) || a.scopeKey.localeCompare(b.scopeKey);
+    });
+  }, [editor.pricingRows]);
 
   const pricingRowTermMonthsById = useMemo(() => {
     const map = new Map<string, number>();
@@ -741,6 +825,20 @@ export function ProviderProductsPage() {
         price: centsToDollars(typeof a.dealerCostCents === "number" ? a.dealerCostCents : a.basePriceCents),
         appliesToAllPricingRows:
           typeof (a as any).appliesToAllPricingRows === "boolean" ? Boolean((a as any).appliesToAllPricingRows) : true,
+        applicablePricingScopeKeys: (() => {
+          const appliesToAll =
+            typeof (a as any).appliesToAllPricingRows === "boolean" ? Boolean((a as any).appliesToAllPricingRows) : true;
+          if (appliesToAll) return undefined;
+          const ids = Array.isArray((a as any).applicablePricingRowIds)
+            ? ((a as any).applicablePricingRowIds as unknown[]).filter((x) => typeof x === "string")
+            : [];
+          const scopes = new Set<string>();
+          for (const id of ids) {
+            const k = pricingRowScopeKeyById.get(id);
+            if (k) scopes.add(k);
+          }
+          return scopes.size > 0 ? Array.from(scopes.values()).sort((x, y) => x.localeCompare(y)) : undefined;
+        })(),
         applicableTermMonths: (() => {
           const appliesToAll =
             typeof (a as any).appliesToAllPricingRows === "boolean" ? Boolean((a as any).appliesToAllPricingRows) : true;
@@ -793,6 +891,7 @@ export function ProviderProductsPage() {
     addonsQuery.isError,
     addonsQuery.isLoading,
     editorProductId,
+    pricingRowScopeKeyById,
     pricingRowTermMonthsById,
     pricingRowsQuery.isError,
     pricingRowsQuery.isLoading,
@@ -804,44 +903,37 @@ export function ProviderProductsPage() {
     queryFn: () => api.list(),
   });
 
-  const uniqueTermMonthsOptions = useMemo(() => {
-    const set = new Set<number>();
-    for (const r of editor.pricingRows) {
-      const raw = (r.termMonths ?? "").trim();
-      const n = raw ? Number(raw) : NaN;
-      if (Number.isFinite(n) && n > 0) set.add(Math.round(n));
-    }
-    return Array.from(set.values()).sort((a, b) => a - b);
-  }, [editor.pricingRows]);
+  const uniqueAddonScopeOptions = useMemo(() => {
+    if (pricingScopesFromApi.length > 0) return pricingScopesFromApi;
+    return pricingScopesFromEditor;
+  }, [pricingScopesFromApi, pricingScopesFromEditor]);
 
   const invalidAddonsCount = useMemo(() => {
-    const valid = new Set(uniqueTermMonthsOptions.map((n) => String(n)));
+    const validScopes = new Set(uniqueAddonScopeOptions.map((s) => s.scopeKey));
     let c = 0;
     for (const a of pendingAddons) {
       if (a.appliesToAllPricingRows) continue;
-      const terms = Array.isArray(a.applicableTermMonths) ? a.applicableTermMonths.map((t) => String(t)) : [];
-      if (terms.length === 0) {
-        c++;
+      const scopes = Array.isArray(a.applicablePricingScopeKeys) ? a.applicablePricingScopeKeys.map((t) => String(t)) : [];
+      if (scopes.length > 0) {
+        if (scopes.some((s) => !validScopes.has(s))) c++;
         continue;
       }
-      if (terms.some((t) => !valid.has(t))) c++;
+
+      const terms = Array.isArray(a.applicableTermMonths) ? a.applicableTermMonths.map((t) => String(t)) : [];
+      if (terms.length === 0) c++;
     }
     return c;
-  }, [pendingAddons, uniqueTermMonthsOptions]);
+  }, [pendingAddons, uniqueAddonScopeOptions]);
 
   useEffect(() => {
     if (!showEditor) return;
     if (activeAddonTermTab === "ALL") return;
     if (activeAddonTermTab === "INVALID") return;
-    const n = Number(activeAddonTermTab);
-    if (!Number.isFinite(n)) {
-      setActiveAddonTermTab("ALL");
-      return;
-    }
-    if (!uniqueTermMonthsOptions.includes(n)) {
+    const valid = new Set(uniqueAddonScopeOptions.map((s) => s.scopeKey));
+    if (!valid.has(activeAddonTermTab)) {
       setActiveAddonTermTab("ALL");
     }
-  }, [activeAddonTermTab, showEditor, uniqueTermMonthsOptions]);
+  }, [activeAddonTermTab, showEditor, uniqueAddonScopeOptions]);
   useEffect(() => {
     if (!showEditor) return;
     if (!editorProductId) return;
@@ -1570,7 +1662,14 @@ export function ProviderProductsPage() {
           ? r.applicableTermMonths.map((x) => String(x ?? "").trim()).filter(Boolean)
           : ([] as string[]);
 
-        const appliesToAllPricingRows = r.appliesToAllPricingRows === true || applicableTermMonths.length === 0;
+        const applicablePricingScopeKeys = Array.isArray((r as any).applicablePricingScopeKeys)
+          ? ((r as any).applicablePricingScopeKeys as unknown[])
+              .map((x) => String(x ?? "").trim())
+              .filter(Boolean)
+          : ([] as string[]);
+
+        const appliesToAllPricingRows =
+          r.appliesToAllPricingRows === true || (applicablePricingScopeKeys.length === 0 && applicableTermMonths.length === 0);
 
         return {
           key: r.key,
@@ -1580,6 +1679,7 @@ export function ProviderProductsPage() {
           priceRaw: r.price,
           appliesToAllPricingRows,
           applicableTermMonths: appliesToAllPricingRows ? ([] as string[]) : applicableTermMonths,
+          applicablePricingScopeKeys: appliesToAllPricingRows ? ([] as string[]) : applicablePricingScopeKeys,
         };
       })
       .filter((r) => !!r.name);
@@ -1596,18 +1696,24 @@ export function ProviderProductsPage() {
     const seenAddonKeys = new Set<string>();
     for (const r of normalizedAddons) {
       const nameKey = r.name.toLowerCase();
-      const termsKey = r.appliesToAllPricingRows
+      const scopeKey = r.appliesToAllPricingRows
         ? "ALL"
-        : (r.applicableTermMonths ?? [])
-            .map((x) => Number(x))
-            .filter((n) => Number.isFinite(n) && n > 0)
-            .map((n) => Math.round(n))
-            .sort((a, b) => a - b)
-            .join(",");
-      const key = `${nameKey}::${termsKey}`;
+        : (r.applicablePricingScopeKeys ?? []).length > 0
+          ? (r.applicablePricingScopeKeys ?? [])
+              .slice()
+              .sort((a, b) => a.localeCompare(b))
+              .join(",")
+          : (r.applicableTermMonths ?? [])
+              .map((x) => Number(x))
+              .filter((n) => Number.isFinite(n) && n > 0)
+              .map((n) => Math.round(n))
+              .sort((a, b) => a - b)
+              .join(",");
+
+      const key = `${nameKey}::${scopeKey}`;
 
       if (seenAddonKeys.has(key)) {
-        setError(`Duplicate add-on detected for the same terms: "${r.name}".`);
+        setError(`Duplicate add-on detected for the same pricing scope: "${r.name}".`);
         setActiveTab("ADDONS");
         return;
       }
@@ -1776,13 +1882,26 @@ export function ProviderProductsPage() {
       if (productId) {
         try {
           const latestPricing = (await pricingApi.list({ productId })) as ProductPricing[];
+          const idsByScope = (() => {
+            const map = new Map<string, string[]>();
+            for (const pr of latestPricing) {
+              const id = (pr.id ?? "").trim();
+              if (!id) continue;
+              const mk = pr.termMonths === null ? "UNL" : typeof pr.termMonths === "number" ? String(Math.round(pr.termMonths)) : "UNL";
+              const kk = pr.termKm === null ? "UNL" : typeof pr.termKm === "number" ? String(Math.round(pr.termKm)) : "UNL";
+              const scopeKey = `${mk}|${kk}`;
+              map.set(scopeKey, [...(map.get(scopeKey) ?? []), id]);
+            }
+            return map;
+          })();
+
           const idsByTerm = (() => {
             const map = new Map<number, string[]>();
             for (const pr of latestPricing) {
               if (typeof pr.termMonths !== "number" || !Number.isFinite(pr.termMonths) || pr.termMonths <= 0) continue;
               const id = (pr.id ?? "").trim();
               if (!id) continue;
-              map.set(pr.termMonths, [...(map.get(pr.termMonths) ?? []), id]);
+              map.set(Math.round(pr.termMonths), [...(map.get(Math.round(pr.termMonths)) ?? []), id]);
             }
             return map;
           })();
@@ -1797,6 +1916,20 @@ export function ProviderProductsPage() {
 
             const applicablePricingRowIds = (() => {
               if (row.appliesToAllPricingRows) return undefined;
+
+              const selectedScopes = (row as any).applicablePricingScopeKeys as string[] | undefined;
+              const scopeKeys = Array.isArray(selectedScopes)
+                ? selectedScopes.map((x) => String(x ?? "").trim()).filter(Boolean)
+                : [];
+
+              if (scopeKeys.length > 0) {
+                const ids: string[] = [];
+                for (const k of scopeKeys) {
+                  ids.push(...(idsByScope.get(k) ?? []));
+                }
+                return ids.length > 0 ? Array.from(new Set(ids)) : [];
+              }
+
               const selectedTerms = row.applicableTermMonths
                 .map((x) => Number(x))
                 .filter((n) => Number.isFinite(n) && n > 0)
@@ -1809,6 +1942,24 @@ export function ProviderProductsPage() {
             })();
 
             if (!row.appliesToAllPricingRows && Array.isArray(applicablePricingRowIds) && applicablePricingRowIds.length === 0) {
+              const selectedScopes = (row as any).applicablePricingScopeKeys as string[] | undefined;
+              const scopeKeys = Array.isArray(selectedScopes)
+                ? selectedScopes.map((x) => String(x ?? "").trim()).filter(Boolean)
+                : [];
+
+              if (scopeKeys.length > 0) {
+                const availableScopes = Array.from(idsByScope.keys()).sort((a, b) => a.localeCompare(b));
+                const missing = scopeKeys.filter((k) => (idsByScope.get(k) ?? []).length === 0);
+                if (missing.length > 0) {
+                  throw new Error(
+                    `Add-on "${row.name}" targets pricing scope(s) ${missing.join(", ")}, but no pricing rows exist for those scope(s). ` +
+                      (availableScopes.length > 0 ? `Available pricing scopes: ${availableScopes.join(", ")}.` : "Add pricing rows first."),
+                  );
+                }
+
+                throw new Error(`Select at least one pricing tab for add-on "${row.name}", or set it to apply to all pricing rows.`);
+              }
+
               const selectedTerms = (row.applicableTermMonths ?? [])
                 .map((x) => Number(x))
                 .filter((n) => Number.isFinite(n) && n > 0)
@@ -1838,12 +1989,13 @@ export function ProviderProductsPage() {
               description: row.description || undefined,
               pricingType: row.pricingType,
               appliesToAllPricingRows: row.appliesToAllPricingRows,
-              applicableTermMonths: row.appliesToAllPricingRows
-                ? undefined
-                : row.applicableTermMonths
-                    .map((x) => Number(String(x ?? "").trim()))
-                    .filter((n) => Number.isFinite(n) && n > 0)
-                    .map((n) => Math.round(n)),
+              applicableTermMonths:
+                row.appliesToAllPricingRows || ((row as any).applicablePricingScopeKeys ?? []).length > 0
+                  ? undefined
+                  : row.applicableTermMonths
+                      .map((x) => Number(String(x ?? "").trim()))
+                      .filter((n) => Number.isFinite(n) && n > 0)
+                      .map((n) => Math.round(n)),
               applicablePricingRowIds,
               basePriceCents: price,
               minPriceCents: undefined,
@@ -2317,12 +2469,12 @@ export function ProviderProductsPage() {
                           className={textareaClassName()}
                           placeholder={
                             "Paste CSV/TSV. Columns (with optional header):\n" +
-                            "termMonths,name,description,pricingType,price\n" +
+                            "termMonths,termKm,name,description,pricingType,price\n" +
                             "\n" +
                             "Examples:\n" +
-                            "ALL,Music kit,,FIXED,150\n" +
-                            "12,Borrow,,FIXED,25\n" +
-                            "24,Borrow,,FIXED,50"
+                            "ALL,,Music kit,,FIXED,150\n" +
+                            "12,20000,Borrow,,FIXED,25\n" +
+                            "24,40000,Borrow,,FIXED,50"
                           }
                           disabled={busy}
                         />
@@ -2336,14 +2488,74 @@ export function ProviderProductsPage() {
                               try {
                                 const parsed = parseAddonsPaste(pasteAddonsText);
                                 const defaultScope = activeAddonTermTab === "INVALID" ? "ALL" : activeAddonTermTab;
+                                const validScopes = new Set(uniqueAddonScopeOptions.map((s) => s.scopeKey));
 
                                 const rows: PendingAddon[] = parsed.map((p) => {
                                   const rawTerm = (p.termMonths ?? "").trim();
+                                  const rawKm = (p.termKm ?? "").trim();
+                                  const upperTerm = rawTerm.toUpperCase();
+
                                   const isAll = !rawTerm
                                     ? defaultScope === "ALL"
-                                    : rawTerm.toUpperCase() === "ALL" || rawTerm.toUpperCase() === "ALLTERMS" || rawTerm.toUpperCase() === "ALL_TERMS";
-                                  const termNum = !isAll && rawTerm ? Number(rawTerm) : Number(defaultScope);
-                                  const term = !isAll && Number.isFinite(termNum) && termNum > 0 ? String(Math.round(termNum)) : null;
+                                    : upperTerm === "ALL" || upperTerm === "ALLTERMS" || upperTerm === "ALL_TERMS";
+
+                                  if (isAll) {
+                                    return {
+                                      key: crypto.randomUUID(),
+                                      name: p.name,
+                                      description: p.description,
+                                      pricingType: p.pricingType,
+                                      price: p.price,
+                                      appliesToAllPricingRows: true,
+                                      applicableTermMonths: [],
+                                    };
+                                  }
+
+                                  const normMonths = /^UNLIMITED$/i.test(rawTerm)
+                                    ? "UNL"
+                                    : (() => {
+                                        const n = rawTerm ? Number(rawTerm) : NaN;
+                                        return Number.isFinite(n) && n > 0 ? String(Math.round(n)) : null;
+                                      })();
+
+                                  const normKm = /^UNLIMITED$/i.test(rawKm)
+                                    ? "UNL"
+                                    : (() => {
+                                        const n = rawKm ? Number(rawKm) : NaN;
+                                        return Number.isFinite(n) && n > 0 ? String(Math.round(n)) : null;
+                                      })();
+
+                                  if (normMonths && normKm) {
+                                    const scopeKey = `${normMonths}|${normKm}`;
+                                    if (validScopes.has(scopeKey)) {
+                                      return {
+                                        key: crypto.randomUUID(),
+                                        name: p.name,
+                                        description: p.description,
+                                        pricingType: p.pricingType,
+                                        price: p.price,
+                                        appliesToAllPricingRows: false,
+                                        applicableTermMonths: [],
+                                        applicablePricingScopeKeys: [scopeKey],
+                                      };
+                                    }
+                                  }
+
+                                  if (validScopes.has(defaultScope)) {
+                                    return {
+                                      key: crypto.randomUUID(),
+                                      name: p.name,
+                                      description: p.description,
+                                      pricingType: p.pricingType,
+                                      price: p.price,
+                                      appliesToAllPricingRows: false,
+                                      applicableTermMonths: [],
+                                      applicablePricingScopeKeys: [defaultScope],
+                                    };
+                                  }
+
+                                  const fallbackMonthsNum = Number(rawTerm);
+                                  const fallbackMonths = Number.isFinite(fallbackMonthsNum) && fallbackMonthsNum > 0 ? String(Math.round(fallbackMonthsNum)) : null;
 
                                   return {
                                     key: crypto.randomUUID(),
@@ -2351,8 +2563,8 @@ export function ProviderProductsPage() {
                                     description: p.description,
                                     pricingType: p.pricingType,
                                     price: p.price,
-                                    appliesToAllPricingRows: isAll || !term,
-                                    applicableTermMonths: isAll || !term ? [] : [term],
+                                    appliesToAllPricingRows: !fallbackMonths,
+                                    applicableTermMonths: fallbackMonths ? [fallbackMonths] : [],
                                   };
                                 });
 
@@ -2382,16 +2594,17 @@ export function ProviderProductsPage() {
                       >
                         All terms
                       </Button>
-                      {uniqueTermMonthsOptions.map((m) => (
+                      {uniqueAddonScopeOptions.map((s) => (
                         <Button
-                          key={m}
+                          key={s.scopeKey}
                           type="button"
-                          variant={activeAddonTermTab === String(m) ? "default" : "outline"}
+                          variant={activeAddonTermTab === s.scopeKey ? "default" : "outline"}
                           size="sm"
                           disabled={busy}
-                          onClick={() => setActiveAddonTermTab(String(m))}
+                          onClick={() => setActiveAddonTermTab(s.scopeKey)}
                         >
-                          {m} mo
+                          {(s.termMonths === null ? "No Time Limit" : `${s.termMonths} mo`) +
+                            (" / " + (s.termKm === null ? "Unlimited km" : `${s.termKm.toLocaleString()} km`))}
                         </Button>
                       ))}
                       {invalidAddonsCount > 0 ? (
@@ -2405,27 +2618,49 @@ export function ProviderProductsPage() {
                           Invalid ({invalidAddonsCount})
                         </Button>
                       ) : null}
-                      {uniqueTermMonthsOptions.length === 0 ? (
-                        <div className="text-xs text-muted-foreground">Add pricing rows first to see term tabs here.</div>
+                      {uniqueAddonScopeOptions.length === 0 ? (
+                        <div className="text-xs text-muted-foreground">Add pricing rows first to see pricing tabs here.</div>
                       ) : null}
                     </div>
 
                     {pendingAddons
                       .filter((row) => {
-                        const valid = new Set(uniqueTermMonthsOptions.map((n) => String(n)));
+                        const valid = new Set(uniqueAddonScopeOptions.map((n) => String(n.scopeKey)));
                         if (activeAddonTermTab === "INVALID") {
                           if (row.appliesToAllPricingRows) return false;
+                          const scopes = Array.isArray(row.applicablePricingScopeKeys)
+                            ? row.applicablePricingScopeKeys.map((t) => String(t))
+                            : ([] as string[]);
+                          if (scopes.length > 0) return scopes.some((t) => !valid.has(t));
+
                           const terms = Array.isArray(row.applicableTermMonths)
                             ? row.applicableTermMonths.map((t) => String(t))
                             : ([] as string[]);
-                          if (terms.length === 0) return true;
-                          return terms.some((t) => !valid.has(t));
+                          return terms.length === 0;
                         }
 
                         if (activeAddonTermTab === "ALL") return row.appliesToAllPricingRows;
-                        const term = activeAddonTermTab;
+                        const scope = activeAddonTermTab;
                         if (row.appliesToAllPricingRows) return false;
-                        return row.applicableTermMonths.includes(term);
+
+                        const scopes = Array.isArray(row.applicablePricingScopeKeys)
+                          ? row.applicablePricingScopeKeys.map((t) => String(t))
+                          : ([] as string[]);
+                        if (scopes.length > 0) return scopes.includes(scope);
+
+                        const selectedTerms = Array.isArray(row.applicableTermMonths)
+                          ? row.applicableTermMonths
+                              .map((x) => Number(String(x ?? "").trim()))
+                              .filter((n) => Number.isFinite(n) && n > 0)
+                              .map((n) => Math.round(n))
+                          : [];
+
+                        if (selectedTerms.length === 0) return false;
+
+                        const scopeMonthsPart = scope.split("|")[0] ?? "";
+                        const scopeMonths = scopeMonthsPart === "UNL" ? null : Number(scopeMonthsPart);
+                        if (scopeMonths === null) return false;
+                        return selectedTerms.includes(scopeMonths);
                       })
                       .map((row, idx) => (
                       <div key={row.key} className="rounded-lg border p-3">
@@ -2502,8 +2737,10 @@ export function ProviderProductsPage() {
                             pricingType: "FIXED",
                             price: "",
                             appliesToAllPricingRows: activeAddonTermTab === "ALL" || activeAddonTermTab === "INVALID",
-                            applicableTermMonths:
-                              activeAddonTermTab === "ALL" || activeAddonTermTab === "INVALID" ? [] : [String(activeAddonTermTab)],
+                            applicableTermMonths: [],
+                            ...(activeAddonTermTab === "ALL" || activeAddonTermTab === "INVALID"
+                              ? {}
+                              : { applicablePricingScopeKeys: [activeAddonTermTab] }),
                           },
                         ])
                       }
