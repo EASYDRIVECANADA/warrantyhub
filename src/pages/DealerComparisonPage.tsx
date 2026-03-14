@@ -695,9 +695,14 @@ export function DealerComparisonPage() {
       th { text-align: left; border-bottom: 1px solid #ddd; padding: 8px 0; }
       td { border-bottom: 1px solid #f0f0f0; padding: 8px 0; vertical-align: top; }
       td.right, th.right { text-align: right; }
-      .sub { color: #111; margin-top: 6px; }
-      .opt-line { margin-top: 3px; font-size: 12px; }
-      .price-line { margin-top: 3px; font-size: 12px; white-space: nowrap; }
+      .prov-row td { border-bottom: 1px solid #ddd; padding-top: 14px; padding-bottom: 6px; }
+      .prov-name { font-weight: 700; font-size: 14px; }
+      th.col-type, td.col-type { padding-right: 18px; }
+      .opts { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      .opts td { border: 0; padding: 0; vertical-align: top; }
+      .opts tr + tr td { padding-top: 3px; }
+      .opt-text { font-size: 12px; padding-right: 14px; word-break: break-word; }
+      .opt-price { font-size: 12px; white-space: nowrap; text-align: right; font-weight: 700; }
     </style>
   </head>
   <body>
@@ -712,19 +717,35 @@ export function DealerComparisonPage() {
       <thead>
         <tr>
           <th>Plan</th>
-          <th>Provider</th>
-          <th>Type</th>
+          <th class="col-type">Type</th>
           <th>Term</th>
           <th class="right">Price</th>
         </tr>
       </thead>
       <tbody>
-        ${items
-          .map((p) => {
+        ${(() => {
+          const withProvider = items
+            .map((p) => {
+              const provider = providerDisplayName(providerById.get(p.providerId), p.providerId);
+              return { p, provider };
+            })
+            .sort((a, b) => {
+              const pc = a.provider.localeCompare(b.provider);
+              if (pc !== 0) return pc;
+              return (a.p.name ?? "").toString().localeCompare((b.p.name ?? "").toString());
+            });
+
+          const out: string[] = [];
+          let lastProvider = "";
+
+          for (const { p, provider } of withProvider) {
+            if (provider !== lastProvider) {
+              lastProvider = provider;
+              out.push(`<tr class="prov-row"><td colspan="4"><div class="prov-name">${escapeHtml(provider)}</div></td></tr>`);
+            }
+
             const cost = costFromProductOrPricing({ dealerCostCents: p.dealerCostCents, basePriceCents: p.basePriceCents });
             const retail = retailFromCost(cost, markupPct) ?? cost;
-            const provider = providerDisplayName(providerById.get(p.providerId), p.providerId);
-
             const options = pricingOptionsByProductId[p.id] ?? [];
             const mainMonths = p.termMonths ?? null;
             const mainKm = p.termKm ?? null;
@@ -740,7 +761,15 @@ export function DealerComparisonPage() {
                   basePriceCents: r.basePriceCents ?? p.basePriceCents,
                 });
                 const optRetail = retailFromCost(optCost, markupPct) ?? optCost;
-                const key = [r.termMonths ?? "U", r.termKm ?? "U", r.deductibleCents, (r as any).claimLimitCents, r.basePriceCents, (r as any).dealerCostCents, optRetail]
+                const key = [
+                  r.termMonths ?? "U",
+                  r.termKm ?? "U",
+                  r.deductibleCents,
+                  (r as any).claimLimitCents,
+                  r.basePriceCents,
+                  (r as any).dealerCostCents,
+                  optRetail,
+                ]
                   .map((x) => (x ?? "").toString())
                   .join("|");
                 if (seen.has(key)) continue;
@@ -751,36 +780,31 @@ export function DealerComparisonPage() {
             })();
 
             const mainTermText = mainRow ? pricingOptionLabel(mainRow) : termLabel(p);
-            const mainTermHtml = `<div class="opt-line">${escapeHtml(mainTermText)}</div>`;
-            const mainPriceHtml = `<div class="price-line"><b>${escapeHtml(money(retail))}</b></div>`;
 
-            const otherTermsHtml =
-              normalized.length > 0
-                ? `<div class="sub">${normalized
-                    .map(({ row: r }) => {
-                      return `<div class="opt-line">${escapeHtml(pricingOptionLabel(r))}</div>`;
-                    })
-                    .join("")}</div>`
-                : "";
+            const optRowsHtml = (() => {
+              const rows: string[] = [];
+              rows.push(
+                `<tr><td class="opt-text">${escapeHtml(mainTermText)}</td><td class="opt-price">${escapeHtml(money(retail))}</td></tr>`,
+              );
+              for (const it of normalized) {
+                rows.push(
+                  `<tr><td class="opt-text">${escapeHtml(pricingOptionLabel(it.row))}</td><td class="opt-price">${escapeHtml(money(it.retailCents))}</td></tr>`,
+                );
+              }
+              return rows.join("");
+            })();
 
-            const otherPricesHtml =
-              normalized.length > 0
-                ? `<div class="sub">${normalized
-                    .map(({ retailCents }) => {
-                      return `<div class="price-line"><b>${escapeHtml(money(retailCents))}</b></div>`;
-                    })
-                    .join("")}</div>`
-                : "";
+            const optionsTableHtml = `<table class="opts"><tbody>${optRowsHtml}</tbody></table>`;
 
-            return `<tr>
+            out.push(`<tr>
               <td>${escapeHtml((p.name ?? "").toString())}</td>
-              <td>${escapeHtml(provider)}</td>
-              <td>${escapeHtml(productTypeLabel(p.productType))}</td>
-              <td>${mainTermHtml}${otherTermsHtml}</td>
-              <td class="right">${mainPriceHtml}${otherPricesHtml}</td>
-            </tr>`;
-          })
-          .join("\n")}
+              <td class="col-type">${escapeHtml(productTypeLabel(p.productType))}</td>
+              <td colspan="2">${optionsTableHtml}</td>
+            </tr>`);
+          }
+
+          return out.join("\n");
+        })()}
       </tbody>
     </table>
     <script>
