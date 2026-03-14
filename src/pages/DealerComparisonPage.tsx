@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { Printer } from "lucide-react";
 
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -49,6 +50,15 @@ function money(cents?: number) {
   return `$${dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function escapeHtml(s: string) {
+  return (s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function termLabel(p: Product) {
   const months = typeof p.termMonths === "number" ? `${p.termMonths} mo` : "—";
   const km = typeof p.termKm === "number" ? `${p.termKm} km` : "—";
@@ -60,6 +70,78 @@ function norm(s: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+}
+
+function normToken(s: string) {
+  return (s ?? "")
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function resolveVehicleClassForProduct(p: Product, decoded: VinDecoded | null) {
+  if (!decoded) return null as string | null;
+  if ((p as any).pricingStructure !== "MILEAGE_CLASS") return null as string | null;
+
+  const vMake = normToken(decoded.vehicleMake ?? "");
+  const vModel = normToken(decoded.vehicleModel ?? "");
+  if (!vMake) return null as string | null;
+
+  const map = (p as any).classVehicleTypes as Record<string, string> | undefined;
+  if (!map || typeof map !== "object") return null as string | null;
+
+  type Candidate = { classCode: string; score: number };
+  const candidates: Candidate[] = [];
+
+  const entryMatches = (raw: string) => {
+    const t = String(raw ?? "").trim();
+    if (!t) return { ok: false, score: 0 } as const;
+
+    const exMatch = t.match(/^(.+?)\s*\(\s*excluding\s+(.+?)\s*\)$/i);
+    const base = normToken(exMatch ? exMatch[1] : t);
+    const exclusion = normToken(exMatch ? exMatch[2] : "");
+
+    const parts = base.split(" ").filter(Boolean);
+    const make = parts[0] ?? "";
+    const modelPrefix = parts.slice(1).join(" ").trim();
+
+    if (!make || make !== vMake) return { ok: false, score: 0 } as const;
+    if (exclusion && vModel && vModel.includes(exclusion)) return { ok: false, score: 0 } as const;
+
+    if (modelPrefix) {
+      if (!vModel) return { ok: false, score: 0 } as const;
+      const ok = vModel.includes(modelPrefix) || modelPrefix.includes(vModel);
+      return { ok, score: ok ? 2 : 0 } as const;
+    }
+
+    return { ok: true, score: 1 } as const;
+  };
+
+  for (const [classCodeRaw, rulesRaw] of Object.entries(map)) {
+    const classCode = String(classCodeRaw ?? "").trim().toUpperCase();
+    if (!classCode) continue;
+
+    const ruleText = String(rulesRaw ?? "");
+    const tokens = ruleText
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+
+    for (const token of tokens) {
+      const res = entryMatches(token);
+      if (res.ok) {
+        candidates.push({ classCode, score: res.score });
+        break;
+      }
+    }
+  }
+
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => b.score - a.score || a.classCode.localeCompare(b.classCode));
+  return candidates[0]!.classCode;
 }
 
 function clampSelection(ids: string[], max: number) {
@@ -260,7 +342,18 @@ export function DealerComparisonPage() {
             return [p.id, resolved.ok] as const;
           }
 
-          const ok = rows.some((r) => isPricingEligibleForVehicle({ pricing: r, vehicleMileageKm: parsedMileage as number, vehicleClass }));
+          const isMileageClass = (p as any).pricingStructure === "MILEAGE_CLASS";
+          const inferredClass = !vehicleClass.trim() ? resolveVehicleClassForProduct(p, decoded) : null;
+          const effectiveVehicleClass = !vehicleClass.trim() ? (inferredClass ?? "") : vehicleClass;
+          if (isMileageClass && !effectiveVehicleClass.trim()) return [p.id, false] as const;
+
+          const ok = rows.some((r) =>
+            isPricingEligibleForVehicle({
+              pricing: r,
+              vehicleMileageKm: parsedMileage as number,
+              vehicleClass: effectiveVehicleClass,
+            }),
+          );
           return [p.id, ok] as const;
         }),
       );
@@ -292,6 +385,8 @@ export function DealerComparisonPage() {
     });
   }, [decoded, filteredProductsWithVariants, priceSort, sortedFilteredProducts]);
 
+  const isEligibilityLoading = Boolean(decoded) && typeof parsedMileage === "number" && eligibleVariantByProductIdQuery.isFetching;
+
   const selectedProducts = selectedIds
     .map((id) => products.find((p) => p.id === id))
     .filter(Boolean) as Product[];
@@ -320,8 +415,15 @@ export function DealerComparisonPage() {
             return [p.id, resolved.ok ? [resolved.row] : []] as const;
           }
 
+          const isMileageClass = (p as any).pricingStructure === "MILEAGE_CLASS";
+          const inferredClass = !vehicleClass.trim() ? resolveVehicleClassForProduct(p, decoded) : null;
+          const effectiveVehicleClass = !vehicleClass.trim() ? (inferredClass ?? "") : vehicleClass;
           const eligible = typeof parsedMileage === "number"
-            ? rows.filter((r) => isPricingEligibleForVehicle({ pricing: r, vehicleMileageKm: parsedMileage, vehicleClass }))
+            ? isMileageClass && !effectiveVehicleClass.trim()
+              ? []
+              : rows.filter((r) =>
+                  isPricingEligibleForVehicle({ pricing: r, vehicleMileageKm: parsedMileage, vehicleClass: effectiveVehicleClass }),
+                )
             : rows;
 
           const sorted = eligible
@@ -414,7 +516,6 @@ export function DealerComparisonPage() {
     >
       <div className="relative">
         <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-yellow-400/10 blur-2xl" />
-
         <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
           <div className="px-6 py-4 border-b flex items-start justify-between gap-4 flex-wrap bg-gradient-to-r from-blue-600/10 to-yellow-500/10">
             <div>
@@ -512,8 +613,200 @@ export function DealerComparisonPage() {
               <div className="font-semibold">Eligible Plans</div>
               <div className="text-sm text-muted-foreground mt-1">Select up to 4 plans to compare.</div>
             </div>
-            <div className="inline-flex items-center rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground">
-              {selectedProducts.length} selected
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                className="bg-yellow-400 text-black hover:bg-yellow-300 font-semibold shadow-sm"
+                size="sm"
+                onClick={() => {
+                  void (async () => {
+                    const vinLabel = vin.trim();
+                    const mileageLabel = mileageKm.trim();
+                    const items = shownProducts.slice();
+                    const parsedMileageForPrint = (() => {
+                      const n = Number(mileageLabel);
+                      return Number.isFinite(n) ? n : undefined;
+                    })();
+
+                    const w = window.open("", "_blank");
+                    if (!w) {
+                      window.alert("Pop-up blocked. Please allow pop-ups for this site to print.");
+                      return;
+                    }
+
+                    w.document.open();
+                    w.document.write(`<!doctype html><html><head><meta charset="utf-8" /><title>Compare Plans — Eligible Plans</title></head><body style="font-family: Arial, sans-serif; padding: 24px;">Loading…</body></html>`);
+                    w.document.close();
+
+                    const pricingOptionsByProductId = Object.fromEntries(
+                      await Promise.all(
+                        items.map(async (p) => {
+                          const rows = (await productPricingApi.list({ productId: p.id })) as ProductPricing[];
+
+                          if ((p as any).pricingStructure === "FINANCE_MATRIX") {
+                            const resolved = resolveFinanceMatrixPricingRow({
+                              rows,
+                              loanAmountCents: loanAmountCents ?? null,
+                              financeTermMonths: financeTermMonthsNum ?? null,
+                            });
+                            return [p.id, resolved.ok ? [resolved.row] : []] as const;
+                          }
+
+                          const eligibleRows =
+                            typeof parsedMileageForPrint === "number"
+                              ? (() => {
+                                  const isMileageClass = (p as any).pricingStructure === "MILEAGE_CLASS";
+                                  const inferredClass = !vehicleClass.trim() ? resolveVehicleClassForProduct(p, decoded) : null;
+                                  const effectiveVehicleClass = !vehicleClass.trim() ? (inferredClass ?? "") : vehicleClass;
+                                  if (isMileageClass && !effectiveVehicleClass.trim()) return [] as ProductPricing[];
+                                  return rows.filter((r) =>
+                                    isPricingEligibleForVehicle({
+                                      pricing: r,
+                                      vehicleMileageKm: parsedMileageForPrint,
+                                      vehicleClass: effectiveVehicleClass,
+                                    }),
+                                  );
+                                })()
+                              : rows;
+
+                          const sorted = eligibleRows.slice().sort((a, b) => {
+                            const am = a.termMonths ?? Number.MAX_SAFE_INTEGER;
+                            const bm = b.termMonths ?? Number.MAX_SAFE_INTEGER;
+                            const ak = a.termKm ?? Number.MAX_SAFE_INTEGER;
+                            const bk = b.termKm ?? Number.MAX_SAFE_INTEGER;
+                            return (am - bm) || (ak - bk) || (a.deductibleCents - b.deductibleCents);
+                          });
+
+                          return [p.id, sorted] as const;
+                        }),
+                      ),
+                    ) as Record<string, ProductPricing[]>;
+
+                    const html = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Compare Plans — Eligible Plans</title>
+    <style>
+      body { font-family: Arial, sans-serif; color: #000; padding: 24px; }
+      h1 { font-size: 20px; margin: 0 0 6px 0; }
+      .meta { font-size: 12px; color: #333; margin-bottom: 16px; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      th { text-align: left; border-bottom: 1px solid #ddd; padding: 8px 0; }
+      td { border-bottom: 1px solid #f0f0f0; padding: 8px 0; vertical-align: top; }
+      td.right, th.right { text-align: right; }
+      .sub { color: #111; margin-top: 6px; }
+      .opt-line { margin-top: 3px; font-size: 12px; }
+      .price-line { margin-top: 3px; font-size: 12px; white-space: nowrap; }
+    </style>
+  </head>
+  <body>
+    <h1>Compare Plans — Eligible Plans</h1>
+    <div class="meta">
+      ${vinLabel ? `VIN: ${escapeHtml(vinLabel)}` : ""}
+      ${vinLabel && mileageLabel ? " • " : ""}
+      ${mileageLabel ? `Mileage: ${escapeHtml(mileageLabel)} km` : ""}
+      <div style="margin-top: 6px;">Total eligible plans: <b>${items.length}</b></div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Plan</th>
+          <th>Provider</th>
+          <th>Type</th>
+          <th>Term</th>
+          <th class="right">Price</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items
+          .map((p) => {
+            const cost = costFromProductOrPricing({ dealerCostCents: p.dealerCostCents, basePriceCents: p.basePriceCents });
+            const retail = retailFromCost(cost, markupPct) ?? cost;
+            const provider = providerDisplayName(providerById.get(p.providerId), p.providerId);
+
+            const options = pricingOptionsByProductId[p.id] ?? [];
+            const mainMonths = p.termMonths ?? null;
+            const mainKm = p.termKm ?? null;
+            const mainRow = options.find((r) => r.termMonths === mainMonths && r.termKm === mainKm);
+
+            const normalized = (() => {
+              const out: Array<{ key: string; row: ProductPricing; retailCents?: number }> = [];
+              const seen = new Set<string>();
+              for (const r of options) {
+                if (r.termMonths === mainMonths && r.termKm === mainKm) continue;
+                const optCost = costFromProductOrPricing({
+                  dealerCostCents: (r as any).dealerCostCents ?? p.dealerCostCents,
+                  basePriceCents: r.basePriceCents ?? p.basePriceCents,
+                });
+                const optRetail = retailFromCost(optCost, markupPct) ?? optCost;
+                const key = [r.termMonths ?? "U", r.termKm ?? "U", r.deductibleCents, (r as any).claimLimitCents, r.basePriceCents, (r as any).dealerCostCents, optRetail]
+                  .map((x) => (x ?? "").toString())
+                  .join("|");
+                if (seen.has(key)) continue;
+                seen.add(key);
+                out.push({ key, row: r, retailCents: optRetail });
+              }
+              return out;
+            })();
+
+            const mainTermText = mainRow ? pricingOptionLabel(mainRow) : termLabel(p);
+            const mainTermHtml = `<div class="opt-line">${escapeHtml(mainTermText)}</div>`;
+            const mainPriceHtml = `<div class="price-line"><b>${escapeHtml(money(retail))}</b></div>`;
+
+            const otherTermsHtml =
+              normalized.length > 0
+                ? `<div class="sub">${normalized
+                    .map(({ row: r }) => {
+                      return `<div class="opt-line">${escapeHtml(pricingOptionLabel(r))}</div>`;
+                    })
+                    .join("")}</div>`
+                : "";
+
+            const otherPricesHtml =
+              normalized.length > 0
+                ? `<div class="sub">${normalized
+                    .map(({ retailCents }) => {
+                      return `<div class="price-line"><b>${escapeHtml(money(retailCents))}</b></div>`;
+                    })
+                    .join("")}</div>`
+                : "";
+
+            return `<tr>
+              <td>${escapeHtml((p.name ?? "").toString())}</td>
+              <td>${escapeHtml(provider)}</td>
+              <td>${escapeHtml(productTypeLabel(p.productType))}</td>
+              <td>${mainTermHtml}${otherTermsHtml}</td>
+              <td class="right">${mainPriceHtml}${otherPricesHtml}</td>
+            </tr>`;
+          })
+          .join("\n")}
+      </tbody>
+    </table>
+    <script>
+      window.addEventListener('load', () => {
+        setTimeout(() => window.print(), 50);
+      });
+    </script>
+  </body>
+</html>`;
+
+                    const blob = new Blob([html], { type: "text/html" });
+                    const url = URL.createObjectURL(blob);
+                    w.location.href = url;
+                    window.setTimeout(() => {
+                      URL.revokeObjectURL(url);
+                    }, 60_000);
+                  })();
+                }}
+                disabled={!decoded || shownProducts.length === 0 || isEligibilityLoading}
+              >
+                <Printer className="h-4 w-4 mr-2" />
+                Print Eligible Plans
+              </Button>
+              <div className="inline-flex items-center rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground">
+                {selectedProducts.length} selected
+              </div>
             </div>
           </div>
 
