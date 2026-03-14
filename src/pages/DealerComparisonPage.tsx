@@ -686,9 +686,12 @@ export function DealerComparisonPage() {
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Compare Plans — Eligible Plans</title>
+    <title></title>
     <style>
-      body { font-family: Arial, sans-serif; color: #000; padding: 24px; }
+      @page {
+        margin: 20mm 12mm 18mm 12mm;
+      }
+      body { font-family: Arial, sans-serif; color: #000; padding: 24px; padding-bottom: 52px; }
       h1 { font-size: 20px; margin: 0 0 6px 0; }
       .meta { font-size: 12px; color: #333; margin-bottom: 16px; }
       table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -698,6 +701,9 @@ export function DealerComparisonPage() {
       .prov-row td { border-bottom: 1px solid #ddd; padding-top: 14px; padding-bottom: 6px; }
       .prov-name { font-weight: 700; font-size: 14px; }
       th.col-type, td.col-type { padding-right: 18px; }
+      .page-footer { position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 24px 12px 24px; font-size: 10px; color: #444; }
+      .page-footer .num { float: right; }
+      .page-footer .num:after { content: "Page " counter(page); }
       .opts { width: 100%; border-collapse: collapse; table-layout: fixed; }
       .opts td { border: 0; padding: 0; vertical-align: top; }
       .opts tr + tr td { padding-top: 3px; }
@@ -807,8 +813,10 @@ export function DealerComparisonPage() {
         })()}
       </tbody>
     </table>
+    <div class="page-footer"><span class="num"></span></div>
     <script>
       window.addEventListener('load', () => {
+        try { document.title = ''; } catch (e) {}
         setTimeout(() => window.print(), 50);
       });
     </script>
