@@ -8,6 +8,7 @@ import "./index.css";
 import { AuthProvider } from "./providers/AuthProvider";
 import { ConfirmProvider } from "./providers/ConfirmProvider";
 import { AlertProvider } from "./providers/AlertProvider";
+import { ToastProvider } from "./providers/ToastProvider";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,11 +35,13 @@ createRoot(document.getElementById("root")!).render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <AlertProvider>
-          <ConfirmProvider>
-            <BrowserRouter>
-              <App />
-            </BrowserRouter>
-          </ConfirmProvider>
+          <ToastProvider>
+            <ConfirmProvider>
+              <BrowserRouter>
+                <App />
+              </BrowserRouter>
+            </ConfirmProvider>
+          </ToastProvider>
         </AlertProvider>
       </AuthProvider>
     </QueryClientProvider>

@@ -141,6 +141,68 @@
   .shadow-card {
     box-shadow: var(--shadow-md);
   }
+
+  .wh-toast-enter {
+    animation: wh-toast-enter 240ms ease-out both;
+  }
+
+  .wh-toast-check {
+    width: 28px;
+    height: 28px;
+    display: block;
+  }
+
+  .wh-toast-check__ring {
+    fill: transparent;
+    stroke: #10b981;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-dasharray: 56;
+    stroke-dashoffset: 56;
+    animation: wh-check-ring 900ms ease-out both;
+  }
+
+  .wh-toast-check__tick {
+    fill: none;
+    stroke: #10b981;
+    stroke-width: 2.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 20;
+    stroke-dashoffset: 20;
+    animation: wh-check-tick 650ms ease-out 350ms both;
+  }
+}
+
+@keyframes wh-toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes wh-check-ring {
+  from {
+    stroke-dashoffset: 56;
+    opacity: 0.8;
+  }
+  to {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+@keyframes wh-check-tick {
+  from {
+    stroke-dashoffset: 20;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
 @media print {

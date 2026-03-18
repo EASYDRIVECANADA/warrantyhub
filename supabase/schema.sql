@@ -595,6 +595,121 @@ create table if not exists public.dealers (
   created_at timestamptz not null default now()
 );
 
+alter table public.dealers
+  add column if not exists stripe_customer_id text;
+
+alter table public.dealers
+  add column if not exists stripe_subscription_id text;
+
+alter table public.dealers
+  add column if not exists subscription_status text;
+
+alter table public.dealers
+  add column if not exists subscription_plan_key text;
+
+alter table public.dealers
+  add column if not exists subscription_price_id text;
+
+alter table public.dealers
+  add column if not exists subscription_trial_end timestamptz;
+
+alter table public.dealers
+  add column if not exists subscription_current_period_end timestamptz;
+
+alter table public.dealers
+  add column if not exists subscription_cancel_at_period_end boolean not null default false;
+
+alter table public.dealers
+  add column if not exists subscription_seats_limit integer;
+
+alter table public.dealers
+  add column if not exists contract_fee_cents integer;
+
+do $$
+begin
+  alter table public.dealers
+    drop constraint if exists dealers_subscription_plan_key_check;
+
+  alter table public.dealers
+    add constraint dealers_subscription_plan_key_check
+    check (subscription_plan_key is null or subscription_plan_key in ('STANDARD','EARLY_ADOPTER'));
+exception
+  when duplicate_object then null;
+end $$;
+
+create or replace function public.is_dealer_subscription_active(target_dealer_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.dealers d
+    where d.id = target_dealer_id
+      and (
+        d.subscription_status in ('active','trialing')
+        or (
+          d.subscription_status = 'canceled'
+          and d.subscription_current_period_end is not null
+          and d.subscription_current_period_end > now()
+        )
+      )
+  );
+$$;
+
+create or replace function public.enforce_standard_seat_limit()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  plan text;
+  seats integer;
+  active_count integer;
+begin
+  select d.subscription_plan_key, d.subscription_seats_limit
+    into plan, seats
+  from public.dealers d
+  where d.id = new.dealer_id;
+
+  if plan is distinct from 'STANDARD' then
+    return new;
+  end if;
+
+  if seats is null then
+    return new;
+  end if;
+
+  if (new.status is distinct from 'ACTIVE') then
+    return new;
+  end if;
+
+  if tg_op = 'INSERT' then
+    select count(*)
+      into active_count
+    from public.dealer_members dm
+    where dm.dealer_id = new.dealer_id
+      and dm.status = 'ACTIVE';
+  else
+    select count(*)
+      into active_count
+    from public.dealer_members dm
+    where dm.dealer_id = new.dealer_id
+      and dm.status = 'ACTIVE'
+      and dm.id <> old.id;
+  end if;
+
+  if active_count >= seats then
+    raise exception 'Seat limit reached for this dealership plan';
+  end if;
+
+  return new;
+end;
+$$;
+
 do $$
 begin
   alter table public.dealers
@@ -616,6 +731,12 @@ create table if not exists public.dealer_members (
   created_at timestamptz not null default now(),
   unique (dealer_id, user_id)
 );
+
+drop trigger if exists trg_dealer_members_enforce_standard_seat_limit on public.dealer_members;
+create trigger trg_dealer_members_enforce_standard_seat_limit
+before insert or update on public.dealer_members
+for each row
+execute function public.enforce_standard_seat_limit();
 
 do $$
 begin
@@ -1004,6 +1125,18 @@ alter table public.contracts
 
 alter table public.contracts
   add column if not exists pricing_vehicle_class text;
+
+alter table public.contracts
+  add column if not exists contract_processing_fee_cents integer;
+
+alter table public.contracts
+  add column if not exists stripe_payment_intent_id text;
+
+alter table public.contracts
+  add column if not exists stripe_payment_intent_status text;
+
+alter table public.contracts
+  add column if not exists processing_fee_paid_at timestamptz;
 
 alter table public.contracts
   add column if not exists addon_snapshot jsonb;

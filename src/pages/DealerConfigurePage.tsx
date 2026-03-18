@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
@@ -143,12 +143,40 @@ export function DealerConfigurePage() {
 
   const providerOptions = useMemo(() => {
     const ids = Array.from(new Set(products.map((p) => (p.providerId ?? "").toString().trim()).filter(Boolean)));
-    return ids
-      .map((id) => ({ id, name: providerDisplayName(providerById.get(id), id) }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    const opts = ids.map((id) => ({ id, name: providerDisplayName(providerById.get(id), id) }));
+    const normName = (s: string) => s.toLowerCase().replace(/\s+/g, "");
+    const isAdv = (name: string) => {
+      const n = normName(name);
+      return n.includes("advantageplus") || n.includes("avantageplus");
+    };
+    return opts.sort((a, b) => {
+      const aa = isAdv(a.name);
+      const bb = isAdv(b.name);
+      if (aa && !bb) return -1;
+      if (!aa && bb) return 1;
+      return a.name.localeCompare(b.name);
+    });
   }, [products, providerById]);
 
   const [providerId, setProviderId] = useState(() => initialConfigureState.providerId ?? "");
+
+  const didSetDefaultProviderRef = useRef(false);
+  useEffect(() => {
+    if (didSetDefaultProviderRef.current) return;
+    if ((providerId ?? "").trim()) return;
+    if (providerOptions.length === 0) return;
+
+    const normName = (s: string) => s.toLowerCase().replace(/\s+/g, "");
+    const adv = providerOptions.find((p) => {
+      const n = normName(p.name);
+      return n.includes("advantageplus") || n.includes("avantageplus");
+    });
+
+    const next = adv ?? providerOptions[0];
+    if (!next) return;
+    didSetDefaultProviderRef.current = true;
+    setProviderId(next.id);
+  }, [providerId, providerOptions]);
 
   const [selectedProductId, setSelectedProductId] = useState<string>(() => initialConfigureState.selectedProductId ?? "");
 
@@ -288,10 +316,10 @@ export function DealerConfigurePage() {
       <div className="space-y-4">
         <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
           <div className="px-5 py-4 border-b bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
-            <div className="text-sm font-semibold">Product Retail Pricing</div>
-          <div className="text-xs text-muted-foreground mt-1">
-            Select a product to configure its pricing terms. Marketplace pricing will use your configured retail when set.
-          </div>
+            <div className="text-sm font-semibold">Retail pricing</div>
+            <div className="text-xs text-muted-foreground mt-1">
+              Select a product to configure its pricing terms. Marketplace pricing will use your configured retail when set.
+            </div>
           </div>
 
           <div className="px-5 py-4 flex flex-col sm:flex-row sm:items-end gap-3">

@@ -22,6 +22,10 @@ import { DealerDashboardPage } from "../pages/DealerDashboardPage";
 import { DealerTeamPage } from "../pages/DealerTeamPage";
 import { DealerReportingPage } from "../pages/DealerReportingPage";
 import { DealerConfigurePage } from "../pages/DealerConfigurePage";
+import { DealerSubscriptionRoute } from "../components/DealerSubscriptionRoute";
+import { DealerBillingPage } from "../pages/DealerBillingPage";
+import { DealerBillingSuccessPage } from "../pages/DealerBillingSuccessPage";
+import { DealerBillingCancelPage } from "../pages/DealerBillingCancelPage";
 import { HomePage } from "../pages/HomePage";
 import { RegisterDealershipPage } from "../pages/RegisterDealershipPage";
 import { DealerEmployeeSignupPage } from "../pages/DealerEmployeeSignupPage";
@@ -86,28 +90,36 @@ export function AppRouter() {
           <Route path="audit-logs" element={<AuditLogsPage />} />
         </Route>
 
-        <Route element={<ProtectedRoute allowedRoles={["DEALER_ADMIN"]} />}>
-          <Route path="dealer-admin" element={<DealerAdminPage />} />
-          <Route path="dealer-contracts-admin" element={<DealerAdminContractsPage />} />
-          <Route path="dealer-employees" element={<DealerTeamPage />} />
-          <Route path="dealer-team" element={<DealerTeamPage />} />
-          <Route path="dealer-configure" element={<DealerConfigurePage />} />
-          <Route path="dealer-reporting" element={<DealerReportingPage />} />
-        </Route>
-
-        <Route element={<ProtectedRoute allowedRoles={["DEALER_ADMIN"]} />}>
-          <Route path="dealer-remittances" element={<DealerRemittancesPage />} />
-          <Route path="dealer-remittances/batches/:id/print" element={<DealerRemittanceBatchPrintPage />} />
-        </Route>
-
         <Route element={<ProtectedRoute allowedRoles={["DEALER_ADMIN", "DEALER_EMPLOYEE"]} />}>
-          <Route path="dealer-dashboard" element={<DealerDashboardPage />} />
-          <Route path="dealer-marketplace" element={<DealerMarketplacePage />} />
-          <Route path="dealer-marketplace/compare" element={<DealerComparisonPage />} />
-          <Route path="dealer-marketplace/products/:id" element={<DealerMarketplaceProductDetailPage />} />
-          <Route path="dealer-contracts" element={<DealerContractsPage />} />
-          <Route path="dealer-contracts/:id" element={<DealerContractDetailPage />} />
-          <Route path="dealer-contracts/:id/print/:copyType" element={<DealerContractPrintPage />} />
+          <Route path="dealer-billing" element={<DealerBillingPage />} />
+          <Route path="dealer-billing/success" element={<DealerBillingSuccessPage />} />
+          <Route path="dealer-billing/cancel" element={<DealerBillingCancelPage />} />
+        </Route>
+
+        <Route element={<DealerSubscriptionRoute />}>
+          <Route element={<ProtectedRoute allowedRoles={["DEALER_ADMIN"]} />}>
+            <Route path="dealer-admin" element={<DealerAdminPage />} />
+            <Route path="dealer-contracts-admin" element={<DealerAdminContractsPage />} />
+            <Route path="dealer-employees" element={<DealerTeamPage />} />
+            <Route path="dealer-team" element={<DealerTeamPage />} />
+            <Route path="dealer-configure" element={<DealerConfigurePage />} />
+            <Route path="dealer-reporting" element={<DealerReportingPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute allowedRoles={["DEALER_ADMIN", "DEALER_EMPLOYEE"]} />}>
+            <Route path="dealer-dashboard" element={<DealerDashboardPage />} />
+            <Route path="dealer-marketplace" element={<DealerMarketplacePage />} />
+            <Route path="dealer-marketplace/compare" element={<DealerComparisonPage />} />
+            <Route path="dealer-marketplace/products/:id" element={<DealerMarketplaceProductDetailPage />} />
+            <Route path="dealer-contracts" element={<DealerContractsPage />} />
+            <Route path="dealer-contracts/:id" element={<DealerContractDetailPage />} />
+            <Route path="dealer-contracts/:id/print/:copyType" element={<DealerContractPrintPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute allowedRoles={["DEALER_ADMIN"]} />}>
+            <Route path="dealer-remittances" element={<DealerRemittancesPage />} />
+            <Route path="dealer-remittances/batches/:id/print" element={<DealerRemittanceBatchPrintPage />} />
+          </Route>
         </Route>
 
         <Route element={<ProtectedRoute allowedRoles={["PROVIDER"]} />}>

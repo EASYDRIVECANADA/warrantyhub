@@ -1,4 +1,5 @@
 import { getSupabaseClient } from "../supabase/client";
+import { invokeEdgeFunction } from "../supabase/functions";
 
 import type { ContractsApi } from "./api";
 import type { Contract, CreateContractInput } from "./types";
@@ -48,6 +49,10 @@ type ContractsRow = {
   vehicle_body_class?: string | null;
   vehicle_engine?: string | null;
   vehicle_transmission?: string | null;
+  contract_processing_fee_cents?: number | null;
+  stripe_payment_intent_id?: string | null;
+  stripe_payment_intent_status?: string | null;
+  processing_fee_paid_at?: string | null;
   created_at: string;
   status?: string | null;
   updated_at?: string | null;
@@ -106,6 +111,11 @@ function toContract(r: ContractsRow): Contract {
     vehicleBodyClass: r.vehicle_body_class ?? undefined,
     vehicleEngine: r.vehicle_engine ?? undefined,
     vehicleTransmission: r.vehicle_transmission ?? undefined,
+    contractProcessingFeeCents:
+      typeof r.contract_processing_fee_cents === "number" ? r.contract_processing_fee_cents : undefined,
+    stripePaymentIntentId: r.stripe_payment_intent_id ?? undefined,
+    stripePaymentIntentStatus: r.stripe_payment_intent_status ?? undefined,
+    processingFeePaidAt: r.processing_fee_paid_at ?? undefined,
     createdAt,
     status: (r.status ?? "DRAFT") as Contract["status"],
     updatedAt: r.updated_at ?? createdAt,
@@ -149,104 +159,15 @@ export const supabaseContractsApi: ContractsApi = {
   },
 
   async create(input: CreateContractInput) {
-    const supabase = getSupabaseClient();
-    if (!supabase) throw new Error("Supabase is not configured");
-
     const dealerId = (input.dealerId ?? "").trim();
     if (!dealerId) {
       throw new Error("Dealer account is not linked. Please sign in as a dealer user with an assigned dealerId.");
     }
 
-    const now = new Date().toISOString();
-
-    const baseInsert = {
-      contract_number: input.contractNumber,
-      customer_name: input.customerName,
-      dealer_id: dealerId,
-      provider_id: input.providerId,
-      product_id: input.productId,
-      product_pricing_id: input.productPricingId,
-      pricing_term_months: typeof input.pricingTermMonths === "number" ? input.pricingTermMonths : input.pricingTermMonths === null ? null : undefined,
-      pricing_term_km: typeof input.pricingTermKm === "number" ? input.pricingTermKm : input.pricingTermKm === null ? null : undefined,
-      pricing_vehicle_mileage_min_km: typeof input.pricingVehicleMileageMinKm === "number" ? input.pricingVehicleMileageMinKm : undefined,
-      pricing_vehicle_mileage_max_km:
-        typeof input.pricingVehicleMileageMaxKm === "number"
-          ? input.pricingVehicleMileageMaxKm
-          : input.pricingVehicleMileageMaxKm === null
-            ? null
-            : undefined,
-      pricing_vehicle_class: typeof input.pricingVehicleClass === "string" ? input.pricingVehicleClass : undefined,
-      pricing_deductible_cents: typeof input.pricingDeductibleCents === "number" ? input.pricingDeductibleCents : undefined,
-      pricing_base_price_cents: typeof input.pricingBasePriceCents === "number" ? input.pricingBasePriceCents : undefined,
-      addon_snapshot: (input as any).addonSnapshot,
-      addon_total_retail_cents: typeof (input as any).addonTotalRetailCents === "number" ? (input as any).addonTotalRetailCents : undefined,
-      addon_total_cost_cents: typeof (input as any).addonTotalCostCents === "number" ? (input as any).addonTotalCostCents : undefined,
-      created_by_user_id: input.createdByUserId,
-      created_by_email: input.createdByEmail,
-      customer_email: input.customerEmail,
-      customer_phone: input.customerPhone,
-      customer_address: input.customerAddress,
-      customer_city: input.customerCity,
-      customer_province: input.customerProvince,
-      customer_postal_code: input.customerPostalCode,
-      vin: input.vin,
-      vehicle_year: input.vehicleYear,
-      vehicle_make: input.vehicleMake,
-      vehicle_model: input.vehicleModel,
-      vehicle_trim: input.vehicleTrim,
-      vehicle_body_class: input.vehicleBodyClass,
-      vehicle_engine: input.vehicleEngine,
-      vehicle_transmission: input.vehicleTransmission,
-    };
-
-    const extendedInsert = {
-      ...baseInsert,
-      status: "DRAFT",
-      vehicle_mileage_km: typeof input.vehicleMileageKm === "number" ? input.vehicleMileageKm : undefined,
-      updated_at: now,
-      pricing_dealer_cost_cents: typeof input.pricingDealerCostCents === "number" ? input.pricingDealerCostCents : undefined,
-    };
-
-    const attempt = await supabase.from("contracts").insert(extendedInsert).select("*").single();
-    if (!attempt.error) {
-      const raw = attempt.data as ContractsRow;
-      const created = toContract(raw);
-
-      const computed = warrantyIdFromContractId(created.id);
-      const existing = (raw.warranty_id ?? "").trim();
-      if (!existing) {
-        const updateAttempt = await supabase
-          .from("contracts")
-          .update({ warranty_id: computed, updated_at: now })
-          .eq("id", created.id)
-          .select("*")
-          .single();
-
-        if (!updateAttempt.error) return toContract(updateAttempt.data as ContractsRow);
-      }
-
-      return created;
-    }
-
-    const fallback = await supabase.from("contracts").insert(baseInsert).select("*").single();
-    if (fallback.error) throw fallback.error;
-
-    const raw = fallback.data as ContractsRow;
-    const created = toContract(raw);
-    const computed = warrantyIdFromContractId(created.id);
-    const existing = (raw.warranty_id ?? "").trim();
-    if (!existing) {
-      const updateAttempt = await supabase
-        .from("contracts")
-        .update({ warranty_id: computed })
-        .eq("id", created.id)
-        .select("*")
-        .single();
-
-      if (!updateAttempt.error) return toContract(updateAttempt.data as ContractsRow);
-    }
-
-    return created;
+    const res = await invokeEdgeFunction<{ contract: ContractsRow }>("dealer-create-contract", input as unknown as Record<string, unknown>);
+    const raw = res?.contract as ContractsRow | undefined;
+    if (!raw?.id) throw new Error("Failed to create contract");
+    return toContract(raw);
   },
 
   async delete(id: string) {

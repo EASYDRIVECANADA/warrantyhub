@@ -12,6 +12,7 @@ import { useAuth } from "../providers/AuthProvider";
 import {
   BarChart3,
   Cog,
+  CreditCard,
   DollarSign,
   FileText,
   LayoutGrid,
@@ -209,7 +210,6 @@ export function RootLayout() {
       active: location.pathname.startsWith("/dealer-marketplace"),
     },
     { to: "/dealer-contracts", label: "Contracts", icon: FileText, active: location.pathname.startsWith("/dealer-contracts") },
-    { to: "/dealer-configure", label: "Configure", icon: Cog, active: location.pathname.startsWith("/dealer-configure") },
     {
       to: "/dealer-remittances",
       label: "Remittances",
@@ -217,6 +217,8 @@ export function RootLayout() {
       active: location.pathname.startsWith("/dealer-remittances"),
     },
     { to: "/dealer-reporting", label: "Reporting", icon: BarChart3, active: location.pathname.startsWith("/dealer-reporting") },
+    { to: "/dealer-configure", label: "Retail", icon: Cog, active: location.pathname.startsWith("/dealer-configure") },
+    { to: "/dealer-billing", label: "Subscription", icon: CreditCard, active: location.pathname.startsWith("/dealer-billing") },
     { to: "/dealer-team", label: "Team", icon: Users, active: location.pathname.startsWith("/dealer-team") },
   ] as const;
 

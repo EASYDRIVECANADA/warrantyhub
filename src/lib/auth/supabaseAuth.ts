@@ -20,6 +20,11 @@ type ProfileAuthState = {
 type DealerMembershipInfo = {
   dealerId?: string;
   dealerName?: string;
+  dealerSubscriptionStatus?: string;
+  dealerSubscriptionPlanKey?: "STANDARD" | "EARLY_ADOPTER" | null;
+  dealerSubscriptionCurrentPeriodEnd?: string | null;
+  dealerSubscriptionTrialEnd?: string | null;
+  dealerContractFeeCents?: number | null;
 };
 
 async function getActiveDealerMembershipInfo(userId: string): Promise<DealerMembershipInfo> {
@@ -39,11 +44,36 @@ async function getActiveDealerMembershipInfo(userId: string): Promise<DealerMemb
   const dealerId = ((membership as any)?.dealer_id ?? "").toString().trim();
   if (!dealerId) return {};
 
-  const { data: dealerRow, error: dealerError } = await supabase.from("dealers").select("name").eq("id", dealerId).maybeSingle();
+  const { data: dealerRow, error: dealerError } = await supabase
+    .from("dealers")
+    .select("name, subscription_status, subscription_plan_key, subscription_current_period_end, subscription_trial_end, contract_fee_cents")
+    .eq("id", dealerId)
+    .maybeSingle();
   if (dealerError) throw new Error(dealerError.message);
   const dealerName = ((dealerRow as any)?.name ?? "").toString().trim() || undefined;
 
-  return { dealerId, dealerName };
+  const dealerSubscriptionStatus = ((dealerRow as any)?.subscription_status ?? "").toString().trim() || undefined;
+  const dealerSubscriptionPlanKeyRaw = ((dealerRow as any)?.subscription_plan_key ?? "").toString().trim().toUpperCase();
+  const dealerSubscriptionPlanKey =
+    dealerSubscriptionPlanKeyRaw === "STANDARD" ? "STANDARD" : dealerSubscriptionPlanKeyRaw === "EARLY_ADOPTER" ? "EARLY_ADOPTER" : null;
+  const dealerSubscriptionCurrentPeriodEnd =
+    ((dealerRow as any)?.subscription_current_period_end ?? null) === null
+      ? null
+      : ((dealerRow as any)?.subscription_current_period_end ?? "").toString();
+  const dealerSubscriptionTrialEnd =
+    ((dealerRow as any)?.subscription_trial_end ?? null) === null ? null : ((dealerRow as any)?.subscription_trial_end ?? "").toString();
+  const dealerContractFeeCents =
+    typeof (dealerRow as any)?.contract_fee_cents === "number" ? ((dealerRow as any).contract_fee_cents as number) : null;
+
+  return {
+    dealerId,
+    dealerName,
+    dealerSubscriptionStatus,
+    dealerSubscriptionPlanKey,
+    dealerSubscriptionCurrentPeriodEnd,
+    dealerSubscriptionTrialEnd,
+    dealerContractFeeCents,
+  };
 }
 
 async function getProfileAuthState(userId: string, email: string): Promise<ProfileAuthState> {
@@ -110,6 +140,11 @@ export const supabaseAuthApi: AuthApi = {
       ...base,
       dealerId: membership.dealerId,
       companyName: membership.dealerName,
+      dealerSubscriptionStatus: membership.dealerSubscriptionStatus,
+      dealerSubscriptionPlanKey: membership.dealerSubscriptionPlanKey,
+      dealerSubscriptionCurrentPeriodEnd: membership.dealerSubscriptionCurrentPeriodEnd,
+      dealerSubscriptionTrialEnd: membership.dealerSubscriptionTrialEnd,
+      dealerContractFeeCents: membership.dealerContractFeeCents,
     };
   },
 
@@ -163,6 +198,11 @@ export const supabaseAuthApi: AuthApi = {
       ...base,
       dealerId: membership.dealerId,
       companyName: membership.dealerName,
+      dealerSubscriptionStatus: membership.dealerSubscriptionStatus,
+      dealerSubscriptionPlanKey: membership.dealerSubscriptionPlanKey,
+      dealerSubscriptionCurrentPeriodEnd: membership.dealerSubscriptionCurrentPeriodEnd,
+      dealerSubscriptionTrialEnd: membership.dealerSubscriptionTrialEnd,
+      dealerContractFeeCents: membership.dealerContractFeeCents,
     };
   },
 

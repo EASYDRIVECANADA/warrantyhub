@@ -51,6 +51,10 @@ export type Contract = {
   vehicleBodyClass?: string;
   vehicleEngine?: string;
   vehicleTransmission?: string;
+  contractProcessingFeeCents?: number;
+  stripePaymentIntentId?: string;
+  stripePaymentIntentStatus?: string;
+  processingFeePaidAt?: string;
   createdAt: string;
   status: ContractStatus;
   updatedAt: string;

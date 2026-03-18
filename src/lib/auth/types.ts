@@ -6,6 +6,11 @@ export type AuthUser = {
   role: Role;
   dealerId?: string;
   companyName?: string;
+  dealerSubscriptionStatus?: string;
+  dealerSubscriptionPlanKey?: "STANDARD" | "EARLY_ADOPTER" | null;
+  dealerSubscriptionCurrentPeriodEnd?: string | null;
+  dealerSubscriptionTrialEnd?: string | null;
+  dealerContractFeeCents?: number | null;
 };
 
 export type AuthState = {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Search, Trash2 } from "lucide-react";
+import { Loader2, Search, Trash2 } from "lucide-react";
 
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -25,6 +25,7 @@ import type { Contract, ContractStatus } from "../lib/contracts/types";
 import { getProductAddonsApi } from "../lib/productAddons/productAddons";
 import { decodeVin } from "../lib/vin/decodeVin";
 import { getDealerProductAddonRetailCents, getDealerProductPricingRetailCents, getDealerProductRetailCents } from "../lib/dealerProductRetail";
+import { useToast } from "../providers/ToastProvider";
 
 const LOCAL_DEALER_MEMBERSHIPS_KEY = "warrantyhub.local.dealer_memberships";
 
@@ -97,6 +98,7 @@ export function DealerContractsPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   const mode = useMemo(() => getAppMode(), []);
 
@@ -119,6 +121,20 @@ export function DealerContractsPage() {
   const [selectedContractIds, setSelectedContractIds] = useState<Record<string, boolean>>({});
 
   const didAutoCreateRef = useRef(false);
+
+  const autoCreateGuardKey = useMemo(() => {
+    if (!preselectedProductId) return "";
+    const parts = [
+      (user?.id ?? "").trim(),
+      dealerId,
+      preselectedProductId,
+      preselectedProductPricingId,
+      prefilledVin,
+      prefilledMileageKmRaw,
+      (preselectedAddonIds ?? []).join(","),
+    ];
+    return `wh.autoCreateContract.v1:${parts.join("|")}`;
+  }, [dealerId, prefilledMileageKmRaw, prefilledVin, preselectedAddonIds, preselectedProductId, preselectedProductPricingId, user?.id]);
 
   const listQuery = useQuery({
     queryKey: ["contracts"],
@@ -305,7 +321,39 @@ export function DealerContractsPage() {
     },
     onSuccess: async (created) => {
       await qc.invalidateQueries({ queryKey: ["contracts"] });
+
+      const feeCents = (created as any)?.contractProcessingFeeCents;
+      const feePaidAt = (created as any)?.processingFeePaidAt;
+      const piStatus = ((created as any)?.stripePaymentIntentStatus ?? "").toString().toLowerCase();
+      const feePaid = Boolean(feePaidAt) || (typeof feeCents === "number" && feeCents > 0 && piStatus === "succeeded");
+      if (feePaid) {
+        toast({
+          title: "Contract fee successful",
+          message: "The contract processing fee was processed successfully. Your draft contract is ready to complete.",
+          variant: "success",
+          withCheckAnimation: true,
+          durationMs: 5200,
+        });
+      } else {
+        toast({
+          title: "Contract created",
+          message: "Your draft contract is ready to complete.",
+          variant: "success",
+          durationMs: 4200,
+        });
+      }
+
       if (created?.id) navigate(`/dealer-contracts/${created.id}`);
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : "Failed to create contract";
+      if (autoCreateGuardKey) sessionStorage.removeItem(autoCreateGuardKey);
+      toast({
+        title: "Unable to create contract",
+        message: msg,
+        variant: "error",
+        durationMs: 6000,
+      });
     },
   });
 
@@ -314,9 +362,16 @@ export function DealerContractsPage() {
     if (didAutoCreateRef.current) return;
     if (!selectedProduct) return;
     if (createFromMarketplaceMutation.isPending) return;
+
+    if (autoCreateGuardKey && sessionStorage.getItem(autoCreateGuardKey) === "1") {
+      didAutoCreateRef.current = true;
+      return;
+    }
+
     didAutoCreateRef.current = true;
+    if (autoCreateGuardKey) sessionStorage.setItem(autoCreateGuardKey, "1");
     createFromMarketplaceMutation.mutate();
-  }, [createFromMarketplaceMutation, preselectedProductId, selectedProduct]);
+  }, [autoCreateGuardKey, createFromMarketplaceMutation, preselectedProductId, selectedProduct]);
 
   const contracts = (listQuery.data ?? []) as Contract[];
   const myContracts = useMemo(() => {
@@ -519,6 +574,23 @@ export function DealerContractsPage() {
       title=""
     >
       <div className="relative">
+        {createFromMarketplaceMutation.isPending ? (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
+            <div className="absolute inset-0 bg-background/60 backdrop-blur-sm" />
+            <div className="relative w-full max-w-md rounded-2xl border bg-card shadow-card overflow-hidden">
+              <div className="p-6">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <div className="font-semibold">Creating contract…</div>
+                </div>
+                <div className="mt-2 text-sm text-muted-foreground">
+                  Processing your contract setup and confirming the contract fee. This can take a few seconds.
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-yellow-400/10 blur-2xl" />
 
         <div className="space-y-6">

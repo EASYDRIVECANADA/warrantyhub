@@ -27,8 +27,9 @@ export function PageShell({ title, subtitle, subtitleAsChild, badge, actions, ch
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             {badge ? (
-              <div className="inline-flex items-center px-2.5 py-1 rounded-full border bg-card text-[11px] text-muted-foreground">
-                {badge}
+              <div className="inline-flex items-center gap-2 rounded-full border bg-card/90 backdrop-blur px-3 py-1 text-[11px] font-medium text-slate-700 shadow-sm">
+                <span className="inline-flex h-2 w-2 rounded-full bg-blue-600" />
+                <span>{badge}</span>
               </div>
             ) : null}
             {title.trim() ? <h1 className="text-3xl md:text-[34px] font-semibold tracking-tight text-foreground mt-3">{title}</h1> : null}
