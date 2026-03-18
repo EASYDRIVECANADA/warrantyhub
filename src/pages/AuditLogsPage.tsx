@@ -15,9 +15,15 @@ export function AuditLogsPage() {
         </Button>
       }
     >
-      <div className="rounded-xl border bg-card shadow-card p-6">
-        <div className="text-sm text-muted-foreground">
-          Audit log events (access approvals, role changes, critical system events) will appear here.
+      <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-500/10 via-transparent to-transparent">
+          <div className="text-sm font-medium">Audit log feed</div>
+          <div className="text-xs text-muted-foreground mt-1">Events (access approvals, role changes, critical system activity).</div>
+        </div>
+        <div className="p-6">
+          <div className="text-sm text-muted-foreground">
+            Audit log events (access approvals, role changes, critical system events) will appear here.
+          </div>
         </div>
       </div>
     </PageShell>

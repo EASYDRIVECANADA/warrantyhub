@@ -62,6 +62,19 @@ Deno.serve(async (req: Request) => {
     const stripe = getStripe();
     let customerId = ((dealerRow.data as any).stripe_customer_id ?? "").toString().trim();
 
+    if (customerId) {
+      try {
+        await stripe.customers.retrieve(customerId);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.toLowerCase().includes("no such customer")) {
+          customerId = "";
+        } else {
+          throw e;
+        }
+      }
+    }
+
     if (!customerId) {
       const customer = await stripe.customers.create({
         name: ((dealerRow.data as any).name ?? "").toString() || undefined,
@@ -81,30 +94,45 @@ Deno.serve(async (req: Request) => {
     const successUrl = `${origin}/dealer-billing/success`;
     const cancelUrl = `${origin}/dealer-billing/cancel`;
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      customer: customerId,
-      payment_method_collection: "always",
-      line_items: [{ price: priceId, quantity: 1 }],
-      subscription_data: {
-        trial_period_days: 15,
+    try {
+      const session = await stripe.checkout.sessions.create({
+        mode: "subscription",
+        customer: customerId,
+        payment_method_collection: "always",
+        line_items: [{ price: priceId, quantity: 1 }],
+        subscription_data: {
+          trial_period_days: 15,
+          metadata: {
+            dealer_id: dealerId,
+            plan_key: planKey,
+          },
+        },
         metadata: {
           dealer_id: dealerId,
           plan_key: planKey,
         },
-      },
-      metadata: {
-        dealer_id: dealerId,
-        plan_key: planKey,
-      },
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      allow_promotion_codes: true,
-    });
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        allow_promotion_codes: true,
+      });
 
-    return json(200, { url: session.url });
+      return json(200, { url: session.url });
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      console.error("stripe-create-checkout-session error", {
+        message: err.message,
+        stack: err.stack,
+      });
+      return json(500, {
+        error: err.message || "Unknown error",
+      });
+    }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return json(500, { error: msg || "Unknown error" });
+    const err = e instanceof Error ? e : new Error(String(e));
+    console.error("stripe-create-checkout-session outer error", {
+      message: err.message,
+      stack: err.stack,
+    });
+    return json(500, { error: err.message || "Unknown error" });
   }
 });

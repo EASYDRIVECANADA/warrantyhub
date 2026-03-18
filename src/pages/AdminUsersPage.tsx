@@ -154,13 +154,20 @@ export function AdminUsersPage() {
         </Button>
       }
     >
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Input value={search} onChange={(e) => setSearch(sanitizeWordsOnly(e.target.value))} placeholder="Search email/company/id…" />
-        <div className="text-sm text-muted-foreground flex items-center justify-end">{filtered.length} users</div>
+      <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm p-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Input
+            value={search}
+            onChange={(e) => setSearch(sanitizeWordsOnly(e.target.value))}
+            placeholder="Search email/company/id…"
+            className="bg-background/70"
+          />
+          <div className="text-sm text-muted-foreground flex items-center justify-end">{filtered.length} users</div>
+        </div>
       </div>
 
-      <div className="mt-6 rounded-xl border bg-card shadow-card overflow-hidden">
-        <div className="hidden md:grid grid-cols-12 gap-3 px-6 py-3 border-b text-xs text-muted-foreground">
+      <div className="mt-6 rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+        <div className="hidden md:grid grid-cols-12 gap-3 px-6 py-3 border-b text-xs text-muted-foreground bg-gradient-to-r from-blue-500/10 via-transparent to-transparent">
           <div className="col-span-4">Email</div>
           <div className="col-span-3">Company / Display</div>
           <div className="col-span-3">User ID</div>
@@ -169,7 +176,7 @@ export function AdminUsersPage() {
 
         <div className="divide-y">
           {filtered.map((p) => (
-            <div key={p.id} className="px-6 py-4">
+            <div key={p.id} className="px-6 py-4 hover:bg-white/30 dark:hover:bg-white/5 transition-colors">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                 <div className="md:col-span-4">
                   <div className="text-sm font-medium break-all">{p.email ?? "(email unknown)"}</div>
@@ -191,7 +198,7 @@ export function AdminUsersPage() {
                         updateRoleMutation.mutate({ id: p.id, nextRole });
                       })();
                     }}
-                    className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
+                    className="h-9 rounded-md border border-input bg-background/70 px-2 text-sm shadow-sm"
                   >
                     <option value="DEALER_ADMIN">Dealer</option>
                     <option value="PROVIDER">Provider</option>

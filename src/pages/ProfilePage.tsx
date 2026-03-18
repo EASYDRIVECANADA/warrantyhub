@@ -155,8 +155,8 @@ export function ProfilePage() {
         <div className="max-w-5xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {showProviderEditor ? (
-              <div className="lg:col-span-8 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-600/10">
-                <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 to-transparent flex items-center justify-between gap-4 flex-wrap">
+              <div className="lg:col-span-8 rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-500/10 via-transparent to-transparent flex items-center justify-between gap-4 flex-wrap">
                   <div>
                     <div className="font-semibold">Provider Profile</div>
                     <div className="text-sm text-muted-foreground mt-1">Manage how your brand appears to dealerships.</div>
@@ -196,7 +196,7 @@ export function ProfilePage() {
                   </div>
                 ) : null}
 
-                <div className="rounded-2xl border bg-background/40 p-5">
+                <div className="rounded-2xl border bg-background/70 backdrop-blur-sm p-5">
                   <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div>
                       <div className="font-semibold">Provider name</div>
@@ -226,7 +226,7 @@ export function ProfilePage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border bg-background/40 p-5">
+                <div className="rounded-2xl border bg-background/70 backdrop-blur-sm p-5">
                   <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div>
                       <div className="font-semibold">Logo</div>
@@ -309,7 +309,7 @@ export function ProfilePage() {
                       <label
                         htmlFor="provider-profile-logo"
                         className={
-                          "group flex items-center justify-between gap-3 rounded-xl border bg-background px-4 py-3 transition-colors " +
+                          "group flex items-center justify-between gap-3 rounded-xl border bg-background/70 backdrop-blur-sm px-4 py-3 transition-colors " +
                           "hover:bg-muted/30 focus-within:ring-2 focus-within:ring-blue-600/30 " +
                           (providerBusy ? "opacity-60 cursor-not-allowed" : "cursor-pointer")
                         }
@@ -328,7 +328,7 @@ export function ProfilePage() {
                       <div className="text-xs text-muted-foreground">Recommended: square PNG, transparent background. Max 2–3MB.</div>
                     </div>
 
-                    <div className="md:col-span-5 rounded-2xl border bg-background p-4">
+                    <div className="md:col-span-5 rounded-2xl border bg-background/70 backdrop-blur-sm p-4">
                       <div className="text-xs text-muted-foreground">Marketplace preview</div>
                       <div className="mt-3 flex items-center gap-4">
                         <div className="h-16 w-16 rounded-2xl border bg-white overflow-hidden flex items-center justify-center">
@@ -351,8 +351,8 @@ export function ProfilePage() {
             ) : null}
 
             <div className={showProviderEditor ? "lg:col-span-4 space-y-6" : "lg:col-span-12 space-y-6"}>
-              <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-600/10">
-                <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 to-transparent flex items-center justify-between">
+              <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-500/10 via-transparent to-transparent flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center text-sm">👤</div>
                     <div className="font-semibold">Account Details</div>
@@ -378,8 +378,8 @@ export function ProfilePage() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-600/10">
-                <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 to-transparent">
+              <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-500/10 via-transparent to-transparent">
                   <div className="font-semibold">Session</div>
                   <div className="text-sm text-muted-foreground mt-1">Sign out of your account</div>
                 </div>

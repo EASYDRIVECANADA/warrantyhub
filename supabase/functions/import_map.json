@@ -1,6 +1,6 @@
 {
   "imports": {
-    "stripe": "https://esm.sh/stripe@14.25.0?target=deno",
+    "stripe": "https://esm.sh/stripe@14.25.0?target=deno&bundle&deno-std=0.224.0",
     "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.49.1"
   }
 }

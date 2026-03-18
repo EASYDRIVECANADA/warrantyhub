@@ -100,13 +100,15 @@ export function RootLayout() {
   const prevRoleRef = useRef<Role | null>(null);
 
   const dashboardPathForRole = (role: Role) => {
-    return role === "ADMIN" || role === "SUPER_ADMIN"
-      ? "/company-dashboard"
-      : role === "PROVIDER"
-        ? "/provider-dashboard"
-        : role === "DEALER_ADMIN"
-          ? "/dealer-admin"
-          : "/dealer-dashboard";
+    return role === "SUPER_ADMIN"
+      ? "/platform"
+      : role === "ADMIN"
+        ? "/company-dashboard"
+        : role === "PROVIDER"
+          ? "/provider-dashboard"
+          : role === "DEALER_ADMIN"
+            ? "/dealer-admin"
+            : "/dealer-dashboard";
   };
 
   const isDealerAdminSidebarCollapsed = false;
@@ -114,10 +116,12 @@ export function RootLayout() {
 
   const [isDealerAdminMobileNavOpen, setIsDealerAdminMobileNavOpen] = useState(false);
   const [isProviderMobileNavOpen, setIsProviderMobileNavOpen] = useState(false);
+  const [isSuperAdminMobileNavOpen, setIsSuperAdminMobileNavOpen] = useState(false);
 
   useEffect(() => {
     setIsDealerAdminMobileNavOpen(false);
     setIsProviderMobileNavOpen(false);
+    setIsSuperAdminMobileNavOpen(false);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -145,16 +149,7 @@ export function RootLayout() {
     if (!shouldRedirect) return;
 
     const role = user.role;
-    const dashboardPath =
-      role === "ADMIN" || role === "SUPER_ADMIN"
-        ? "/company-dashboard"
-        : role === "PROVIDER"
-          ? "/provider-dashboard"
-          : role === "DEALER_ADMIN"
-            ? "/dealer-admin"
-            : "/dealer-dashboard";
-
-    navigate(dashboardPath, { replace: true });
+    navigate(dashboardPathForRole(role), { replace: true });
   }, [location.pathname, navigate, user]);
 
   useEffect(() => {
@@ -185,6 +180,7 @@ export function RootLayout() {
 
   const showDealerAdminShell = Boolean(user) && user?.role === "DEALER_ADMIN" && !isAuthLikeRoute;
   const showProviderShell = Boolean(user) && user?.role === "PROVIDER" && !isAuthLikeRoute;
+  const showSuperAdminShell = Boolean(user) && user?.role === "SUPER_ADMIN" && !isAuthLikeRoute;
 
   const hideTopNavbar = isAuthLikeRoute;
 
@@ -240,6 +236,16 @@ export function RootLayout() {
   ] as const;
 
   const providerSecondaryItems = [{ to: "/profile", label: "Profile", icon: User, active: location.pathname.startsWith("/profile") }] as const;
+
+  const superAdminNavItems = [
+    { to: "/platform", label: "Platform Dashboard", icon: LayoutGrid, active: location.pathname === "/platform" },
+    { to: "/admin-access-requests", label: "Access Requests", icon: Users, active: location.pathname.startsWith("/admin-access-requests") },
+    { to: "/admin-companies", label: "Companies", icon: Package, active: location.pathname.startsWith("/admin-companies") },
+    { to: "/admin-users", label: "Platform Users", icon: User, active: location.pathname.startsWith("/admin-users") },
+    { to: "/audit-logs", label: "Audit Logs", icon: FileText, active: location.pathname.startsWith("/audit-logs") },
+  ] as const;
+
+  const superAdminSecondaryItems = [{ to: "/profile", label: "Profile", icon: User, active: location.pathname.startsWith("/profile") }] as const;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -497,6 +503,216 @@ export function RootLayout() {
                       </Button>
                     </div>
                   </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : showSuperAdminShell ? (
+        <div className="min-h-screen grid grid-cols-1" style={{ gridTemplateColumns: `minmax(0, 1fr)` }}>
+          <div className="hidden lg:grid min-h-screen" style={{ gridTemplateColumns: "260px minmax(0, 1fr)" }}>
+            <aside className="relative isolate flex flex-col border-r text-white overflow-hidden">
+              <div className="pointer-events-none absolute inset-0 hero-gradient" />
+              <div className="pointer-events-none absolute inset-0 bg-white/10" />
+              <div
+                className="pointer-events-none absolute inset-0 opacity-12"
+                style={{
+                  backgroundImage: "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.35) 1px, transparent 0)",
+                  backgroundSize: "44px 44px",
+                }}
+              />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/0 via-white/0 to-black/8" />
+
+              <div className="relative z-10 flex flex-col flex-1">
+                <div className="h-14 px-4 flex items-center border-b border-white/15 justify-start">
+                  <Link to="/platform" className="flex items-center gap-2">
+                    <img src="/images/warrantyhubwhite.png" alt={BRAND.name} className="h-9 w-auto object-contain" />
+                    <div className="leading-tight">
+                      <div className="font-semibold text-sm">{BRAND.name}</div>
+                      <div className="text-[11px] text-white/80">Platform Admin</div>
+                    </div>
+                  </Link>
+                </div>
+
+                <div className="px-2 py-3 flex-1">
+                  <div className="space-y-1">
+                    {superAdminNavItems.map((item) => (
+                      <Link
+                        key={item.to}
+                        to={item.to}
+                        onClick={() => setIsSuperAdminMobileNavOpen(false)}
+                        className={cn(
+                          buttonVariants({ variant: "ghost", size: "sm" }),
+                          "w-full justify-start h-9 text-[13px] font-medium",
+                          item.active ? "bg-white/15 text-white hover:bg-white/20" : "text-white/85 hover:text-white hover:bg-white/10",
+                        )}
+                      >
+                        <span className="flex items-center gap-2">
+                          <item.icon className="h-4 w-4" />
+                          <span>{item.label}</span>
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+
+                  <div className="pt-3 mt-3 border-t border-white/15" />
+                  <div className="space-y-1">
+                    {superAdminSecondaryItems.map((item) => (
+                      <Link
+                        key={item.to}
+                        to={item.to}
+                        onClick={() => setIsSuperAdminMobileNavOpen(false)}
+                        className={cn(
+                          buttonVariants({ variant: "ghost", size: "sm" }),
+                          "w-full justify-start h-9 text-[13px] font-medium",
+                          item.active ? "bg-white/15 text-white hover:bg-white/20" : "text-white/85 hover:text-white hover:bg-white/10",
+                        )}
+                      >
+                        <span className="flex items-center gap-2">
+                          <item.icon className="h-4 w-4" />
+                          <span>{item.label}</span>
+                        </span>
+                      </Link>
+                    ))}
+
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start h-9 text-[13px] font-medium text-white/85 hover:text-white hover:bg-red-500/20"
+                      onClick={() => {
+                        (async () => {
+                          if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
+                          await signOut();
+                          window.location.assign("/find-insurance");
+                        })();
+                      }}
+                    >
+                      <LogOut className="h-4 w-4" />
+                      <span>Sign Out</span>
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </aside>
+
+            <main className="min-w-0">
+              {isLoading && !user ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/30 backdrop-blur-sm">
+                  <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" aria-label="Loading" />
+                </div>
+              ) : null}
+              <RouteErrorBoundary key={location.pathname}>
+                <Outlet />
+              </RouteErrorBoundary>
+            </main>
+          </div>
+
+          <div className="lg:hidden">
+            <div className="h-14 px-4 border-b bg-card/95 backdrop-blur-xl flex items-center justify-between">
+              <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setIsSuperAdminMobileNavOpen(true)}>
+                <Menu className="h-5 w-5" />
+              </Button>
+              <Link to="/platform" className="flex items-center gap-2">
+                <img src={BRAND.logoUrl} alt={BRAND.name} className="h-9 w-auto object-contain" />
+                <div className="leading-tight">
+                  <div className="font-semibold text-sm">Platform Admin</div>
+                  <div className="text-[11px] text-muted-foreground">{location.pathname === "/platform" ? "Dashboard" : ""}</div>
+                </div>
+              </Link>
+              <div className="w-9" />
+            </div>
+
+            <main className="min-w-0">
+              {isLoading && !user ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/30 backdrop-blur-sm">
+                  <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" aria-label="Loading" />
+                </div>
+              ) : null}
+              <RouteErrorBoundary key={location.pathname}>
+                <Outlet />
+              </RouteErrorBoundary>
+            </main>
+
+            {isSuperAdminMobileNavOpen ? (
+              <div className="fixed inset-0 z-50">
+                <button type="button" className="absolute inset-0 bg-black/40" onClick={() => setIsSuperAdminMobileNavOpen(false)} />
+                <div className="absolute left-0 top-0 bottom-0 w-[280px] max-w-[85vw] border-r shadow-xl flex flex-col text-white overflow-hidden">
+                  <div className="pointer-events-none absolute inset-0 hero-gradient" />
+                  <div className="pointer-events-none absolute inset-0 bg-white/10" />
+                  <div
+                    className="pointer-events-none absolute inset-0 opacity-12"
+                    style={{
+                      backgroundImage: "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.35) 1px, transparent 0)",
+                      backgroundSize: "44px 44px",
+                    }}
+                  />
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/0 via-white/0 to-black/8" />
+
+                  <div className="relative z-10 flex flex-col flex-1">
+                    <div className="h-14 px-4 border-b border-white/15 flex items-center justify-between">
+                      <div className="font-semibold text-sm">Menu</div>
+                      <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setIsSuperAdminMobileNavOpen(false)}>
+                        <X className="h-5 w-5" />
+                      </Button>
+                    </div>
+
+                    <div className="p-3 flex-1">
+                      <div className="space-y-1">
+                        {superAdminNavItems.map((item) => (
+                          <Link
+                            key={item.to}
+                            to={item.to}
+                            onClick={() => setIsSuperAdminMobileNavOpen(false)}
+                            className={cn(
+                              buttonVariants({ variant: "ghost", size: "sm" }),
+                              "w-full justify-start h-9 text-[13px] font-medium",
+                              item.active ? "bg-white/15 text-white hover:bg-white/20" : "text-white/85 hover:text-white hover:bg-white/10",
+                            )}
+                          >
+                            <span className="flex items-center gap-2">
+                              <item.icon className="h-4 w-4" />
+                              <span>{item.label}</span>
+                            </span>
+                          </Link>
+                        ))}
+                      </div>
+
+                      <div className="pt-3 mt-3 border-t border-white/15" />
+                      <div className="space-y-1">
+                        {superAdminSecondaryItems.map((item) => (
+                          <Link
+                            key={item.to}
+                            to={item.to}
+                            onClick={() => setIsSuperAdminMobileNavOpen(false)}
+                            className={cn(
+                              buttonVariants({ variant: "ghost", size: "sm" }),
+                              "w-full justify-start h-9 text-[13px] font-medium",
+                              item.active ? "bg-white/15 text-white hover:bg-white/20" : "text-white/85 hover:text-white hover:bg-white/10",
+                            )}
+                          >
+                            <span className="flex items-center gap-2">
+                              <item.icon className="h-4 w-4" />
+                              <span>{item.label}</span>
+                            </span>
+                          </Link>
+                        ))}
+
+                        <Button
+                          variant="ghost"
+                          className="w-full justify-start h-9 text-[13px] font-medium text-white/85 hover:text-white hover:bg-red-500/20"
+                          onClick={() => {
+                            (async () => {
+                              if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
+                              await signOut();
+                              window.location.assign("/find-insurance");
+                            })();
+                          }}
+                        >
+                          <LogOut className="h-4 w-4" />
+                          <span>Sign Out</span>
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

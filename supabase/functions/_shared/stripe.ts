@@ -1,4 +1,4 @@
-import Stripe from "https://esm.sh/stripe@14.25.0?target=deno&bundle&deno-std=0.224.0";
+import Stripe from "stripe";
 
 export function getStripe() {
   const key = Deno.env.get("STRIPE_SECRET_KEY") ?? "";

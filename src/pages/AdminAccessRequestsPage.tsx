@@ -382,10 +382,16 @@ export function AdminAccessRequestsPage() {
     return (r.rejectionMessage ?? "").toString();
   };
 
+  const statusBadgeClass = (status: AccessRequestStatus) => {
+    if (status === "APPROVED") return "border-emerald-500/15 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+    if (status === "REJECTED") return "border-red-500/15 bg-red-500/10 text-red-700 dark:text-red-300";
+    return "border-amber-500/15 bg-amber-500/10 text-amber-800 dark:text-amber-300";
+  };
+
   return (
     <PageShell title="System Admin" subtitle="Review inbound access requests and mark them approved/rejected." badge="Access Requests">
-      <div className="rounded-xl border bg-card shadow-card overflow-hidden">
-        <div className="hidden md:grid grid-cols-12 gap-3 px-6 py-3 border-b text-xs text-muted-foreground">
+      <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+        <div className="hidden md:grid grid-cols-12 gap-3 px-6 py-3 border-b text-xs text-muted-foreground bg-gradient-to-r from-blue-500/10 via-transparent to-transparent">
           <div className="col-span-2">Requested</div>
           <div className="col-span-2">Name</div>
           <div className="col-span-3">Email</div>
@@ -398,12 +404,16 @@ export function AdminAccessRequestsPage() {
             const assigned = resolveAssign(r);
             const canAct = r.status === "PENDING";
             return (
-            <div key={r.id} className="px-6 py-4">
+            <div key={r.id} className="px-6 py-4 hover:bg-white/30 dark:hover:bg-white/5 transition-colors">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                 <div className="md:col-span-2">
-                  <div className="text-sm font-medium">{r.requestType}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-medium">{r.requestType}</div>
+                    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusBadgeClass(r.status)}`}>
+                      {r.status}
+                    </span>
+                  </div>
                   <div className="text-xs text-muted-foreground mt-1 break-words">{r.company}</div>
-                  <div className="text-xs text-muted-foreground mt-1">{r.status}</div>
                 </div>
                 <div className="md:col-span-2 text-sm">{r.name}</div>
                 <div className="md:col-span-3 text-sm text-muted-foreground break-all">{r.email}</div>
@@ -420,6 +430,7 @@ export function AdminAccessRequestsPage() {
                         }));
                       }}
                       placeholder="Company"
+                      className="bg-background/70"
                     />
                     <select
                       value={assigned.role}
@@ -431,7 +442,7 @@ export function AdminAccessRequestsPage() {
                           [r.id]: { role, company: assigned.company },
                         }));
                       }}
-                      className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
+                      className="h-10 w-full rounded-md border border-input bg-background/70 px-3 text-sm shadow-sm"
                     >
                       <option value="DEALER_ADMIN">Dealer</option>
                       {mode !== "supabase" ? <option value="DEALER_EMPLOYEE">Dealer Employee</option> : null}
@@ -443,7 +454,7 @@ export function AdminAccessRequestsPage() {
                   <div className="mt-2">
                     <div className="text-xs text-muted-foreground">Rejection message (optional)</div>
                     <textarea
-                      className="mt-1 min-h-[72px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+                      className="mt-1 min-h-[72px] w-full rounded-md border border-input bg-background/70 px-3 py-2 text-sm"
                       value={resolveReject(r)}
                       disabled={!canAct || busy}
                       onChange={(e) => {
@@ -509,14 +520,14 @@ export function AdminAccessRequestsPage() {
               </div>
 
               {r.message ? (
-                <div className="mt-2 text-sm rounded-lg border bg-background p-3">
+                <div className="mt-2 text-sm rounded-xl border bg-background/70 backdrop-blur-sm p-3">
                   <div className="text-xs text-muted-foreground">Message</div>
                   <div className="mt-1 whitespace-pre-wrap break-words">{r.message}</div>
                 </div>
               ) : null}
 
               {r.rejectionMessage && r.status === "REJECTED" ? (
-                <div className="mt-2 text-sm rounded-lg border bg-background p-3">
+                <div className="mt-2 text-sm rounded-xl border bg-background/70 backdrop-blur-sm p-3">
                   <div className="text-xs text-muted-foreground">Rejection message</div>
                   <div className="mt-1 whitespace-pre-wrap break-words">{r.rejectionMessage}</div>
                 </div>

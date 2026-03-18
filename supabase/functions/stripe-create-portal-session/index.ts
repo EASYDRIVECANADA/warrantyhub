@@ -77,12 +77,34 @@ Deno.serve(async (req: Request) => {
       return json(403, { error: "Only Dealer Admin can manage billing" });
     }
 
-    const dealerRow = await svc.from("dealers").select("stripe_customer_id").eq("id", dealerId).maybeSingle();
+    const dealerRow = await svc.from("dealers").select("name, stripe_customer_id").eq("id", dealerId).maybeSingle();
     if (dealerRow.error) return json(500, { error: dealerRow.error.message });
-    const customerId = ((dealerRow.data as any)?.stripe_customer_id ?? "").toString().trim();
-    if (!customerId) return json(400, { error: "No Stripe customer for this dealership" });
+    let customerId = ((dealerRow.data as any)?.stripe_customer_id ?? "").toString().trim();
 
     const stripe = getStripe();
+    if (customerId) {
+      try {
+        await stripe.customers.retrieve(customerId);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.toLowerCase().includes("no such customer")) {
+          customerId = "";
+        } else {
+          throw e;
+        }
+      }
+    }
+
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        name: ((dealerRow.data as any)?.name ?? "").toString() || undefined,
+        metadata: { dealer_id: dealerId },
+      });
+      customerId = customer.id;
+      const upd = await svc.from("dealers").update({ stripe_customer_id: customerId }).eq("id", dealerId);
+      if (upd.error) return json(500, { error: upd.error.message });
+    }
+
     const origin = getOrigin(req);
 
     const session = await stripe.billingPortal.sessions.create({

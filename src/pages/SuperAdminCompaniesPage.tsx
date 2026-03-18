@@ -24,6 +24,12 @@ type ProviderCompany = {
   updatedAt: string;
 };
 
+function statusBadgeClass(status: ProviderCompanyStatus) {
+  if (status === "ACTIVE") return "border-emerald-500/15 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+  if (status === "SUSPENDED") return "border-red-500/15 bg-red-500/10 text-red-700 dark:text-red-300";
+  return "border-amber-500/15 bg-amber-500/10 text-amber-800 dark:text-amber-300";
+}
+
 type ProfileRow = {
   id: string;
   email?: string;
@@ -287,17 +293,22 @@ export function SuperAdminCompaniesPage() {
     >
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <div className="rounded-xl border bg-card shadow-card p-4">
+          <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search companies…" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search companies…"
+                className="bg-background/70"
+              />
               <div className="text-sm text-muted-foreground flex items-center justify-end">
                 {filteredCompanies.length} shown
               </div>
             </div>
           </div>
 
-          <div className="rounded-xl border bg-card shadow-card overflow-hidden">
-            <div className="hidden md:grid grid-cols-12 gap-3 px-6 py-3 border-b text-xs text-muted-foreground">
+          <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+            <div className="hidden md:grid grid-cols-12 gap-3 px-6 py-3 border-b text-xs text-muted-foreground bg-gradient-to-r from-blue-500/10 via-transparent to-transparent">
               <div className="col-span-4">Provider Company</div>
               <div className="col-span-3">Contact Email</div>
               <div className="col-span-2">Status</div>
@@ -313,8 +324,8 @@ export function SuperAdminCompaniesPage() {
                   <div
                     key={c.id}
                     className={
-                      "px-6 py-4 cursor-pointer " +
-                      (isSelected ? "bg-muted/40" : "hover:bg-muted/20")
+                      "px-6 py-4 cursor-pointer transition-colors " +
+                      (isSelected ? "bg-white/40 dark:bg-white/10" : "hover:bg-white/30 dark:hover:bg-white/5")
                     }
                     onClick={() => setSelectedCompanyId(c.id)}
                   >
@@ -325,7 +336,16 @@ export function SuperAdminCompaniesPage() {
                         <div className="text-xs text-muted-foreground mt-1">{assignedCount} provider users</div>
                       </div>
                       <div className="md:col-span-3 text-sm text-muted-foreground break-all">{c.contactEmail}</div>
-                      <div className="md:col-span-2 text-sm">{c.status}</div>
+                      <div className="md:col-span-2">
+                        <span
+                          className={
+                            "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium " +
+                            statusBadgeClass(c.status)
+                          }
+                        >
+                          {c.status}
+                        </span>
+                      </div>
                       <div className="md:col-span-3 flex md:justify-end gap-2">
                         <Button
                           size="sm"
@@ -359,19 +379,22 @@ export function SuperAdminCompaniesPage() {
             </div>
           </div>
 
-          <div className="rounded-xl border bg-card shadow-card p-6">
+          <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-500/10 via-transparent to-transparent">
             <div className="text-sm font-medium">Create Provider Company</div>
             <div className="text-xs text-muted-foreground mt-1">
               Only Super Admin can create provider companies.
             </div>
+            </div>
 
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Provider Company Name</label>
                 <Input
                   value={newCompany.providerCompanyName}
                   onChange={(e) => setNewCompany((p) => ({ ...p, providerCompanyName: e.target.value }))}
                   disabled={busy}
+                  className="bg-background/70"
                 />
               </div>
 
@@ -381,12 +404,13 @@ export function SuperAdminCompaniesPage() {
                   value={newCompany.legalBusinessName}
                   onChange={(e) => setNewCompany((p) => ({ ...p, legalBusinessName: e.target.value }))}
                   disabled={busy}
+                  className="bg-background/70"
                 />
               </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Business Type</label>
-                <Input value="Warranty Provider" disabled />
+                <Input value="Warranty Provider" disabled className="bg-background/70" />
               </div>
 
               <div className="space-y-2">
@@ -395,13 +419,14 @@ export function SuperAdminCompaniesPage() {
                   value={newCompany.contactEmail}
                   onChange={(e) => setNewCompany((p) => ({ ...p, contactEmail: e.target.value }))}
                   disabled={busy}
+                  className="bg-background/70"
                 />
               </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Status</label>
                 <select
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  className="h-10 w-full rounded-md border border-input bg-background/70 px-3 text-sm shadow-sm"
                   value={newCompany.status}
                   onChange={(e) => setNewCompany((p) => ({ ...p, status: e.target.value as ProviderCompanyStatus }))}
                   disabled={busy}
@@ -418,6 +443,7 @@ export function SuperAdminCompaniesPage() {
                   value={newCompany.phone}
                   onChange={(e) => setNewCompany((p) => ({ ...p, phone: e.target.value }))}
                   disabled={busy}
+                  className="bg-background/70"
                 />
               </div>
 
@@ -427,13 +453,14 @@ export function SuperAdminCompaniesPage() {
                   value={newCompany.address}
                   onChange={(e) => setNewCompany((p) => ({ ...p, address: e.target.value }))}
                   disabled={busy}
+                  className="bg-background/70"
                 />
               </div>
 
               <div className="space-y-2 md:col-span-2">
                 <label className="text-sm font-medium">Notes (internal)</label>
                 <textarea
-                  className="min-h-[96px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="min-h-[96px] w-full rounded-md border border-input bg-background/70 px-3 py-2 text-sm shadow-sm"
                   value={newCompany.notes}
                   onChange={(e) => setNewCompany((p) => ({ ...p, notes: e.target.value }))}
                   disabled={busy}
@@ -441,7 +468,7 @@ export function SuperAdminCompaniesPage() {
               </div>
             </div>
 
-            <div className="mt-4">
+            <div className="px-6 pb-6">
               <Button
                 disabled={busy || mode !== "supabase"}
                 onClick={() => {
@@ -456,22 +483,24 @@ export function SuperAdminCompaniesPage() {
             </div>
 
             {createCompanyMutation.isError ? (
-              <div className="mt-3 text-sm text-destructive">{toErrorMessage(createCompanyMutation.error)}</div>
+              <div className="px-6 pb-6 -mt-3 text-sm text-destructive">{toErrorMessage(createCompanyMutation.error)}</div>
             ) : null}
           </div>
         </div>
 
         <div className="space-y-6">
-          <div className="rounded-xl border bg-card shadow-card p-6">
+          <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b bg-gradient-to-r from-violet-500/10 via-transparent to-transparent">
             <div className="text-sm font-medium">Company Details</div>
             <div className="text-xs text-muted-foreground mt-1">
               Select a company to edit details and manage provider users.
             </div>
+            </div>
 
             {!selectedCompany ? (
-              <div className="mt-4 text-sm text-muted-foreground">No company selected.</div>
+              <div className="p-6 text-sm text-muted-foreground">No company selected.</div>
             ) : (
-              <div className="mt-4 space-y-4">
+              <div className="p-6 space-y-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Provider Company Name</label>
                   <Input
@@ -484,6 +513,7 @@ export function SuperAdminCompaniesPage() {
                         [selectedCompany.id]: { ...prev[selectedCompany.id], providerCompanyName: v, dirty: true },
                       }));
                     }}
+                    className="bg-background/70"
                   />
                 </div>
 
@@ -499,6 +529,7 @@ export function SuperAdminCompaniesPage() {
                         [selectedCompany.id]: { ...prev[selectedCompany.id], legalBusinessName: v, dirty: true },
                       }));
                     }}
+                    className="bg-background/70"
                   />
                 </div>
 
@@ -514,13 +545,14 @@ export function SuperAdminCompaniesPage() {
                         [selectedCompany.id]: { ...prev[selectedCompany.id], contactEmail: v, dirty: true },
                       }));
                     }}
+                    className="bg-background/70"
                   />
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Status</label>
                   <select
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    className="h-10 w-full rounded-md border border-input bg-background/70 px-3 text-sm shadow-sm"
                     value={(editById[selectedCompany.id]?.status ?? selectedCompany.status) as ProviderCompanyStatus}
                     disabled={busy}
                     onChange={(e) => {
@@ -549,6 +581,7 @@ export function SuperAdminCompaniesPage() {
                         [selectedCompany.id]: { ...prev[selectedCompany.id], phone: v, dirty: true },
                       }));
                     }}
+                    className="bg-background/70"
                   />
                 </div>
 
@@ -564,13 +597,14 @@ export function SuperAdminCompaniesPage() {
                         [selectedCompany.id]: { ...prev[selectedCompany.id], address: v, dirty: true },
                       }));
                     }}
+                    className="bg-background/70"
                   />
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Notes (internal)</label>
                   <textarea
-                    className="min-h-[96px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    className="min-h-[96px] w-full rounded-md border border-input bg-background/70 px-3 py-2 text-sm shadow-sm"
                     value={(editById[selectedCompany.id]?.notes ?? selectedCompany.notes ?? "") as string}
                     disabled={busy}
                     onChange={(e) => {
@@ -617,21 +651,23 @@ export function SuperAdminCompaniesPage() {
             )}
           </div>
 
-          <div className="rounded-xl border bg-card shadow-card p-6">
+          <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b bg-gradient-to-r from-violet-500/10 via-transparent to-transparent">
             <div className="text-sm font-medium">Provider Users</div>
             <div className="text-xs text-muted-foreground mt-1">
               Provider users can only be assigned by Super Admin.
             </div>
+            </div>
 
             {!selectedCompany ? (
-              <div className="mt-4 text-sm text-muted-foreground">Select a company to view provider users.</div>
+              <div className="p-6 text-sm text-muted-foreground">Select a company to view provider users.</div>
             ) : (
               <>
-                <div className="mt-4">
+                <div className="p-6 pb-0">
                   <div className="text-xs text-muted-foreground">Assigned ({assignedUsers.length})</div>
                   <div className="mt-2 space-y-2">
                     {assignedUsers.map((u) => (
-                      <div key={u.id} className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2">
+                      <div key={u.id} className="flex items-center justify-between gap-3 rounded-xl border bg-background/70 backdrop-blur-sm px-3 py-2">
                         <div className="text-sm break-all">{u.email ?? u.id}</div>
                         <Button
                           size="sm"
@@ -655,11 +691,11 @@ export function SuperAdminCompaniesPage() {
                   </div>
                 </div>
 
-                <div className="mt-6">
+                <div className="p-6">
                   <div className="text-xs text-muted-foreground">Unassigned ({unassignedUsers.length})</div>
                   <div className="mt-2">
                     <select
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      className="h-10 w-full rounded-md border border-input bg-background/70 px-3 text-sm shadow-sm"
                       disabled={busy || unassignedUsers.length === 0}
                       onChange={(e) => {
                         const userId = e.target.value;
