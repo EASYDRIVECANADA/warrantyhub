@@ -197,6 +197,12 @@ export function RootLayout() {
 
   const hidePublicNavbarWhileLoading = isAppRoute && isLoading && !user;
 
+  const subscriptionsDisabled = (() => {
+    const explicit = (import.meta as any)?.env?.VITE_DISABLE_SUBSCRIPTION;
+    const on = (explicit ?? "").toString().trim().toLowerCase();
+    return on === "1" || on === "true" || on === "yes" || on === "on";
+  })();
+
   const dealerAdminNavItems = [
     { to: "/dealer-admin", label: "Dashboard", icon: LayoutGrid, active: location.pathname === "/dealer-admin" },
     {
@@ -214,7 +220,9 @@ export function RootLayout() {
     },
     { to: "/dealer-reporting", label: "Reporting", icon: BarChart3, active: location.pathname.startsWith("/dealer-reporting") },
     { to: "/dealer-configure", label: "Retail", icon: Cog, active: location.pathname.startsWith("/dealer-configure") },
-    { to: "/dealer-billing", label: "Subscription", icon: CreditCard, active: location.pathname.startsWith("/dealer-billing") },
+    ...(subscriptionsDisabled
+      ? ([] as const)
+      : ([{ to: "/dealer-billing", label: "Subscription", icon: CreditCard, active: location.pathname.startsWith("/dealer-billing") }] as const)),
     { to: "/dealer-team", label: "Team", icon: Users, active: location.pathname.startsWith("/dealer-team") },
   ] as const;
 

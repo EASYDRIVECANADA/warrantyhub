@@ -2,6 +2,12 @@ import { Navigate, Outlet } from "react-router-dom";
 
 import { useAuth } from "../providers/AuthProvider";
 
+function subscriptionDisabledEnabled() {
+  const explicit = (import.meta as any)?.env?.VITE_DISABLE_SUBSCRIPTION;
+  const on = (explicit ?? "").toString().trim().toLowerCase();
+  return on === "1" || on === "true" || on === "yes" || on === "on";
+}
+
 function devBypassEnabled() {
   const explicit = (import.meta as any)?.env?.VITE_BYPASS_SUBSCRIPTION;
   const on = (explicit ?? "").toString().trim().toLowerCase();
@@ -51,7 +57,7 @@ export function DealerSubscriptionRoute() {
   const dealerId = (user.dealerId ?? "").toString().trim();
   if (!dealerId && !devBypassDealerMembershipEnabled()) return <Navigate to="/request-access" replace />;
 
-  if (!devBypassEnabled() && !hasActiveSubscription(user)) {
+  if (!subscriptionDisabledEnabled() && !devBypassEnabled() && !hasActiveSubscription(user)) {
     return <Navigate to="/dealer-billing" replace />;
   }
 

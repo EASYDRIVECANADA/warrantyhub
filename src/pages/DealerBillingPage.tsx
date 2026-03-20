@@ -31,11 +31,27 @@ export function DealerBillingPage() {
   const [busy, setBusy] = useState(false);
   const location = useLocation();
 
+  const subscriptionsDisabled = (() => {
+    const explicit = (import.meta as any)?.env?.VITE_DISABLE_SUBSCRIPTION;
+    const on = (explicit ?? "").toString().trim().toLowerCase();
+    return on === "1" || on === "true" || on === "yes" || on === "on";
+  })();
+
   if (!user) return <Navigate to="/sign-in" replace />;
   if (user.role !== "DEALER_ADMIN" && user.role !== "DEALER_EMPLOYEE") return <Navigate to="/" replace />;
 
   const dealerId = (user.dealerId ?? "").toString().trim();
   if (!dealerId) return <Navigate to="/request-access" replace />;
+
+  if (subscriptionsDisabled) {
+    return (
+      <PageShell title="Subscription" subtitle="Subscriptions are temporarily disabled for testing.">
+        <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
+          Your dealership has full access while we finalize billing.
+        </div>
+      </PageShell>
+    );
+  }
 
   const status = (user.dealerSubscriptionStatus ?? "").toString().trim() || "INACTIVE";
   const plan = user.dealerSubscriptionPlanKey ?? null;
