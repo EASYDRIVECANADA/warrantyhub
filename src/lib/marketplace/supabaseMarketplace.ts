@@ -9,6 +9,7 @@ type ProductsRow = {
   provider_id: string;
   name: string;
   product_type: string;
+  powertrain_eligibility?: string | null;
   pricing_structure?: string | null;
   key_benefits?: string | null;
   coverage_max_ltv_percent?: number | null;
@@ -57,6 +58,7 @@ function toProduct(r: ProductsRow): Product {
     name: r.name,
     productType: r.product_type as ProductType,
     pricingStructure,
+    powertrainEligibility: typeof r.powertrain_eligibility === "string" ? (r.powertrain_eligibility as any) : undefined,
     keyBenefits: r.key_benefits ?? undefined,
     coverageMaxLtvPercent: r.coverage_max_ltv_percent ?? undefined,
     coverageDetails: r.coverage_details ?? undefined,

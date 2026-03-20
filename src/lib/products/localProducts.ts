@@ -1,5 +1,5 @@
 import type { ProductsApi } from "./api";
-import type { CreateProductInput, Product, ProductType, PricingStructure } from "./types";
+import type { CreateProductInput, Product, ProductType, PricingStructure, PowertrainEligibility } from "./types";
 
 const STORAGE_KEY = "warrantyhub.local.products";
 const DEV_BYPASS_KEY = "warrantyhub.dev.bypass_user";
@@ -49,6 +49,13 @@ function read(): Product[] {
         const id = p.id ?? crypto.randomUUID();
         const providerId = p.providerId ?? "";
 
+        const powertrainEligibilityRaw = (p as any).powertrainEligibility;
+        const powertrainEligibility: PowertrainEligibility | undefined =
+          typeof powertrainEligibilityRaw === "string" &&
+          ["ALL", "ICE", "ELECTRIFIED", "HEV", "PHEV", "BEV"].includes(powertrainEligibilityRaw.toUpperCase())
+            ? (powertrainEligibilityRaw.toUpperCase() as PowertrainEligibility)
+            : undefined;
+
         const classVehicleTypesRaw = (p as any).classVehicleTypes;
         const classVehicleTypes: Record<string, string> | undefined =
           classVehicleTypesRaw && typeof classVehicleTypesRaw === "object" && !Array.isArray(classVehicleTypesRaw)
@@ -65,6 +72,7 @@ function read(): Product[] {
           name: p.name ?? "",
           productType: (p.productType ?? "OTHER") as ProductType,
           pricingStructure: typeof (p as any).pricingStructure === "string" ? ((p as any).pricingStructure as PricingStructure) : undefined,
+          powertrainEligibility,
           programCode: typeof p.programCode === "string" ? p.programCode : undefined,
           keyBenefits: typeof (p as any).keyBenefits === "string" ? (p as any).keyBenefits : undefined,
           coverageMaxLtvPercent:
@@ -144,6 +152,7 @@ export const localProductsApi: ProductsApi = {
       name: input.name,
       productType: input.productType,
       pricingStructure: input.pricingStructure,
+      powertrainEligibility: input.powertrainEligibility,
       keyBenefits: input.keyBenefits,
       coverageMaxLtvPercent: input.coverageMaxLtvPercent,
       coverageDetails: input.coverageDetails,
@@ -202,10 +211,17 @@ export const localProductsApi: ProductsApi = {
       nextEligibility.eligibilityMaxMileageKm = patch.eligibilityMaxMileageKm;
     }
 
+    const nextPowertrain: Partial<Pick<Product, "powertrainEligibility">> = {};
+    if (typeof (patch as any).powertrainEligibility === "string") {
+      const t = String((patch as any).powertrainEligibility).trim().toUpperCase();
+      if (["ALL", "ICE", "ELECTRIFIED", "HEV", "PHEV", "BEV"].includes(t)) nextPowertrain.powertrainEligibility = t as PowertrainEligibility;
+    }
+
     const next: Product = {
       ...current,
       ...patch,
       ...nextEligibility,
+      ...nextPowertrain,
       ...nextAllowlists,
       updatedAt: now,
     };

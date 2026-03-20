@@ -8,6 +8,7 @@ type ProductsRow = {
   provider_id: string;
   name: string;
   product_type: string;
+  powertrain_eligibility?: string | null;
   pricing_structure?: string | null;
   coverage_details?: string | null;
   exclusions?: string | null;
@@ -36,6 +37,7 @@ function toProduct(r: ProductsRow): Product {
     name: r.name,
     productType: r.product_type as ProductType,
     pricingStructure,
+    powertrainEligibility: typeof r.powertrain_eligibility === "string" ? (r.powertrain_eligibility as any) : undefined,
     programCode: undefined,
     keyBenefits: (r as any).key_benefits ?? undefined,
     coverageMaxLtvPercent: (r as any).coverage_max_ltv_percent ?? undefined,
@@ -117,6 +119,7 @@ export const supabaseProductsApi: ProductsApi = {
       provider_id: providerId,
       name: input.name,
       product_type: input.productType,
+      powertrain_eligibility: input.powertrainEligibility,
       pricing_structure: input.pricingStructure,
       key_benefits: input.keyBenefits,
       coverage_max_ltv_percent: input.coverageMaxLtvPercent,
@@ -151,6 +154,7 @@ export const supabaseProductsApi: ProductsApi = {
     const updateRow: Record<string, unknown> = { updated_at: now };
     if (typeof patch.name === "string") updateRow.name = patch.name;
     if (typeof patch.productType === "string") updateRow.product_type = patch.productType;
+    if (typeof (patch as any).powertrainEligibility === "string") updateRow.powertrain_eligibility = (patch as any).powertrainEligibility;
     if (typeof (patch as any).pricingStructure === "string") updateRow.pricing_structure = (patch as any).pricingStructure;
     if (typeof (patch as any).keyBenefits === "string") updateRow.key_benefits = (patch as any).keyBenefits;
     if ((patch as any).coverageMaxLtvPercent === null || typeof (patch as any).coverageMaxLtvPercent === "number") {

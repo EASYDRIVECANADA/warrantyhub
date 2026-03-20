@@ -75,6 +75,8 @@ create table if not exists public.products (
   name text not null,
   product_type text not null
     check (product_type in ('EXTENDED_WARRANTY','GAP','TIRE_RIM','APPEARANCE','OTHER')),
+  powertrain_eligibility text
+    check (powertrain_eligibility in ('ALL','ICE','ELECTRIFIED','HEV','PHEV','BEV')),
   coverage_details text,
   exclusions text,
   term_months integer,

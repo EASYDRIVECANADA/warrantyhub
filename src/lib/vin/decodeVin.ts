@@ -4,6 +4,10 @@ export type VinDecoded = {
   vehicleMake?: string;
   vehicleModel?: string;
   vehicleTrim?: string;
+  fuelTypePrimary?: string;
+  fuelTypeSecondary?: string;
+  electrificationLevel?: string;
+  powertrainType?: "BEV" | "PHEV" | "HEV" | "ICE" | "UNKNOWN";
   vehicleDriveType?: string;
   vehicleBrakeSystem?: string;
   vehicleEngine?: string;
@@ -29,6 +33,39 @@ function pickFirst(...vals: Array<string | null | undefined>) {
   return undefined;
 }
 
+function includesToken(text: string | undefined, token: string) {
+  if (!text) return false;
+  return text.toLowerCase().includes(token.toLowerCase());
+}
+
+function normalizeElectrificationLevel(v: string | undefined) {
+  const t = (v ?? "").trim();
+  if (!t) return undefined;
+  const upper = t.toUpperCase();
+  if (upper === "BEV" || upper === "HEV" || upper === "PHEV") return upper as "BEV" | "HEV" | "PHEV";
+  return t;
+}
+
+function derivePowertrainType(input: { fuelTypePrimary?: string; fuelTypeSecondary?: string; electrificationLevel?: string }) {
+  const el = normalizeElectrificationLevel(input.electrificationLevel);
+  if (el === "BEV" || el === "HEV" || el === "PHEV") return el;
+
+  const p = input.fuelTypePrimary ?? "";
+  const s = input.fuelTypeSecondary ?? "";
+
+  const hasElectric = includesToken(p, "electric") || includesToken(s, "electric");
+  const hasGas = includesToken(p, "gas") || includesToken(s, "gas") || includesToken(p, "gasoline") || includesToken(s, "gasoline");
+  const hasDiesel = includesToken(p, "diesel") || includesToken(s, "diesel");
+
+  if (hasElectric && !hasGas && !hasDiesel) return "BEV";
+  if (hasElectric && (hasGas || hasDiesel)) return "PHEV";
+
+  if (includesToken(p, "hybrid") || includesToken(s, "hybrid")) return "HEV";
+
+  if (p || s) return "ICE";
+  return "UNKNOWN";
+}
+
 export async function decodeVin(vinRaw: string): Promise<VinDecoded> {
   const vin = clean(vinRaw);
   if (!vin) throw new Error("VIN is required");
@@ -52,6 +89,11 @@ export async function decodeVin(vinRaw: string): Promise<VinDecoded> {
   const vehicleTrim = pickFirst(row.Trim, row.Series);
   const vehicleBodyStyle = pickFirst(row.BodyClass);
   const vehicleBodyClass = vehicleBodyStyle;
+
+  const fuelTypePrimary = pickFirst((row as any).FuelTypePrimary, (row as any).FuelTypePrimary2);
+  const fuelTypeSecondary = pickFirst((row as any).FuelTypeSecondary, (row as any).FuelTypeSecondary2);
+  const electrificationLevel = pickFirst((row as any).ElectrificationLevel);
+  const powertrainType = derivePowertrainType({ fuelTypePrimary, fuelTypeSecondary, electrificationLevel });
 
   const engine = pickFirst(
     row.EngineModel,
@@ -80,6 +122,10 @@ export async function decodeVin(vinRaw: string): Promise<VinDecoded> {
     vehicleMake,
     vehicleModel,
     vehicleTrim,
+    fuelTypePrimary,
+    fuelTypeSecondary,
+    electrificationLevel,
+    powertrainType,
     vehicleDriveType,
     vehicleBrakeSystem,
     vehicleEngine: engine,

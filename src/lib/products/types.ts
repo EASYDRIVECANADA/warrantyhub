@@ -2,12 +2,15 @@ export type ProductType = "EXTENDED_WARRANTY" | "GAP" | "TIRE_RIM" | "APPEARANCE
 
 export type PricingStructure = "FLAT" | "MILEAGE" | "CLASS" | "MILEAGE_CLASS" | "FINANCE_MATRIX";
 
+export type PowertrainEligibility = "ALL" | "ICE" | "ELECTRIFIED" | "HEV" | "PHEV" | "BEV";
+
 export type Product = {
   id: string;
   providerId: string;
   name: string;
   productType: ProductType;
   pricingStructure?: PricingStructure;
+  powertrainEligibility?: PowertrainEligibility;
   programCode?: string;
   keyBenefits?: string;
   coverageMaxLtvPercent?: number | null;
@@ -37,6 +40,7 @@ export type CreateProductInput = {
   name: string;
   productType: ProductType;
   pricingStructure?: PricingStructure;
+  powertrainEligibility?: PowertrainEligibility;
   keyBenefits?: string;
   coverageMaxLtvPercent?: number | null;
   coverageDetails?: string;

@@ -376,6 +376,21 @@ export function DealerMarketplacePage() {
   const eligibleByVehicle = (p: Product) => {
     if (!decoded) return false;
 
+    const powertrainOk = (() => {
+      const elig = String((p as any).powertrainEligibility ?? "ALL").trim().toUpperCase();
+      if (!elig || elig === "ALL") return true;
+
+      const pt = String(decoded.powertrainType ?? "UNKNOWN").trim().toUpperCase();
+      if (!pt || pt === "UNKNOWN") return false;
+
+      if (elig === "ELECTRIFIED") return pt === "BEV" || pt === "PHEV" || pt === "HEV";
+      if (elig === "BEV") return pt === "BEV";
+      if (elig === "PHEV") return pt === "PHEV";
+      if (elig === "HEV") return pt === "HEV" || pt === "PHEV";
+      if (elig === "ICE") return pt === "ICE";
+      return true;
+    })();
+
     const effectiveMaxAgeYears = (() => {
       if (typeof p.eligibilityMaxVehicleAgeYears === "number") return p.eligibilityMaxVehicleAgeYears;
       return isGapProduct(p) ? 10 : undefined;
@@ -415,7 +430,7 @@ export function DealerMarketplacePage() {
       return true;
     })();
 
-    return eligibleByAge && eligibleByMileage && eligibleByAllowlists;
+    return powertrainOk && eligibleByAge && eligibleByMileage && eligibleByAllowlists;
   };
 
   const priceMaxCents = (() => {
@@ -701,7 +716,7 @@ export function DealerMarketplacePage() {
             </div>
           </div>
 
-          {isSearchMinimized ? null : (
+        {isSearchMinimized ? null : (
           <div className="p-6">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <div className="lg:col-span-8 space-y-6">
@@ -853,6 +868,7 @@ export function DealerMarketplacePage() {
                           { label: "Year", value: decoded.vehicleYear },
                           { label: "Make, Model", value: [decoded.vehicleMake, decoded.vehicleModel].filter(Boolean).join(" ") },
                           { label: "Trim", value: decoded.vehicleTrim },
+                          { label: "Powertrain", value: decoded.powertrainType },
                           { label: "Engine", value: decoded.vehicleEngine },
                           { label: "Drive Type", value: decoded.vehicleDriveType },
                           { label: "Transmission", value: decoded.vehicleTransmission },
@@ -1081,7 +1097,7 @@ export function DealerMarketplacePage() {
                 ) : null}
               </div>
             </div>
-          </div>
+            </div>
           )}
         </div>
       </div>

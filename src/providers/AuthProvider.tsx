@@ -146,6 +146,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       role,
     };
 
+    if (role === "DEALER_ADMIN" || role === "DEALER_EMPLOYEE") {
+      u.dealerId = "dev-dealer";
+      u.companyName = "Dev Dealership";
+      u.dealerSubscriptionStatus = "trialing";
+      u.dealerSubscriptionPlanKey = "STANDARD";
+      u.dealerSubscriptionTrialEnd = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString();
+      u.dealerSubscriptionCurrentPeriodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      u.dealerContractFeeCents = 0;
+    }
+
     localStorage.setItem(DEV_BYPASS_KEY, JSON.stringify(u));
     setUser(u);
   }, []);

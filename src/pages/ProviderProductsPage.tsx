@@ -76,6 +76,15 @@ function parseOptionalInt(v: string) {
   return Number.isFinite(n) ? Math.floor(n) : undefined;
 }
 
+function parseOptionalPct(v: string) {
+  const t = (v ?? "").trim();
+  if (!t) return undefined;
+  const n = Number(t);
+  if (!Number.isFinite(n)) return undefined;
+  if (n < 0 || n > 100) return undefined;
+  return n;
+}
+
 function parseOptionalIntOrNull(v: string) {
   const t = v.trim();
   if (!t) return null;
@@ -224,6 +233,7 @@ type EditorState = {
     deductible: string;
     providerCost: string;
   }>;
+  powertrainEligibility: "ALL" | "ICE" | "ELECTRIFIED" | "HEV" | "PHEV" | "BEV";
   eligibilityMaxVehicleAgeYears: string;
   eligibilityMaxMileageKm: string;
   eligibilityMakeAllowlist: string;
@@ -316,6 +326,7 @@ function emptyEditor(): EditorState {
         providerCost: "",
       },
     ],
+    powertrainEligibility: "ALL",
     eligibilityMaxVehicleAgeYears: "",
     eligibilityMaxMileageKm: "",
     eligibilityMakeAllowlist: "",
@@ -405,6 +416,14 @@ function editorFromProduct(p: Product): EditorState {
     financeDefaultBandId: "",
     financeDefaultTermMonths: 24,
     pricingRows: [fallbackRow],
+    powertrainEligibility:
+      ((p as any).powertrainEligibility ?? "ALL") === "ICE" ||
+      ((p as any).powertrainEligibility ?? "ALL") === "ELECTRIFIED" ||
+      ((p as any).powertrainEligibility ?? "ALL") === "HEV" ||
+      ((p as any).powertrainEligibility ?? "ALL") === "PHEV" ||
+      ((p as any).powertrainEligibility ?? "ALL") === "BEV"
+        ? ((p as any).powertrainEligibility as any)
+        : "ALL",
     eligibilityMaxVehicleAgeYears:
       typeof p.eligibilityMaxVehicleAgeYears === "number" ? String(p.eligibilityMaxVehicleAgeYears) : "",
     eligibilityMaxMileageKm:
@@ -1287,10 +1306,11 @@ export function ProviderProductsPage() {
           name,
           productType: editor.productType,
           pricingStructure: editor.pricingStructure,
-          keyBenefits: editor.keyBenefits.trim() || undefined,
-          coverageMaxLtvPercent: parseOptionalInt(editor.coverageMaxLtvPercent),
-          coverageDetails: editor.coverageDetails.trim() || undefined,
-          exclusions: editor.exclusions.trim() || undefined,
+          powertrainEligibility: editor.powertrainEligibility,
+          keyBenefits: editor.keyBenefits.trim(),
+          coverageMaxLtvPercent: parseOptionalPct(editor.coverageMaxLtvPercent),
+          coverageDetails: editor.coverageDetails.trim(),
+          exclusions: editor.exclusions.trim(),
           classVehicleTypes: Object.fromEntries(
             editor.classVehicleTypes
               .map((x) => ({ classCode: (x.classCode ?? "").trim(), vehicleTypes: (x.vehicleTypes ?? "").trim() }))
@@ -1329,6 +1349,7 @@ export function ProviderProductsPage() {
               name: input.name,
               productType: input.productType,
               pricingStructure: "FINANCE_MATRIX",
+              powertrainEligibility: input.powertrainEligibility,
               keyBenefits: input.keyBenefits ?? "",
               coverageMaxLtvPercent: input.coverageMaxLtvPercent ?? null,
               coverageDetails: input.coverageDetails ?? "",
@@ -1623,10 +1644,11 @@ export function ProviderProductsPage() {
       name,
       productType: editor.productType,
       pricingStructure: editor.pricingStructure,
-      keyBenefits: editor.keyBenefits.trim() || undefined,
-      coverageMaxLtvPercent: parseOptionalInt(editor.coverageMaxLtvPercent),
-      coverageDetails: editor.coverageDetails.trim() || undefined,
-      exclusions: editor.exclusions.trim() || undefined,
+      powertrainEligibility: editor.powertrainEligibility,
+      keyBenefits: editor.keyBenefits.trim(),
+      coverageMaxLtvPercent: parseOptionalPct(editor.coverageMaxLtvPercent),
+      coverageDetails: editor.coverageDetails.trim(),
+      exclusions: editor.exclusions.trim(),
       classVehicleTypes: Object.fromEntries(
         editor.classVehicleTypes
           .map((x) => ({ classCode: (x.classCode ?? "").trim(), vehicleTypes: (x.vehicleTypes ?? "").trim() }))
@@ -1738,6 +1760,7 @@ export function ProviderProductsPage() {
           patch: {
             name: input.name,
             productType: input.productType,
+            powertrainEligibility: input.powertrainEligibility,
             keyBenefits: input.keyBenefits ?? "",
             coverageMaxLtvPercent: input.coverageMaxLtvPercent ?? null,
             coverageDetails: input.coverageDetails ?? "",
@@ -2282,6 +2305,31 @@ export function ProviderProductsPage() {
 
             {activeTab === "ELIGIBILITY" ? (
               <div className="space-y-4">
+                <div className="rounded-xl border p-4">
+                  <div className="font-semibold">Powertrain Eligibility</div>
+                  <div className="text-sm text-muted-foreground mt-1">Controls whether the product appears for ICE/Hybrid/EV vehicles.</div>
+                  <div className="mt-3">
+                    <select
+                      value={editor.powertrainEligibility}
+                      onChange={(e) =>
+                        setEditor((s) => ({
+                          ...s,
+                          powertrainEligibility: (e.target.value as any) || "ALL",
+                        }))
+                      }
+                      disabled={busy}
+                      className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm disabled:opacity-60"
+                    >
+                      <option value="ALL">All vehicles</option>
+                      <option value="ICE">ICE (Gas/Diesel)</option>
+                      <option value="ELECTRIFIED">Electrified (BEV + PHEV + HEV)</option>
+                      <option value="HEV">HEV (Hybrid)</option>
+                      <option value="PHEV">PHEV (Plug-in Hybrid)</option>
+                      <option value="BEV">BEV (Electric)</option>
+                    </select>
+                  </div>
+                </div>
+
                 <div className="rounded-xl border p-4">
                   <div className="font-semibold">Outer Eligibility Rules</div>
                   <div className="text-sm text-muted-foreground mt-1">

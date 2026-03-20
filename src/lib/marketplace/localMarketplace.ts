@@ -1,5 +1,5 @@
 import type { MarketplaceApi, MarketplaceProduct } from "./api";
-import type { PricingStructure, Product, ProductType } from "../products/types";
+import type { PricingStructure, Product, ProductType, PowertrainEligibility } from "../products/types";
 
 import type { ProductPricing } from "../productPricing/types";
 
@@ -18,6 +18,13 @@ function readProducts(): Product[] {
         const id = p.id ?? crypto.randomUUID();
         const providerId = p.providerId ?? "";
 
+        const powertrainEligibilityRaw = (p as any).powertrainEligibility;
+        const powertrainEligibility: PowertrainEligibility | undefined =
+          typeof powertrainEligibilityRaw === "string" &&
+          ["ALL", "ICE", "ELECTRIFIED", "HEV", "PHEV", "BEV"].includes(powertrainEligibilityRaw.toUpperCase())
+            ? (powertrainEligibilityRaw.toUpperCase() as PowertrainEligibility)
+            : undefined;
+
         const classVehicleTypesRaw = (p as any).classVehicleTypes;
         const classVehicleTypes: Record<string, string> | undefined =
           classVehicleTypesRaw && typeof classVehicleTypesRaw === "object" && !Array.isArray(classVehicleTypesRaw)
@@ -34,6 +41,7 @@ function readProducts(): Product[] {
           name: p.name ?? "",
           productType: (p.productType ?? "OTHER") as ProductType,
           pricingStructure: typeof (p as any).pricingStructure === "string" ? ((p as any).pricingStructure as PricingStructure) : undefined,
+          powertrainEligibility,
           keyBenefits: typeof (p as any).keyBenefits === "string" ? (p as any).keyBenefits : undefined,
           coverageMaxLtvPercent:
             (p as any).coverageMaxLtvPercent === null

@@ -1366,6 +1366,8 @@ create table if not exists public.products (
   name text not null,
   product_type text not null
     check (product_type in ('EXTENDED_WARRANTY','GAP','TIRE_RIM','APPEARANCE','OTHER')),
+  powertrain_eligibility text
+    check (powertrain_eligibility in ('ALL','ICE','ELECTRIFIED','HEV','PHEV','BEV')),
   coverage_details text,
   exclusions text,
   term_months integer,
@@ -1397,6 +1399,21 @@ alter table public.products
 
 alter table public.products
   add column if not exists key_benefits text;
+
+alter table public.products
+  add column if not exists powertrain_eligibility text;
+
+do $$
+begin
+  alter table public.products
+    drop constraint if exists products_powertrain_eligibility_check;
+exception
+  when undefined_object then null;
+end $$;
+
+alter table public.products
+  add constraint products_powertrain_eligibility_check
+  check (powertrain_eligibility is null or powertrain_eligibility in ('ALL','ICE','ELECTRIFIED','HEV','PHEV','BEV'));
 
 alter table public.products
   add column if not exists coverage_max_ltv_percent integer;

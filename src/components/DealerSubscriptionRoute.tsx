@@ -2,6 +2,19 @@ import { Navigate, Outlet } from "react-router-dom";
 
 import { useAuth } from "../providers/AuthProvider";
 
+function devBypassEnabled() {
+  const explicit = (import.meta as any)?.env?.VITE_BYPASS_SUBSCRIPTION;
+  const on = (explicit ?? "").toString().trim().toLowerCase();
+  if (on === "1" || on === "true" || on === "yes" || on === "on") return true;
+  return Boolean((import.meta as any)?.env?.DEV);
+}
+
+function devBypassDealerMembershipEnabled() {
+  const explicit = (import.meta as any)?.env?.VITE_BYPASS_DEALER_MEMBERSHIP;
+  const on = (explicit ?? "").toString().trim().toLowerCase();
+  return on === "1" || on === "true" || on === "yes" || on === "on";
+}
+
 function isDealerRole(role: string) {
   return role === "DEALER_ADMIN" || role === "DEALER_EMPLOYEE";
 }
@@ -36,9 +49,9 @@ export function DealerSubscriptionRoute() {
   if (!isDealerRole(user.role)) return <Outlet />;
 
   const dealerId = (user.dealerId ?? "").toString().trim();
-  if (!dealerId) return <Navigate to="/request-access" replace />;
+  if (!dealerId && !devBypassDealerMembershipEnabled()) return <Navigate to="/request-access" replace />;
 
-  if (!hasActiveSubscription(user)) {
+  if (!devBypassEnabled() && !hasActiveSubscription(user)) {
     return <Navigate to="/dealer-billing" replace />;
   }
 
