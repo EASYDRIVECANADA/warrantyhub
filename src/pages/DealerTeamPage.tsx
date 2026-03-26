@@ -32,17 +32,6 @@ const STORAGE_KEY = "warrantyhub.local.dealer_team_members";
 const LOCAL_USERS_KEY = "warrantyhub.local.users";
 const LOCAL_DEALER_MEMBERSHIPS_KEY = "warrantyhub.local.dealer_memberships";
 
-function readLocalUsers(): Array<{ id?: string; companyName?: string }> {
-  const raw = localStorage.getItem(LOCAL_USERS_KEY);
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as any[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
 function readLocalUsersRaw(): any[] {
   const raw = localStorage.getItem(LOCAL_USERS_KEY);
   if (!raw) return [];

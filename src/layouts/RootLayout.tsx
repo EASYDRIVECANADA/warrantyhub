@@ -217,7 +217,14 @@ export function RootLayout() {
     if (dealerAdminSettingsActive) setIsDealerAdminSettingsOpen(true);
   }, [dealerAdminSettingsActive]);
 
-  const dealerAdminNavItems = [
+  type DealerAdminNavItem = {
+    to: string;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    active: boolean;
+  };
+
+  const dealerAdminNavItems: DealerAdminNavItem[] = [
     { to: "/dealer-admin", label: "Dashboard", icon: LayoutGrid, active: location.pathname === "/dealer-admin" },
     {
       to: "/dealer-marketplace",
@@ -233,11 +240,11 @@ export function RootLayout() {
       active: location.pathname.startsWith("/dealer-remittances"),
     },
     { to: "/dealer-reporting", label: "Reporting", icon: BarChart3, active: location.pathname.startsWith("/dealer-reporting") },
-  ] as const;
+  ];
 
-  const dealerAdminSecondaryItems = [] as const;
+  const dealerAdminSecondaryItems: DealerAdminNavItem[] = [];
 
-  const dealerAdminSettingsItems = [
+  const dealerAdminSettingsItems: DealerAdminNavItem[] = [
     { to: "/dealer-configure", label: "Configuration", icon: Cog, active: location.pathname.startsWith("/dealer-configure") },
     { to: "/dealer-team", label: "Team", icon: Users, active: location.pathname.startsWith("/dealer-team") },
     ...(subscriptionsDisabled
@@ -247,7 +254,7 @@ export function RootLayout() {
       ? ([] as const)
       : ([{ to: "/dealer-payments", label: "Payments", icon: DollarSign, active: location.pathname.startsWith("/dealer-payments") }] as const)),
     { to: "/profile", label: "Profile", icon: User, active: location.pathname.startsWith("/profile") },
-  ] as const;
+  ];
 
   const providerNavItems = [
     { to: "/provider-dashboard", label: "Dashboard", icon: LayoutGrid, active: location.pathname === "/provider-dashboard" },
