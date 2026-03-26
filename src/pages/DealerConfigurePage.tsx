@@ -411,8 +411,8 @@ export function DealerConfigurePage() {
                   <div className="grid grid-cols-12 gap-1.5 px-3 py-2 border-b bg-muted/20 text-[11px] text-muted-foreground">
                     <div className="col-span-4">Term</div>
                     <div className="col-span-2">Deductible</div>
-                    <div className="col-span-2 pl-2">Base</div>
-                    <div className="col-span-4 text-right">Your retail</div>
+                    <div className="col-span-2 pl-2">Base Price</div>
+                    <div className="col-span-4 text-right">Retail Price</div>
                   </div>
 
                   <div className="divide-y">
@@ -515,8 +515,8 @@ export function DealerConfigurePage() {
                     {addons.length > 0 ? (
                       <div className="grid grid-cols-12 gap-2 px-4 py-2 border-b bg-muted/10 text-[11px] text-muted-foreground">
                         <div className="col-span-6">Add-on</div>
-                        <div className="col-span-2 text-right">Base</div>
-                        <div className="col-span-4 text-right">Your retail</div>
+                        <div className="col-span-2 text-right">Base Price</div>
+                        <div className="col-span-4 text-right">Retail Price</div>
                       </div>
                     ) : null}
 

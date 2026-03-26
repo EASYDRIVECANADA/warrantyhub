@@ -8,6 +8,7 @@ import { PageShell } from "../components/PageShell";
 import { logAuditEvent } from "../lib/auditLog";
 import { getAppMode } from "../lib/runtime";
 import { getSupabaseClient } from "../lib/supabase/client";
+import { invokeEdgeFunction } from "../lib/supabase/functions";
 import { confirmProceed } from "../lib/utils";
 import { useAuth } from "../providers/AuthProvider";
 
@@ -17,22 +18,19 @@ type DealerTeamStatus = "INVITED" | "ACTIVE" | "DISABLED";
 type DealerTeamMember = {
   id: string;
   dealerId: string;
+  userId?: string;
   email: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
   role: DealerTeamRole;
   status: DealerTeamStatus;
   createdAt: string;
 };
 
 const STORAGE_KEY = "warrantyhub.local.dealer_team_members";
-const DEALER_INVITES_KEY = "warrantyhub.local.dealer_employee_invites";
 const LOCAL_USERS_KEY = "warrantyhub.local.users";
 const LOCAL_DEALER_MEMBERSHIPS_KEY = "warrantyhub.local.dealer_memberships";
-
-type DealerInvite = {
-  code: string;
-  dealerName?: string;
-  createdAt: string;
-};
 
 function readLocalUsers(): Array<{ id?: string; companyName?: string }> {
   const raw = localStorage.getItem(LOCAL_USERS_KEY);
@@ -75,39 +73,16 @@ function writeLocalDealerMemberships(items: any[]) {
   localStorage.setItem(LOCAL_DEALER_MEMBERSHIPS_KEY, JSON.stringify(items));
 }
 
-function readInvites(): Record<string, DealerInvite> {
-  const raw = localStorage.getItem(DEALER_INVITES_KEY);
-  if (!raw) return {};
-  try {
-    const parsed = JSON.parse(raw) as Record<string, Partial<DealerInvite>>;
-    const out: Record<string, DealerInvite> = {};
-    for (const [dealerId, v] of Object.entries(parsed ?? {})) {
-      const code = (v?.code ?? "").toString().trim();
-      if (!code) continue;
-      out[dealerId] = {
-        code,
-        dealerName: (v?.dealerName ?? "").toString() || undefined,
-        createdAt: (v?.createdAt ?? new Date().toISOString()).toString(),
-      };
-    }
-    return out;
-  } catch {
-    return {};
-  }
-}
 
-function writeInvites(next: Record<string, DealerInvite>) {
-  localStorage.setItem(DEALER_INVITES_KEY, JSON.stringify(next));
-}
-
-function generateInviteCode() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let out = "";
-  for (let i = 0; i < 8; i += 1) {
-    out += chars[Math.floor(Math.random() * chars.length)]!;
-  }
-  return `${out.slice(0, 4)}-${out.slice(4)}`;
-}
+type DealerTeamEmployeeDraft = {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+  password: string;
+  password2: string;
+  role: DealerTeamRole;
+};
 
 function read(): DealerTeamMember[] {
   const raw = localStorage.getItem(STORAGE_KEY);
@@ -168,52 +143,66 @@ export function DealerTeamPage() {
   if (!user) return <Navigate to="/sign-in" replace />;
   if (user.role !== "DEALER_ADMIN") return <Navigate to="/dealer-dashboard" replace />;
 
-  const dealerId = (mode === "local" ? (user.dealerId ?? user.id) : (user.dealerId ?? "")).trim();
+  const localDealerId = (user.dealerId ?? user.id).trim();
 
-  const inviteQuery = useQuery({
-    queryKey: ["dealer-employee-invite", mode, dealerId],
-    enabled: Boolean(dealerId),
+  const supabaseSessionQuery = useQuery({
+    queryKey: ["dealer-team-supabase-session", mode],
+    enabled: mode !== "local",
     queryFn: async () => {
-      if (!dealerId) return null;
-      if (mode === "local") {
-        const inv = readInvites()[dealerId];
-        const code = (inv?.code ?? "").toString().trim();
-        if (!code) return null;
-        return {
-          code,
-          dealerName: (inv?.dealerName ?? "").toString() || undefined,
-          createdAt: (inv?.createdAt ?? new Date().toISOString()).toString(),
-        };
-      }
-
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error("Supabase is not configured");
-
-      const { data, error } = await supabase
-        .from("dealer_employee_invites")
-        .select("code, created_at, updated_at")
-        .eq("dealer_id", dealerId)
-        .maybeSingle();
-
-      if (error) throw new Error(error.message);
-      if (!data) return null;
-
-      const code = (data as any)?.code;
-      if (!code) return null;
-
-      return {
-        code: code.toString(),
-        createdAt: ((data as any)?.updated_at ?? (data as any)?.created_at ?? new Date().toISOString()).toString(),
-      };
+      const res = await supabase.auth.getSession();
+      return res.data.session ?? null;
     },
   });
 
-  const inviteCode = (inviteQuery.data?.code ?? "").trim();
-  const inviteLink = inviteCode ? `${window.location.origin}/dealer-employee-signup?code=${encodeURIComponent(inviteCode)}` : "";
+  if (mode !== "local" && supabaseSessionQuery.isSuccess && !supabaseSessionQuery.data) {
+    return <Navigate to="/sign-in" replace />;
+  }
+
+  const dealerIdQuery = useQuery({
+    queryKey: ["dealer-team-dealer-id", mode, user.id],
+    enabled: mode !== "local" && supabaseSessionQuery.isSuccess && Boolean(supabaseSessionQuery.data?.user?.id),
+    queryFn: async () => {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error("Supabase is not configured");
+
+      const sessionRes = await supabase.auth.getSession();
+      const authedUserId = (sessionRes.data.session?.user?.id ?? "").toString().trim();
+      if (!authedUserId) throw new Error("Not authenticated");
+
+      const { data, error } = await supabase
+        .from("dealer_members")
+        .select("dealer_id, role, status")
+        .eq("user_id", authedUserId)
+        .eq("status", "ACTIVE")
+        .maybeSingle();
+
+      if (error) throw new Error(error.message);
+      if (!data) return "";
+
+      return ((data as any)?.dealer_id ?? "").toString().trim();
+    },
+  });
+
+  const dealerId = (mode === "local" ? localDealerId : (dealerIdQuery.data ?? "")).trim();
+
   const [error, setError] = useState<string | null>(null);
 
+  const [editingDealerMemberId, setEditingDealerMemberId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<DealerTeamEmployeeDraft>({
+    firstName: "",
+    lastName: "",
+    phone: "",
+    email: "",
+    password: "",
+    password2: "",
+    role: "DEALER_EMPLOYEE",
+  });
+
   const listQuery = useQuery({
-    queryKey: ["dealer-team"],
+    queryKey: ["dealer-team", mode, dealerId],
+    enabled: Boolean(dealerId) && (mode === "local" || dealerIdQuery.isSuccess),
     queryFn: async () => {
       if (!dealerId) return [];
       if (mode === "local") {
@@ -227,7 +216,7 @@ export function DealerTeamPage() {
 
       const { data, error } = await supabase
         .from("dealer_members")
-        .select("id, dealer_id, user_id, role, status, created_at, profiles:profiles(email)")
+        .select("id, dealer_id, user_id, role, status, created_at, profiles:profiles(email, first_name, last_name, phone)")
         .eq("dealer_id", dealerId)
         .order("created_at", { ascending: false });
 
@@ -237,7 +226,11 @@ export function DealerTeamPage() {
         (r): DealerTeamMember => ({
           id: (r?.id ?? "").toString(),
           dealerId: (r?.dealer_id ?? "").toString(),
+          userId: (r?.user_id ?? "").toString() || undefined,
           email: ((r?.profiles?.email ?? "") as string).toString(),
+          firstName: ((r?.profiles?.first_name ?? "") as string).toString() || undefined,
+          lastName: ((r?.profiles?.last_name ?? "") as string).toString() || undefined,
+          phone: ((r?.profiles?.phone ?? "") as string).toString() || undefined,
           role: (r?.role === "DEALER_ADMIN" ? "DEALER_ADMIN" : "DEALER_EMPLOYEE") as DealerTeamRole,
           status:
             r?.status === "ACTIVE" ? "ACTIVE" : r?.status === "DISABLED" ? "DISABLED" : ("INVITED" as DealerTeamStatus),
@@ -247,9 +240,165 @@ export function DealerTeamPage() {
     },
   });
 
+  const createEmployeeMutation = useMutation({
+    mutationFn: async () => {
+      if (mode !== "local" && (!supabaseSessionQuery.data || !supabaseSessionQuery.data.user?.id)) {
+        throw new Error("Not authenticated");
+      }
+      if (!dealerId) throw new Error("Missing dealerId");
+
+      if (mode !== "local" && dealerIdQuery.isLoading) throw new Error("Loading dealership…");
+
+      const firstName = draft.firstName.trim();
+      const lastName = draft.lastName.trim();
+      const phone = draft.phone.trim();
+      const email = normalizeEmail(draft.email);
+      const password = draft.password;
+
+      if (!firstName) throw new Error("First Name is required");
+      if (!lastName) throw new Error("Last Name is required");
+      if (!email) throw new Error("Email is required");
+      if (!password) throw new Error("Password is required");
+      if (password !== draft.password2) throw new Error("Passwords do not match");
+
+      if (mode === "local") {
+        const items = read();
+        const next: DealerTeamMember = {
+          id: crypto.randomUUID(),
+          dealerId,
+          email,
+          role: draft.role,
+          status: "ACTIVE",
+          createdAt: new Date().toISOString(),
+        };
+        write([next, ...items]);
+
+        const users = readLocalUsersRaw();
+        writeLocalUsersRaw([
+          {
+            id: crypto.randomUUID(),
+            email,
+            password,
+            role: draft.role,
+            dealerId,
+            companyName: "",
+            isActive: true,
+          },
+          ...users,
+        ]);
+
+        logAuditEvent({
+          kind: "DEALER_STAFF_ADDED",
+          actorUserId: user?.id,
+          actorEmail: user?.email,
+          actorRole: user?.role,
+          dealerId,
+          entityType: "dealer_team_member",
+          entityId: next.id,
+          message: `Added ${email}`,
+        });
+
+        return;
+      }
+
+      await invokeEdgeFunction<{ dealerMemberId: string | null; userId: string }>("dealer-team-tools", {
+        action: "create_employee",
+        employee: {
+          firstName,
+          lastName,
+          phone: phone || undefined,
+          email,
+          password,
+          role: draft.role,
+        },
+      });
+
+      logAuditEvent({
+        kind: "DEALER_STAFF_ADDED",
+        actorUserId: user?.id,
+        actorEmail: user?.email,
+        actorRole: user?.role,
+        dealerId,
+        entityType: "dealer_team_member",
+        entityId: "",
+        message: `Added ${email}`,
+      });
+    },
+    onSuccess: async () => {
+      setEditingDealerMemberId(null);
+      setDraft({ firstName: "", lastName: "", phone: "", email: "", password: "", password2: "", role: "DEALER_EMPLOYEE" });
+      await qc.invalidateQueries({ queryKey: ["dealer-team"] });
+    },
+    onError: (e) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+    },
+  });
+
+  const updateEmployeeMutation = useMutation({
+    mutationFn: async (dealerMemberId: string) => {
+      if (!dealerMemberId) throw new Error("Missing dealer member id");
+
+      if (mode !== "local" && (!supabaseSessionQuery.data || !supabaseSessionQuery.data.user?.id)) {
+        throw new Error("Not authenticated");
+      }
+
+      if (!dealerId) throw new Error("Missing dealerId");
+      if (mode !== "local" && dealerIdQuery.isLoading) throw new Error("Loading dealership…");
+
+      const firstName = draft.firstName.trim();
+      const lastName = draft.lastName.trim();
+      const phone = draft.phone.trim();
+      const email = normalizeEmail(draft.email);
+      const password = draft.password;
+
+      if (!firstName) throw new Error("First Name is required");
+      if (!lastName) throw new Error("Last Name is required");
+      if (!email) throw new Error("Email is required");
+      if (!password) throw new Error("Password is required");
+      if (password !== draft.password2) throw new Error("Passwords do not match");
+
+      if (mode === "local") {
+        const items = read();
+        const idx = items.findIndex((m) => m.id === dealerMemberId);
+        if (idx < 0) throw new Error("Team member not found");
+        if (items[idx]!.dealerId !== dealerId) throw new Error("Not authorized");
+        const updated = [...items];
+        updated[idx] = { ...updated[idx]!, email, role: draft.role };
+        write(updated);
+        return;
+      }
+
+      await invokeEdgeFunction<{ ok: true }>("dealer-team-tools", {
+        action: "update_employee",
+        dealerMemberId,
+        employee: {
+          firstName,
+          lastName,
+          phone: phone || undefined,
+          email,
+          password,
+          role: draft.role,
+        },
+      });
+    },
+    onSuccess: async () => {
+      setEditingDealerMemberId(null);
+      setDraft({ firstName: "", lastName: "", phone: "", email: "", password: "", password2: "", role: "DEALER_EMPLOYEE" });
+      await qc.invalidateQueries({ queryKey: ["dealer-team"] });
+    },
+    onError: (e) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+    },
+  });
+
   const disableMutation = useMutation({
     mutationFn: async (id: string) => {
-      if (mode !== "local") throw new Error("Disabling staff is not enabled in Supabase mode yet");
+      if (mode !== "local") {
+        await invokeEdgeFunction<{ ok: true }>("dealer-team-tools", { action: "set_employee_status", dealerMemberId: id, status: "DISABLED" });
+        return;
+      }
       const items = read();
       const current = items.find((m) => m.id === id);
       if (!current) return;
@@ -303,11 +452,18 @@ export function DealerTeamPage() {
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["dealer-team"] });
     },
+    onError: (e) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+    },
   });
 
   const enableMutation = useMutation({
     mutationFn: async (id: string) => {
-      if (mode !== "local") throw new Error("Enabling staff is not enabled in Supabase mode yet");
+      if (mode !== "local") {
+        await invokeEdgeFunction<{ ok: true }>("dealer-team-tools", { action: "set_employee_status", dealerMemberId: id, status: "ACTIVE" });
+        return;
+      }
       const items = read();
       const idx = items.findIndex((m) => m.id === id);
       if (idx < 0) throw new Error("Team member not found");
@@ -364,118 +520,118 @@ export function DealerTeamPage() {
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["dealer-team"] });
     },
+    onError: (e) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+    },
   });
 
   const members = (listQuery.data ?? []) as DealerTeamMember[];
-  const busy = disableMutation.isPending || enableMutation.isPending;
+  const busy =
+    disableMutation.isPending ||
+    enableMutation.isPending ||
+    createEmployeeMutation.isPending ||
+    updateEmployeeMutation.isPending;
 
   return (
     <PageShell
       title=""
     >
       {error ? <div className="text-sm text-destructive">{error}</div> : null}
+      {!error && mode !== "local" && supabaseSessionQuery.isLoading ? (
+        <div className="text-sm text-muted-foreground">Checking session…</div>
+      ) : null}
+      {!error && mode !== "local" && supabaseSessionQuery.isError ? (
+        <div className="text-sm text-destructive">Failed to check session.</div>
+      ) : null}
+      {!error && mode !== "local" && dealerIdQuery.isLoading ? (
+        <div className="text-sm text-muted-foreground">Loading dealership…</div>
+      ) : null}
+      {!error && mode !== "local" && dealerIdQuery.isError ? (
+        <div className="text-sm text-destructive">
+          Failed to load dealership{dealerIdQuery.error instanceof Error && dealerIdQuery.error.message ? `: ${dealerIdQuery.error.message}` : "."}
+        </div>
+      ) : null}
 
       <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden">
         <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap">
-          <div className="font-semibold">Invite Employee</div>
+          <div className="font-semibold">{editingDealerMemberId ? "Edit Employee" : "Add Employee"}</div>
           <div className="flex items-center gap-2 flex-wrap">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!dealerId}
-              onClick={() => {
-                void (async () => {
-                  if (!dealerId) return;
-                  if (!(await confirmProceed(inviteCode ? "Regenerate invite code?" : "Generate invite code?"))) return;
-
-                  const nextCode = generateInviteCode();
-                  const now = new Date().toISOString();
-
-                  if (mode === "local") {
-                    const invites = readInvites();
-                    const users = readLocalUsers();
-                    const dealerName = (users.find((u) => u.id === dealerId)?.companyName ?? "").toString().trim() || undefined;
-                    writeInvites({ ...invites, [dealerId]: { code: nextCode, dealerName, createdAt: now } });
-                  } else {
-                    const supabase = getSupabaseClient();
-                    if (!supabase) throw new Error("Supabase is not configured");
-
-                    const { error } = await supabase
-                      .from("dealer_employee_invites")
-                      .upsert(
-                        {
-                          dealer_id: dealerId,
-                          code: nextCode,
-                          created_by: user?.id ?? null,
-                          updated_at: now,
-                        },
-                        { onConflict: "dealer_id" },
-                      );
-
-                    if (error) throw new Error(error.message);
-                  }
-
-                  logAuditEvent({
-                    kind: "DEALER_INVITE_CODE_GENERATED",
-                    actorUserId: user?.id,
-                    actorEmail: user?.email,
-                    actorRole: user?.role,
-                    dealerId,
-                    entityType: "dealer_invite",
-                    entityId: dealerId,
-                    message: inviteCode ? "Regenerated invite code" : "Generated invite code",
-                  });
-
-                  await qc.invalidateQueries({ queryKey: ["dealer-employee-invite"] });
-                })();
-              }}
-            >
-              {inviteCode ? "Regenerate" : "Generate"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!inviteLink}
-              onClick={() => {
-                void (async () => {
-                  if (!inviteLink) return;
-                  try {
-                    await navigator.clipboard.writeText(inviteLink);
-                  } catch {
-                  }
-                })();
-              }}
-            >
-              Copy link
-            </Button>
+            {editingDealerMemberId ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={() => {
+                  setEditingDealerMemberId(null);
+                  setDraft({ firstName: "", lastName: "", phone: "", email: "", password: "", password2: "", role: "DEALER_EMPLOYEE" });
+                }}
+              >
+                Cancel
+              </Button>
+            ) : null}
           </div>
         </div>
 
-        <div className="p-6 space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
-            <div className="lg:col-span-12">
-              <div className="text-xs text-muted-foreground mb-1">Invite Link</div>
-              <div className="flex items-center gap-2">
-                <div className="flex-1">
-                  <Input value={inviteLink || "Generate an invite code to create a link"} readOnly />
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={!inviteLink}
-                  onClick={() => {
-                    void (async () => {
-                      if (!inviteLink) return;
-                      try {
-                        await navigator.clipboard.writeText(inviteLink);
-                      } catch {
-                      }
-                    })();
-                  }}
-                >
-                  Copy Link
-                </Button>
-              </div>
+        <div className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+            <div className="md:col-span-3">
+              <div className="text-xs text-muted-foreground mb-1">First Name</div>
+              <Input value={draft.firstName} onChange={(e) => setDraft((p) => ({ ...p, firstName: e.target.value }))} />
+            </div>
+            <div className="md:col-span-3">
+              <div className="text-xs text-muted-foreground mb-1">Last Name</div>
+              <Input value={draft.lastName} onChange={(e) => setDraft((p) => ({ ...p, lastName: e.target.value }))} />
+            </div>
+            <div className="md:col-span-3">
+              <div className="text-xs text-muted-foreground mb-1">Phone Number</div>
+              <Input value={draft.phone} onChange={(e) => setDraft((p) => ({ ...p, phone: e.target.value }))} />
+            </div>
+            <div className="md:col-span-3">
+              <div className="text-xs text-muted-foreground mb-1">Role</div>
+              <select
+                className="h-10 w-full rounded-md border border-input bg-white/80 px-3 text-sm shadow-sm"
+                value={draft.role}
+                onChange={(e) => setDraft((p) => ({ ...p, role: (e.target.value as DealerTeamRole) || "DEALER_EMPLOYEE" }))}
+              >
+                <option value="DEALER_EMPLOYEE">Dealer Employee</option>
+                <option value="DEALER_ADMIN">Dealer Admin</option>
+              </select>
+            </div>
+
+            <div className="md:col-span-6">
+              <div className="text-xs text-muted-foreground mb-1">Email</div>
+              <Input value={draft.email} onChange={(e) => setDraft((p) => ({ ...p, email: e.target.value }))} />
+            </div>
+            <div className="md:col-span-3">
+              <div className="text-xs text-muted-foreground mb-1">Password</div>
+              <Input type="password" value={draft.password} onChange={(e) => setDraft((p) => ({ ...p, password: e.target.value }))} />
+            </div>
+            <div className="md:col-span-3">
+              <div className="text-xs text-muted-foreground mb-1">Re-Type Password</div>
+              <Input type="password" value={draft.password2} onChange={(e) => setDraft((p) => ({ ...p, password2: e.target.value }))} />
+            </div>
+
+            <div className="md:col-span-12 flex justify-end gap-2">
+              <Button
+                disabled={
+                  busy ||
+                  (mode !== "local" && (supabaseSessionQuery.isLoading || !supabaseSessionQuery.data?.user?.id)) ||
+                  (mode !== "local" && (dealerIdQuery.isLoading || !dealerId))
+                }
+                onClick={() => {
+                  void (async () => {
+                    setError(null);
+                    if (editingDealerMemberId) {
+                      updateEmployeeMutation.mutate(editingDealerMemberId);
+                      return;
+                    }
+                    createEmployeeMutation.mutate();
+                  })();
+                }}
+              >
+                {editingDealerMemberId ? "Save Changes" : "Add Employee"}
+              </Button>
             </div>
           </div>
         </div>
@@ -500,7 +656,14 @@ export function DealerTeamPage() {
           {members.map((m) => (
             <div key={m.id} className="px-6 py-4">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                <div className="md:col-span-5 text-sm text-foreground">{m.email}</div>
+                <div className="md:col-span-5">
+                  <div className="text-sm text-foreground">{m.email}</div>
+                  {m.firstName || m.lastName || m.phone ? (
+                    <div className="text-xs text-muted-foreground">
+                      {[`${m.firstName ?? ""} ${m.lastName ?? ""}`.trim(), (m.phone ?? "").trim()].filter(Boolean).join(" • ")}
+                    </div>
+                  ) : null}
+                </div>
                 <div className="md:col-span-3">
                   <div className="h-9 w-full rounded-md border border-input bg-white/80 px-2 text-sm shadow-sm flex items-center">
                     {roleLabel(m.role)}
@@ -516,7 +679,26 @@ export function DealerTeamPage() {
                     {statusLabel(m.status)}
                   </div>
                 </div>
-                <div className="md:col-span-2 md:text-right">
+                <div className="md:col-span-2 md:text-right flex md:justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => {
+                      setEditingDealerMemberId(m.id);
+                      setDraft({
+                        firstName: m.firstName ?? "",
+                        lastName: m.lastName ?? "",
+                        phone: m.phone ?? "",
+                        email: m.email,
+                        password: "",
+                        password2: "",
+                        role: m.role,
+                      });
+                    }}
+                  >
+                    Edit
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
@@ -544,7 +726,7 @@ export function DealerTeamPage() {
           {listQuery.isLoading ? <div className="px-6 py-6 text-sm text-muted-foreground">Loading…</div> : null}
           {listQuery.isError ? <div className="px-6 py-6 text-sm text-destructive">Failed to load team.</div> : null}
           {!listQuery.isLoading && !listQuery.isError && members.length === 0 ? (
-            <div className="px-6 py-10 text-sm text-muted-foreground">No staff yet. Invite your first team member.</div>
+            <div className="px-6 py-10 text-sm text-muted-foreground">No staff yet. Add your first employee above.</div>
           ) : null}
         </div>
       </div>

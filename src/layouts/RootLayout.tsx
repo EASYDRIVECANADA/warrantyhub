@@ -12,6 +12,7 @@ import { useAuth } from "../providers/AuthProvider";
 import {
   BarChart3,
   Cog,
+  ChevronDown,
   CreditCard,
   DollarSign,
   FileText,
@@ -19,6 +20,7 @@ import {
   LogOut,
   Menu,
   Package,
+  Settings,
   Store,
   Text,
   User,
@@ -117,6 +119,7 @@ export function RootLayout() {
   const [isDealerAdminMobileNavOpen, setIsDealerAdminMobileNavOpen] = useState(false);
   const [isProviderMobileNavOpen, setIsProviderMobileNavOpen] = useState(false);
   const [isSuperAdminMobileNavOpen, setIsSuperAdminMobileNavOpen] = useState(false);
+  const [isDealerAdminSettingsOpen, setIsDealerAdminSettingsOpen] = useState(false);
 
   useEffect(() => {
     setIsDealerAdminMobileNavOpen(false);
@@ -203,6 +206,17 @@ export function RootLayout() {
     return on === "1" || on === "true" || on === "yes" || on === "on";
   })();
 
+  const dealerAdminSettingsActive =
+    location.pathname.startsWith("/dealer-configure") ||
+    location.pathname.startsWith("/dealer-team") ||
+    location.pathname.startsWith("/profile") ||
+    location.pathname.startsWith("/dealer-billing") ||
+    location.pathname.startsWith("/dealer-payments");
+
+  useEffect(() => {
+    if (dealerAdminSettingsActive) setIsDealerAdminSettingsOpen(true);
+  }, [dealerAdminSettingsActive]);
+
   const dealerAdminNavItems = [
     { to: "/dealer-admin", label: "Dashboard", icon: LayoutGrid, active: location.pathname === "/dealer-admin" },
     {
@@ -219,14 +233,19 @@ export function RootLayout() {
       active: location.pathname.startsWith("/dealer-remittances"),
     },
     { to: "/dealer-reporting", label: "Reporting", icon: BarChart3, active: location.pathname.startsWith("/dealer-reporting") },
-    { to: "/dealer-configure", label: "Retail", icon: Cog, active: location.pathname.startsWith("/dealer-configure") },
-    ...(subscriptionsDisabled
-      ? ([] as const)
-      : ([{ to: "/dealer-billing", label: "Subscription", icon: CreditCard, active: location.pathname.startsWith("/dealer-billing") }] as const)),
-    { to: "/dealer-team", label: "Team", icon: Users, active: location.pathname.startsWith("/dealer-team") },
   ] as const;
 
-  const dealerAdminSecondaryItems = [
+  const dealerAdminSecondaryItems = [] as const;
+
+  const dealerAdminSettingsItems = [
+    { to: "/dealer-configure", label: "Configuration", icon: Cog, active: location.pathname.startsWith("/dealer-configure") },
+    { to: "/dealer-team", label: "Team", icon: Users, active: location.pathname.startsWith("/dealer-team") },
+    ...(subscriptionsDisabled
+      ? ([] as const)
+      : ([{ to: "/dealer-billing", label: "Plans", icon: CreditCard, active: location.pathname.startsWith("/dealer-billing") }] as const)),
+    ...(subscriptionsDisabled
+      ? ([] as const)
+      : ([{ to: "/dealer-payments", label: "Payments", icon: DollarSign, active: location.pathname.startsWith("/dealer-payments") }] as const)),
     { to: "/profile", label: "Profile", icon: User, active: location.pathname.startsWith("/profile") },
   ] as const;
 
@@ -249,6 +268,7 @@ export function RootLayout() {
     { to: "/platform", label: "Platform Dashboard", icon: LayoutGrid, active: location.pathname === "/platform" },
     { to: "/admin-access-requests", label: "Access Requests", icon: Users, active: location.pathname.startsWith("/admin-access-requests") },
     { to: "/admin-companies", label: "Companies", icon: Package, active: location.pathname.startsWith("/admin-companies") },
+    { to: "/admin-dealerships", label: "Dealerships", icon: Store, active: location.pathname.startsWith("/admin-dealerships") },
     { to: "/admin-users", label: "Platform Users", icon: User, active: location.pathname.startsWith("/admin-users") },
     { to: "/audit-logs", label: "Audit Logs", icon: FileText, active: location.pathname.startsWith("/audit-logs") },
   ] as const;
@@ -322,6 +342,59 @@ export function RootLayout() {
 
                   <div className="pt-3 mt-3 border-t border-white/15" />
                   <div className="space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsDealerAdminSettingsOpen((v) => !v)}
+                      className={cn(
+                        buttonVariants({ variant: "ghost", size: "sm" }),
+                        `w-full ${isDealerAdminSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium`,
+                        dealerAdminSettingsActive
+                          ? "bg-white/15 text-white hover:bg-white/20"
+                          : "text-white/85 hover:text-white hover:bg-white/10",
+                      )}
+                      aria-expanded={isDealerAdminSettingsOpen}
+                    >
+                      <span className="flex items-center gap-2" title={isDealerAdminSidebarCollapsed ? "Settings" : undefined}>
+                        <Settings className="h-4 w-4" />
+                        {!isDealerAdminSidebarCollapsed ? <span>Settings</span> : null}
+                      </span>
+                      {!isDealerAdminSidebarCollapsed ? (
+                        <ChevronDown className={cn("h-4 w-4 ml-auto transition-transform", isDealerAdminSettingsOpen ? "rotate-180" : "")} />
+                      ) : null}
+                    </button>
+
+                    {isDealerAdminSidebarCollapsed ? null : isDealerAdminSettingsOpen ? (
+                      <div className="pl-3 space-y-1">
+                        {dealerAdminSettingsItems.map((item) => (
+                          <Link
+                            key={item.to + item.label}
+                            to={item.to}
+                            onClick={(e) => {
+                              setIsDealerAdminMobileNavOpen(false);
+                              if (location.pathname.startsWith("/dealer-marketplace/compare")) {
+                                e.preventDefault();
+                                window.location.assign(item.to);
+                              }
+                            }}
+                            className={cn(
+                              buttonVariants({ variant: "ghost", size: "sm" }),
+                              "w-full justify-start h-9 text-[13px] font-medium",
+                              item.active
+                                ? "bg-white/15 text-white hover:bg-white/20"
+                                : "text-white/85 hover:text-white hover:bg-white/10",
+                            )}
+                          >
+                            <span className="flex items-center gap-2">
+                              <item.icon className="h-4 w-4" />
+                              <span>{item.label}</span>
+                            </span>
+                          </Link>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="space-y-1">
                     {dealerAdminSecondaryItems.map((item) => (
                       <Link
                         key={item.to}
@@ -353,8 +426,8 @@ export function RootLayout() {
                       size={isDealerAdminSidebarCollapsed ? "icon" : "sm"}
                       className={cn(
                         isDealerAdminSidebarCollapsed
-                          ? "text-white/85 hover:text-white hover:bg-red-500/20"
-                          : "bg-red-500/20 text-white hover:bg-red-500/25 hover:text-white",
+                          ? "mt-2 text-white/85 hover:text-white hover:bg-red-500/20"
+                          : "mt-2 bg-red-500/20 text-white hover:bg-red-500/25 hover:text-white",
                       )}
                       title={isDealerAdminSidebarCollapsed ? "Sign Out" : undefined}
                       onClick={() => {
@@ -469,6 +542,58 @@ export function RootLayout() {
 
                     <div className="pt-3 mt-3 border-t border-white/15" />
                     <div className="space-y-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsDealerAdminSettingsOpen((v) => !v)}
+                        className={cn(
+                          buttonVariants({ variant: "ghost", size: "sm" }),
+                          "w-full justify-start h-9 text-[13px] font-medium",
+                          dealerAdminSettingsActive
+                            ? "bg-white/15 text-white hover:bg-white/20"
+                            : "text-white/85 hover:text-white hover:bg-white/10",
+                        )}
+                        aria-expanded={isDealerAdminSettingsOpen}
+                      >
+                        <span className="flex items-center gap-2">
+                          <Settings className="h-4 w-4" />
+                          <span>Settings</span>
+                        </span>
+                        <ChevronDown className={cn("h-4 w-4 ml-auto transition-transform", isDealerAdminSettingsOpen ? "rotate-180" : "")} />
+                      </button>
+
+                      {isDealerAdminSettingsOpen ? (
+                        <div className="pl-3 space-y-1">
+                          {dealerAdminSettingsItems.map((item) => (
+                            <Link
+                              key={item.to + item.label}
+                              to={item.to}
+                              onClick={(e) => {
+                                setIsDealerAdminMobileNavOpen(false);
+                                if (location.pathname.startsWith("/dealer-marketplace/compare")) {
+                                  e.preventDefault();
+                                  window.location.assign(item.to);
+                                }
+                              }}
+                              className={cn(
+                                buttonVariants({ variant: "ghost", size: "sm" }),
+                                "w-full justify-start h-9 text-[13px] font-medium",
+                                item.active
+                                  ? "bg-white/15 text-white hover:bg-white/20"
+                                  : "text-white/85 hover:text-white hover:bg-white/10",
+                              )}
+                            >
+                              <span className="flex items-center gap-2">
+                                <item.icon className="h-4 w-4" />
+                                <span>{item.label}</span>
+                              </span>
+                            </Link>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="pt-3 mt-3 border-t border-white/15" />
+                    <div className="space-y-1">
                       {dealerAdminSecondaryItems.map((item) => (
                         <Link
                           key={item.to}
@@ -497,7 +622,7 @@ export function RootLayout() {
 
                       <Button
                         variant="ghost"
-                        className="w-full justify-start h-9 text-[13px] font-medium text-white/85 hover:text-white hover:bg-red-500/20"
+                        className="mt-2 w-full justify-start h-9 text-[13px] font-medium text-white/85 hover:text-white hover:bg-red-500/20"
                         onClick={() => {
                           (async () => {
                             if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;

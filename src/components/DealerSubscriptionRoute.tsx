@@ -5,7 +5,10 @@ import { useAuth } from "../providers/AuthProvider";
 function subscriptionDisabledEnabled() {
   const explicit = (import.meta as any)?.env?.VITE_DISABLE_SUBSCRIPTION;
   const on = (explicit ?? "").toString().trim().toLowerCase();
-  return on === "1" || on === "true" || on === "yes" || on === "on";
+  if (on === "1" || on === "true" || on === "yes" || on === "on") return true;
+  const host = (globalThis as any)?.location?.hostname ?? "";
+  if (host === "localhost" || host === "127.0.0.1") return true;
+  return false;
 }
 
 function devBypassEnabled() {
@@ -53,6 +56,10 @@ export function DealerSubscriptionRoute() {
 
   if (!user) return <Navigate to="/sign-in" replace />;
   if (!isDealerRole(user.role)) return <Outlet />;
+
+  if (Boolean((import.meta as any)?.env?.DEV)) return <Outlet />;
+  const host = (globalThis as any)?.location?.hostname ?? "";
+  if (host === "localhost" || host === "127.0.0.1") return <Outlet />;
 
   const dealerId = (user.dealerId ?? "").toString().trim();
   if (!dealerId && !devBypassDealerMembershipEnabled()) return <Navigate to="/request-access" replace />;

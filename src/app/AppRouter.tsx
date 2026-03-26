@@ -26,6 +26,7 @@ import { DealerSubscriptionRoute } from "../components/DealerSubscriptionRoute";
 import { DealerBillingPage } from "../pages/DealerBillingPage";
 import { DealerBillingSuccessPage } from "../pages/DealerBillingSuccessPage";
 import { DealerBillingCancelPage } from "../pages/DealerBillingCancelPage";
+import { DealerPaymentsPage } from "../pages/DealerPaymentsPage";
 import { HomePage } from "../pages/HomePage";
 import { RegisterDealershipPage } from "../pages/RegisterDealershipPage";
 import { DealerEmployeeSignupPage } from "../pages/DealerEmployeeSignupPage";
@@ -43,6 +44,7 @@ import { ForgotPasswordPage } from "../pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "../pages/ResetPasswordPage";
 import { SuperAdminPlatformPage } from "../pages/SuperAdminPlatformPage";
 import { SuperAdminCompaniesPage } from "../pages/SuperAdminCompaniesPage";
+import { AdminDealershipsPage } from "../pages/AdminDealershipsPage";
 import { RequestAccessPage } from "../pages/RequestAccessPage";
 import { ProfilePage } from "../pages/ProfilePage";
 import { RemittancesPage } from "../pages/RemittancesPage";
@@ -86,6 +88,7 @@ export function AppRouter() {
           <Route path="platform" element={<SuperAdminPlatformPage />} />
           <Route path="admin-access-requests" element={<AdminAccessRequestsPage />} />
           <Route path="admin-companies" element={<SuperAdminCompaniesPage />} />
+          <Route path="admin-dealerships" element={<AdminDealershipsPage />} />
           <Route path="admin-users" element={<AdminUsersPage />} />
           <Route path="audit-logs" element={<AuditLogsPage />} />
         </Route>
@@ -94,6 +97,7 @@ export function AppRouter() {
           <Route path="dealer-billing" element={<DealerBillingPage />} />
           <Route path="dealer-billing/success" element={<DealerBillingSuccessPage />} />
           <Route path="dealer-billing/cancel" element={<DealerBillingCancelPage />} />
+          <Route path="dealer-payments" element={<DealerPaymentsPage />} />
         </Route>
 
         <Route element={<DealerSubscriptionRoute />}>

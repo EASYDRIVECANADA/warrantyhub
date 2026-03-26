@@ -377,6 +377,12 @@ verify_jwt = false
 [functions.dealer-create-contract]
 verify_jwt = false
 
+[functions.admin-dealer-tools]
+verify_jwt = false
+
+[functions.dealer-team-tools]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

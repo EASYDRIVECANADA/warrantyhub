@@ -62,6 +62,15 @@ alter table public.profiles
 alter table public.profiles
   add column if not exists provider_customer_ack_text text;
 
+alter table public.profiles
+  add column if not exists first_name text;
+
+alter table public.profiles
+  add column if not exists last_name text;
+
+alter table public.profiles
+  add column if not exists phone text;
+
 alter table public.profiles enable row level security;
 
 create or replace function public.current_role()
