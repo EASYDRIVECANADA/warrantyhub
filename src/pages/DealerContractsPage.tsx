@@ -818,13 +818,35 @@ export function DealerContractsPage() {
                       <td className="px-6 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
                           {c.status === "DRAFT" ? (
-                            <Button size="sm" variant="outline" disabled title="Only Active/Completed contracts can be printed.">
-                              Print
-                            </Button>
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 px-2 text-xs gap-1"
+                                disabled
+                                title="Only Active/Completed contracts can be printed."
+                              >
+                                Dealer Copy
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 px-2 text-xs gap-1"
+                                disabled
+                                title="Only Active/Completed contracts can be printed."
+                              >
+                                Customer Copy
+                              </Button>
+                            </>
                           ) : (
-                            <Button size="sm" variant="outline" asChild>
-                              <Link to={`/dealer-contracts/${c.id}/print/dealer`}>Print</Link>
-                            </Button>
+                            <>
+                              <Button size="sm" variant="outline" className="h-8 px-2 text-xs gap-1" asChild>
+                                <Link to={`/dealer-contracts/${c.id}/print/dealer`}>Dealer Copy</Link>
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-8 px-2 text-xs gap-1" asChild>
+                                <Link to={`/dealer-contracts/${c.id}/print/customer`}>Customer Copy</Link>
+                              </Button>
+                            </>
                           )}
                           <Button size="sm" variant="outline" asChild>
                             <Link to={`/dealer-contracts/${c.id}`}>Edit</Link>
