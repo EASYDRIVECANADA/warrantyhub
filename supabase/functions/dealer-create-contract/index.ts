@@ -4,6 +4,11 @@ import { getAuthedSupabaseClient, getServiceSupabaseClient } from "../_shared/su
 
 type CreateContractInput = Record<string, unknown> & { dealerId?: string };
 
+function envFlag(name: string): boolean {
+  const v = (Deno.env.get(name) ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
 function json(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
     status,
@@ -70,7 +75,8 @@ Deno.serve(async (req: Request) => {
     const now = Date.now();
     const isInGrace = status === "canceled" && typeof periodEnd === "number" && periodEnd > now;
     const isActive = status === "active" || status === "trialing" || isInGrace;
-    if (!isActive) {
+    const bypassSubscription = envFlag("BYPASS_SUBSCRIPTION_CHECK");
+    if (!isActive && !bypassSubscription) {
       console.log("subscription_check_failed", {
         dealerId,
         status,
@@ -87,7 +93,7 @@ Deno.serve(async (req: Request) => {
     let paymentIntentId: string | null = null;
     let paymentIntentStatus: string | null = null;
 
-    if (planKey === "STANDARD" && feeCents > 0) {
+    if (!bypassSubscription && planKey === "STANDARD" && feeCents > 0) {
       if (!customerId) return json(400, { error: "Dealership missing Stripe customer" });
       const stripe = getStripe();
       try {
