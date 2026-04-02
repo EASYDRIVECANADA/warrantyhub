@@ -1,3 +1,4 @@
+
 import { Link, useLocation } from "react-router-dom";
 
 import { Button } from "./ui/button";
@@ -51,7 +52,7 @@ export function Navbar() {
   const brandPath = user?.role === "SUPER_ADMIN" ? "/platform" : dashboardPath ?? "/find-insurance";
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-xl border-b border-border shadow-card">
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200/80 shadow-sm">
       <div className="container mx-auto px-4">
         <div className="grid grid-cols-2 md:grid-cols-3 items-center h-16 gap-4">
           <div className="flex items-center">

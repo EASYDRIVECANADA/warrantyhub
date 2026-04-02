@@ -1077,7 +1077,9 @@ export function DealerContractPrintPage() {
             border: none !important;
 
             border-radius: 0 !important;
-
+            -webkit-box-decoration-break: clone !important;
+            box-decoration-break: clone !important;
+            overflow: visible !important;
           }
 
 
@@ -1239,7 +1241,13 @@ export function DealerContractPrintPage() {
             grid-template-columns: 1fr 1fr !important;
 
             column-gap: 24px !important;
+            align-items: start !important;
+            grid-auto-rows: max-content !important;
+          }
 
+          .print-grid-2 > * {
+            height: fit-content !important;
+            align-self: start !important;
           }
 
 
@@ -1249,7 +1257,7 @@ export function DealerContractPrintPage() {
             border-left: 1px solid #e2e8f0 !important;
 
             padding-left: 24px !important;
-
+            align-self: start !important;
           }
 
 
@@ -1259,8 +1267,11 @@ export function DealerContractPrintPage() {
             margin-top: 0 !important;
 
           }
-
-
+          .contract-print-terms {
+            border: none !important;
+            margin-top: 0 !important;
+            padding: 10mm 5mm 5mm 5mm !important;
+          }
 
           .gap-agreement-container {
 
@@ -1449,33 +1460,21 @@ export function DealerContractPrintPage() {
               <div className="flex items-start justify-between gap-8">
 
                 <div>
-
                   <div className="flex items-start">
-
                     <img src={bridgeWarrantyLogoUrl} alt={BRAND.name} className="h-16 w-auto object-contain" />
-
                   </div>
-
                   <h1 className="text-sm font-semibold tracking-tight mt-2">Warranty Contract • {titleForCopyType(type)}</h1>
-
                   <div className="text-xs text-slate-500 mt-1">Printed copy for records and audit trail.</div>
-
                 </div>
 
 
 
                 <div className="text-right">
-
                   {providerForContract?.logoUrl ? (
-
                     <div className="flex justify-end">
-
                       <img src={providerForContract.logoUrl} alt="" className="h-10 w-auto object-contain" />
-
                     </div>
-
                   ) : null}
-
                   <div className="text-[11px] uppercase tracking-widest text-slate-500">Warranty ID</div>
 
                   <div className="text-xl font-semibold tracking-wide mt-1">{contract.warrantyId}</div>
@@ -1567,23 +1566,16 @@ export function DealerContractPrintPage() {
                       </div>
 
                     </div>
-
-                    <div className="space-y-4 print-col-divider print-no-stack">
-
-                      <div>
-
-                        <div className="text-slate-600">Phone</div>
-
-                        <div className="font-medium">{contract.customerPhone || "—"}</div>
-
-                      </div>
-
-                      <div>
-
-                        <div className="text-slate-600">Address</div>
-
-                        <div className="font-medium">{addressLine || "—"}</div>
-
+                    <div className="print-no-stack">
+                      <div className="space-y-4 print-col-divider">
+                        <div>
+                          <div className="text-slate-600">Phone</div>
+                          <div className="font-medium">{contract.customerPhone || "—"}</div>
+                        </div>
+                        <div>
+                          <div className="text-slate-600">Address</div>
+                          <div className="font-medium">{addressLine || "—"}</div>
+                        </div>
                       </div>
 
                     </div>
@@ -1665,31 +1657,20 @@ export function DealerContractPrintPage() {
                       </div>
 
                     </div>
-
-                    <div className="space-y-3 print-col-divider print-no-stack">
-
-                      <div>
-
-                        <div className="text-slate-600">Provider</div>
-
-                        <div className="font-medium">{providerDisplay(selectedProduct?.providerId ?? contract.providerId)}</div>
-
-                      </div>
-
-                      <div>
-
-                        <div className="text-slate-600">Warranty ID</div>
-
-                        <div className="font-medium">{contract.warrantyId || "—"}</div>
-
-                      </div>
-
-                      <div>
-
-                        <div className="text-slate-600">Contract #</div>
-
-                        <div className="font-medium">{contract.contractNumber || "—"}</div>
-
+                    <div className="print-no-stack">
+                      <div className="space-y-3 print-col-divider">
+                        <div>
+                          <div className="text-slate-600">Provider</div>
+                          <div className="font-medium">{providerDisplay(selectedProduct?.providerId ?? contract.providerId)}</div>
+                        </div>
+                        <div>
+                          <div className="text-slate-600">Warranty ID</div>
+                          <div className="font-medium">{contract.warrantyId || "—"}</div>
+                        </div>
+                        <div>
+                          <div className="text-slate-600">Contract #</div>
+                          <div className="font-medium">{contract.contractNumber || "—"}</div>
+                        </div>
                       </div>
 
                     </div>
@@ -1737,41 +1718,24 @@ export function DealerContractPrintPage() {
                       </div>
 
                     </div>
-
-
-
-                    <div className="space-y-3 print-col-divider print-no-stack">
-
-                      <div>
-
-                        <div className="text-slate-600">Mileage (km)</div>
-
-                        <div className="font-medium">
-
-                          {typeof contract.vehicleMileageKm === "number" && Number.isFinite(contract.vehicleMileageKm)
-
-                            ? contract.vehicleMileageKm.toLocaleString()
-
-                            : "—"}
-
+                    <div className="print-no-stack">
+                      <div className="space-y-3 print-col-divider">
+                        <div>
+                          <div className="text-slate-600">Mileage (km)</div>
+                          <div className="font-medium">
+                            {typeof contract.vehicleMileageKm === "number" && Number.isFinite(contract.vehicleMileageKm)
+                              ? contract.vehicleMileageKm.toLocaleString()
+                              : "—"}
+                          </div>
                         </div>
-
-                      </div>
-
-                      <div>
-
-                        <div className="text-slate-600">Engine</div>
-
-                        <div className="font-medium">{contract.vehicleEngine || "—"}</div>
-
-                      </div>
-
-                      <div>
-
-                        <div className="text-slate-600">Transmission</div>
-
-                        <div className="font-medium">{contract.vehicleTransmission || "—"}</div>
-
+                        <div>
+                          <div className="text-slate-600">Engine</div>
+                          <div className="font-medium">{contract.vehicleEngine || "—"}</div>
+                        </div>
+                        <div>
+                          <div className="text-slate-600">Transmission</div>
+                          <div className="font-medium">{contract.vehicleTransmission || "—"}</div>
+                        </div>
                       </div>
 
                     </div>
@@ -1845,8 +1809,6 @@ export function DealerContractPrintPage() {
                 </div>
 
               </div>
-
-
 
               <div className="contract-print-terms print-break-before print-avoid-break border border-slate-200 p-5 mt-7">
 

@@ -1,3 +1,4 @@
+
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -64,46 +65,7 @@ type ActivityItem =
   | { kind: "contract"; id: string; createdAt: string; label: string }
   | { kind: "remittance"; id: string; createdAt: string; label: string };
 
-type SummaryCard = {
-  title: string;
-  value: string;
-  subtitle?: string;
-  icon: "contracts" | "money" | "calendar" | "marketplace" | "team";
-  href?: string;
-};
-
 type TrendPoint = { label: string; value: number };
-
-function accentForSummary(kind: SummaryCard["icon"]) {
-  if (kind === "contracts") {
-    return {
-      ring: "ring-sky-500/15",
-      iconWrap: "bg-gradient-to-br from-sky-500/20 to-indigo-500/15 border-sky-500/20 text-sky-700",
-    };
-  }
-  if (kind === "money") {
-    return {
-      ring: "ring-amber-500/15",
-      iconWrap: "bg-gradient-to-br from-amber-500/25 to-orange-500/15 border-amber-500/25 text-amber-700",
-    };
-  }
-  if (kind === "calendar") {
-    return {
-      ring: "ring-emerald-500/15",
-      iconWrap: "bg-gradient-to-br from-emerald-500/20 to-cyan-500/15 border-emerald-500/20 text-emerald-700",
-    };
-  }
-  if (kind === "marketplace") {
-    return {
-      ring: "ring-violet-500/15",
-      iconWrap: "bg-gradient-to-br from-violet-500/20 to-fuchsia-500/15 border-violet-500/20 text-violet-700",
-    };
-  }
-  return {
-    ring: "ring-indigo-500/15",
-    iconWrap: "bg-gradient-to-br from-indigo-500/20 to-blue-500/15 border-indigo-500/20 text-indigo-700",
-  };
-}
 
 function monthKey(d: Date) {
   const y = d.getFullYear();
@@ -131,11 +93,11 @@ function SmallBarChart({ points }: { points: TrendPoint[] }) {
           const h = Math.round((p.value / max) * 100);
           return (
             <div key={`${p.label}-${idx}`} className="col-span-2 flex flex-col items-center justify-end h-full">
-              <div className="w-full rounded-md bg-muted border overflow-hidden h-full flex items-end">
-                <div className="w-full bg-primary" style={{ height: `${h}%` }} />
+              <div className="w-full rounded-md bg-slate-100 border overflow-hidden h-full flex items-end">
+                <div className="w-full bg-blue-500" style={{ height: `${h}%` }} />
               </div>
-              <div className="mt-2 text-[11px] text-muted-foreground">{p.label}</div>
-              <div className="text-[11px] text-muted-foreground">{p.value}</div>
+              <div className="mt-2 text-[11px] text-slate-500">{p.label}</div>
+              <div className="text-[11px] text-slate-500">{p.value}</div>
             </div>
           );
         })}
@@ -372,163 +334,131 @@ export function DealerDashboardPage() {
       actions={
         <div className="w-full sm:w-[380px]">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Quick Search…" className="pl-9" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Quick Search…" className="pl-9 bg-white/80 shadow-sm" />
           </div>
         </div>
       }
     >
       <div className="relative">
-        <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-yellow-400/10 blur-2xl" />
-
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-9">
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 auto-rows-fr">
               <Link
                 to="/dealer-contracts"
-                className={
-                  "rounded-2xl border bg-card shadow-card p-6 ring-1 transition-all hover:-translate-y-0.5 hover:shadow-md overflow-hidden flex flex-col " +
-                  accentForSummary("contracts").ring
-                }
+                className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-6 ring-1 ring-slate-900/5 transition-all hover:-translate-y-0.5 hover:shadow-md overflow-hidden flex flex-col"
               >
                 <div className="flex items-center justify-between gap-4">
-                  <div className="text-sm text-muted-foreground">Contracts</div>
+                  <div className="text-sm text-slate-500">Contracts</div>
                   <div
-                    className={
-                      "shrink-0 h-12 w-12 rounded-2xl border ring-1 ring-white/30 flex items-center justify-center " +
-                      accentForSummary("contracts").iconWrap
-                    }
+                    className="shrink-0 h-12 w-12 rounded-2xl border border-slate-200/80 bg-slate-100/80 ring-1 ring-white/30 flex items-center justify-center text-slate-500"
                   >
                     <FileText className="w-6 h-6" />
                   </div>
                 </div>
-                <div className="text-3xl font-bold text-foreground mt-3 leading-none break-all">{visibleContracts.length}</div>
-                <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                <div className="text-3xl font-bold text-slate-900 mt-3 leading-none break-all">{visibleContracts.length}</div>
+                <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-slate-500">
                   <div className="flex items-center justify-between gap-2">
                     <span>Draft</span>
-                    <span className="text-foreground/80">{counts.draft}</span>
+                    <span className="text-slate-700">{counts.draft}</span>
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <span>Sold</span>
-                    <span className="text-foreground/80">{counts.sold}</span>
+                    <span className="text-slate-700">{counts.sold}</span>
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <span>Remitted</span>
-                    <span className="text-foreground/80">{counts.remitted}</span>
+                    <span className="text-slate-700">{counts.remitted}</span>
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <span>Paid</span>
-                    <span className="text-foreground/80">{counts.paid}</span>
+                    <span className="text-slate-700">{counts.paid}</span>
                   </div>
                 </div>
               </Link>
 
               <Link
                 to="/dealer-contracts"
-                className={
-                  "rounded-2xl border bg-card shadow-card p-6 ring-1 transition-all hover:-translate-y-0.5 hover:shadow-md overflow-hidden flex flex-col " +
-                  accentForSummary("calendar").ring
-                }
+                className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-6 ring-1 ring-slate-900/5 transition-all hover:-translate-y-0.5 hover:shadow-md overflow-hidden flex flex-col"
               >
                 <div className="flex items-center justify-between gap-4">
-                  <div className="text-sm text-muted-foreground">Active</div>
+                  <div className="text-sm text-slate-500">Active</div>
                   <div
-                    className={
-                      "shrink-0 h-12 w-12 rounded-2xl border ring-1 ring-white/30 flex items-center justify-center " +
-                      accentForSummary("calendar").iconWrap
-                    }
+                    className="shrink-0 h-12 w-12 rounded-2xl border border-slate-200/80 bg-slate-100/80 ring-1 ring-white/30 flex items-center justify-center text-slate-500"
                   >
                     <Calendar className="w-6 h-6" />
                   </div>
                 </div>
-                <div className="text-3xl font-bold text-foreground mt-3 leading-none break-all">{activeContracts.length}</div>
-                <div className="text-xs text-muted-foreground mt-3 leading-relaxed">Sold / Remitted / Paid</div>
+                <div className="text-3xl font-bold text-slate-900 mt-3 leading-none break-all">{activeContracts.length}</div>
+                <div className="text-xs text-slate-500 mt-3 leading-relaxed">Sold / Remitted / Paid</div>
               </Link>
 
               {!isEmployee ? (
                 <Link
                   to="/dealer-remittances"
-                  className={
-                    "rounded-2xl border bg-card shadow-card p-6 ring-1 transition-all hover:-translate-y-0.5 hover:shadow-md overflow-hidden flex flex-col " +
-                    accentForSummary("money").ring
-                  }
+                  className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-6 ring-1 ring-slate-900/5 transition-all hover:-translate-y-0.5 hover:shadow-md overflow-hidden flex flex-col"
                 >
                   <div className="flex items-center justify-between gap-4">
-                    <div className="text-sm text-muted-foreground">Outstanding</div>
+                    <div className="text-sm text-slate-500">Outstanding</div>
                     <div
-                      className={
-                        "shrink-0 h-12 w-12 rounded-2xl border ring-1 ring-white/30 flex items-center justify-center " +
-                        accentForSummary("money").iconWrap
-                      }
+                      className="shrink-0 h-12 w-12 rounded-2xl border border-slate-200/80 bg-slate-100/80 ring-1 ring-white/30 flex items-center justify-center text-slate-500"
                     >
                       <DollarSign className="w-6 h-6" />
                     </div>
                   </div>
-                  <div className="text-3xl font-bold text-foreground mt-3 leading-none break-all">{formatMoney(pendingCents)}</div>
-                  <div className="mt-4 space-y-2 text-xs text-muted-foreground">
+                  <div className="text-3xl font-bold text-slate-900 mt-3 leading-none break-all">{formatMoney(pendingCents)}</div>
+                  <div className="mt-4 space-y-2 text-xs text-slate-500">
                     <div className="flex items-center justify-between gap-2">
                       <span>Submitted</span>
-                      <span className="text-foreground/80">{formatMoney(submittedCents)}</span>
+                      <span className="text-slate-700">{formatMoney(submittedCents)}</span>
                     </div>
                     <div className="flex items-center justify-between gap-2">
                       <span>Unsubmitted</span>
-                      <span className="text-foreground/80">{formatMoney(pendingCents)}</span>
+                      <span className="text-slate-700">{formatMoney(pendingCents)}</span>
                     </div>
                   </div>
                 </Link>
               ) : (
                 <div
-                  className={
-                    "rounded-2xl border bg-card shadow-card p-6 ring-1 overflow-hidden flex flex-col " +
-                    accentForSummary("money").ring
-                  }
+                  className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-6 ring-1 ring-slate-900/5 overflow-hidden flex flex-col"
                 >
                   <div className="flex items-center justify-between gap-4">
-                    <div className="text-sm text-muted-foreground">Outstanding</div>
+                    <div className="text-sm text-slate-500">Outstanding</div>
                     <div
-                      className={
-                        "shrink-0 h-12 w-12 rounded-2xl border ring-1 ring-white/30 flex items-center justify-center " +
-                        accentForSummary("money").iconWrap
-                      }
+                      className="shrink-0 h-12 w-12 rounded-2xl border border-slate-200/80 bg-slate-100/80 ring-1 ring-white/30 flex items-center justify-center text-slate-500"
                     >
                       <DollarSign className="w-6 h-6" />
                     </div>
                   </div>
-                  <div className="text-3xl font-bold text-foreground mt-3 leading-none break-all">—</div>
-                  <div className="text-xs text-muted-foreground mt-3 leading-relaxed">Available to Dealer Admin.</div>
+                  <div className="text-3xl font-bold text-slate-900 mt-3 leading-none break-all">—</div>
+                  <div className="text-xs text-slate-500 mt-3 leading-relaxed">Available to Dealer Admin.</div>
                 </div>
               )}
 
               <Link
                 to={isEmployee ? "/dealer-contracts" : "/dealer-team"}
-                className={
-                  "rounded-2xl border bg-card shadow-card p-6 ring-1 transition-all hover:-translate-y-0.5 hover:shadow-md overflow-hidden flex flex-col " +
-                  accentForSummary("team").ring
-                }
+                className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-6 ring-1 ring-slate-900/5 transition-all hover:-translate-y-0.5 hover:shadow-md overflow-hidden flex flex-col"
               >
                 <div className="flex items-center justify-between gap-4">
-                  <div className="text-sm text-muted-foreground">Employees</div>
+                  <div className="text-sm text-slate-500">Employees</div>
                   <div
-                    className={
-                      "shrink-0 h-12 w-12 rounded-2xl border ring-1 ring-white/30 flex items-center justify-center " +
-                      accentForSummary("team").iconWrap
-                    }
+                    className="shrink-0 h-12 w-12 rounded-2xl border border-slate-200/80 bg-slate-100/80 ring-1 ring-white/30 flex items-center justify-center text-slate-500"
                   >
                     <Users className="w-6 h-6" />
                   </div>
                 </div>
-                <div className="text-3xl font-bold text-foreground mt-3 leading-none break-all">{employeeCount || 1}</div>
-                <div className="text-xs text-muted-foreground mt-3 leading-relaxed">
+                <div className="text-3xl font-bold text-slate-900 mt-3 leading-none break-all">{employeeCount || 1}</div>
+                <div className="text-xs text-slate-500 mt-3 leading-relaxed">
                   {isEmployee ? "Your activity" : "Manage dealership staff"}
                 </div>
               </Link>
 
             </div>
 
-            <div className="mt-6 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
-              <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
+            <div className="mt-6 rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden ring-1 ring-slate-900/5">
+              <div className="px-6 py-4 border-b border-slate-200/80">
                 <div className="font-semibold">Quick Actions</div>
-                <div className="text-sm text-muted-foreground mt-1">Shortcuts to common tasks.</div>
+                <div className="text-sm text-slate-500 mt-1">Shortcuts to common tasks.</div>
               </div>
               <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <Button asChild className="bg-yellow-400 text-black hover:bg-yellow-300 justify-start">
@@ -555,22 +485,22 @@ export function DealerDashboardPage() {
             </div>
 
             {!isEmployee ? (
-            <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-yellow-500/10">
-              <div className="px-6 py-4 border-b bg-gradient-to-r from-yellow-500/10 to-blue-600/10">
+            <div className="mt-8 rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden ring-1 ring-slate-900/5">
+              <div className="px-6 py-4 border-b border-slate-200/80">
                 <div className="font-semibold text-lg">Insights</div>
-                <div className="text-sm text-muted-foreground mt-1">Dealer-only analytics based on your contracts and remittances.</div>
+                <div className="text-sm text-slate-500 mt-1">Dealer-only analytics based on your contracts and remittances.</div>
               </div>
 
               <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="rounded-2xl border p-4 bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10">
+                <div className="rounded-2xl border border-slate-200/80 p-4 bg-slate-100/50">
                   <div className="font-semibold">Sales trends</div>
-                  <div className="text-sm text-muted-foreground mt-1">Contracts sold per month (last 6 months).</div>
+                  <div className="text-sm text-slate-500 mt-1">Contracts sold per month (last 6 months).</div>
                   <SmallBarChart points={salesTrend} />
                 </div>
 
-                <div className="rounded-2xl border p-4 bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10">
+                <div className="rounded-2xl border border-slate-200/80 p-4 bg-slate-100/50">
                   <div className="font-semibold">Provider mix</div>
-                  <div className="text-sm text-muted-foreground mt-1">Share of contracts sold by provider.</div>
+                  <div className="text-sm text-slate-500 mt-1">Share of contracts sold by provider.</div>
                   <div className="mt-4 space-y-3">
                     {soldByProvider.slice(0, 6).map((p) => {
                       const denom = Math.max(1, contractsSold.length);
@@ -578,37 +508,37 @@ export function DealerDashboardPage() {
                       return (
                         <div key={p.id}>
                           <div className="flex items-center justify-between gap-3 text-sm">
-                            <div className="font-medium truncate">{p.label}</div>
-                            <div className="text-xs text-muted-foreground">{p.count} ({pct}%)</div>
+                            <div className="font-medium truncate text-slate-800">{p.label}</div>
+                            <div className="text-xs text-slate-500">{p.count} ({pct}%)</div>
                           </div>
-                          <div className="mt-2 h-2 rounded-full bg-muted border overflow-hidden">
-                            <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+                          <div className="mt-2 h-2 rounded-full bg-slate-200 border overflow-hidden">
+                            <div className="h-full bg-blue-500" style={{ width: `${pct}%` }} />
                           </div>
                         </div>
                       );
                     })}
-                    {contractsSold.length === 0 ? <div className="text-sm text-muted-foreground">No sold contracts yet.</div> : null}
+                    {contractsSold.length === 0 ? <div className="text-sm text-slate-500">No sold contracts yet.</div> : null}
                   </div>
                 </div>
 
-                <div className="rounded-2xl border p-4 md:col-span-2 bg-gradient-to-br from-blue-600/5 via-transparent to-yellow-400/10">
+                <div className="rounded-2xl border border-slate-200/80 p-4 md:col-span-2 bg-slate-100/50">
                   <div className="font-semibold">Product performance</div>
-                  <div className="text-sm text-muted-foreground mt-1">Top products by contracts sold.</div>
-                  <div className="mt-4 rounded-lg border overflow-hidden">
-                    <div className="grid grid-cols-12 gap-2 px-4 py-3 border-b text-xs text-muted-foreground">
+                  <div className="text-sm text-slate-500 mt-1">Top products by contracts sold.</div>
+                  <div className="mt-4 rounded-lg border border-slate-200/80 overflow-hidden bg-white">
+                    <div className="grid grid-cols-12 gap-2 px-4 py-3 border-b border-slate-200/80 text-xs text-slate-500">
                       <div className="col-span-6">Product</div>
                       <div className="col-span-4">Provider</div>
                       <div className="col-span-2 text-right">Sold</div>
                     </div>
-                    <div className="divide-y">
+                    <div className="divide-y divide-slate-200/80">
                       {soldByProduct.slice(0, 6).map((r) => (
                         <div key={r.id} className="grid grid-cols-12 gap-2 px-4 py-3 text-sm items-center">
-                          <div className="col-span-6 font-medium truncate">{r.label}</div>
-                          <div className="col-span-4 text-muted-foreground truncate">{providerLabel(r.providerId)}</div>
-                          <div className="col-span-2 text-right text-muted-foreground">{r.count}</div>
+                          <div className="col-span-6 font-medium truncate text-slate-800">{r.label}</div>
+                          <div className="col-span-4 text-slate-500 truncate">{providerLabel(r.providerId)}</div>
+                          <div className="col-span-2 text-right text-slate-500">{r.count}</div>
                         </div>
                       ))}
-                      {contractsSold.length === 0 ? <div className="px-4 py-6 text-sm text-muted-foreground">No sales yet.</div> : null}
+                      {contractsSold.length === 0 ? <div className="px-4 py-6 text-sm text-slate-500">No sales yet.</div> : null}
                     </div>
                   </div>
                 </div>
@@ -616,11 +546,11 @@ export function DealerDashboardPage() {
             </div>
             ) : null}
 
-            <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
-              <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
+            <div className="mt-8 rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden ring-1 ring-slate-900/5">
+              <div className="px-6 py-4 border-b border-slate-200/80 flex items-center justify-between gap-4 flex-wrap">
                 <div>
                   <div className="font-semibold text-lg">Contracts Overview</div>
-                  <div className="text-sm text-muted-foreground mt-1">Draft → Sold → Remitted → Paid</div>
+                  <div className="text-sm text-slate-500 mt-1">Draft → Sold → Remitted → Paid</div>
                 </div>
                 <div className="flex gap-2 flex-wrap">
                   <Button variant="outline" size="sm" asChild>
@@ -632,32 +562,32 @@ export function DealerDashboardPage() {
                 </div>
               </div>
 
-              <div className="hidden md:grid grid-cols-12 gap-3 px-6 py-3 border-b text-xs text-muted-foreground">
+              <div className="hidden md:grid grid-cols-12 gap-3 px-6 py-3 border-b border-slate-200/80 text-xs text-slate-500">
                 <div className="col-span-3">Warranty ID</div>
                 <div className="col-span-3">Contract #</div>
                 <div className="col-span-4">Customer</div>
                 <div className="col-span-2 text-right">Actions</div>
               </div>
 
-              <div className="divide-y">
+              <div className="divide-y divide-slate-200/80">
                 {recentContracts.map((c) => (
-                  <div key={c.id} className="px-6 py-4 hover:bg-muted/30 transition-colors">
+                  <div key={c.id} className="px-6 py-4 hover:bg-slate-50/50 transition-colors">
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 md:items-center">
                       <div className="md:col-span-3">
                         <div className="flex items-center justify-between gap-3">
-                          <Link to={`/dealer-contracts/${c.id}`} className="text-sm font-medium hover:underline">
+                          <Link to={`/dealer-contracts/${c.id}`} className="text-sm font-medium hover:underline text-slate-800">
                             {asText(c.warrantyId)}
                           </Link>
-                          <div className="md:hidden text-xs text-muted-foreground">{asText(c.status)}</div>
+                          <div className="md:hidden text-xs text-slate-500">{asText(c.status)}</div>
                         </div>
-                        <div className="hidden md:block text-xs text-muted-foreground mt-1">{asText(c.status)}</div>
+                        <div className="hidden md:block text-xs text-slate-500 mt-1">{asText(c.status)}</div>
                       </div>
                       <div className="md:col-span-3 text-sm">
-                        <Link to={`/dealer-contracts/${c.id}`} className="hover:underline">
+                        <Link to={`/dealer-contracts/${c.id}`} className="hover:underline text-slate-800">
                           {asText(c.contractNumber)}
                         </Link>
                       </div>
-                      <div className="md:col-span-4 text-sm text-muted-foreground md:text-foreground">{asText(c.customerName)}</div>
+                      <div className="md:col-span-4 text-sm text-slate-500 md:text-slate-800">{asText(c.customerName)}</div>
                       <div className="md:col-span-2 flex flex-col sm:flex-row md:justify-end gap-2">
                         <Button size="sm" asChild className="w-full sm:w-auto">
                           <Link to={`/dealer-contracts/${c.id}`}>View</Link>
@@ -671,10 +601,10 @@ export function DealerDashboardPage() {
                 ))}
   
                   {contractsQuery.isLoading ? (
-                    <div className="px-6 py-6 text-sm text-muted-foreground">Loading…</div>
+                    <div className="px-6 py-6 text-sm text-slate-500">Loading…</div>
                   ) : null}
                   {!contractsQuery.isLoading && recentContracts.length === 0 ? (
-                    <div className="px-6 py-10 text-sm text-muted-foreground">
+                    <div className="px-6 py-10 text-sm text-slate-500">
                       No contracts yet.
                       <div className="mt-2">
                         <Button size="sm" asChild className="bg-yellow-400 text-black hover:bg-yellow-300">
@@ -688,45 +618,45 @@ export function DealerDashboardPage() {
 
             {q ? (
               <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
-                  <div className="px-6 py-4 border-b">
+                <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-200/80">
                     <div className="font-semibold">Search results: Contracts</div>
-                    <div className="text-sm text-muted-foreground mt-1">Matches by contract #, customer, or status.</div>
+                    <div className="text-sm text-slate-500 mt-1">Matches by contract #, customer, or status.</div>
                   </div>
-                  <div className="divide-y">
+                  <div className="divide-y divide-slate-200/80">
                     {filteredContracts.map((c) => (
-                      <Link key={c.id} to={`/dealer-contracts/${c.id}`} className="block px-6 py-4 hover:bg-muted/40">
+                      <Link key={c.id} to={`/dealer-contracts/${c.id}`} className="block px-6 py-4 hover:bg-slate-50/50">
                         <div className="flex items-center justify-between gap-3">
-                          <div className="font-medium">{asText(c.contractNumber)}</div>
-                          <div className="text-xs text-muted-foreground">{asText(c.status)}</div>
+                          <div className="font-medium text-slate-800">{asText(c.contractNumber)}</div>
+                          <div className="text-xs text-slate-500">{asText(c.status)}</div>
                         </div>
-                        <div className="text-sm text-muted-foreground mt-1">{asText(c.customerName)}</div>
+                        <div className="text-sm text-slate-500 mt-1">{asText(c.customerName)}</div>
                       </Link>
                     ))}
                     {filteredContracts.length === 0 ? (
-                      <div className="px-6 py-6 text-sm text-muted-foreground">No contract matches.</div>
+                      <div className="px-6 py-6 text-sm text-slate-500">No contract matches.</div>
                     ) : null}
                   </div>
                 </div>
 
                 {!isEmployee ? (
-                <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
-                  <div className="px-6 py-4 border-b">
+                <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-200/80">
                     <div className="font-semibold">Search results: Remittances</div>
-                    <div className="text-sm text-muted-foreground mt-1">Matches by remittance # or status.</div>
+                    <div className="text-sm text-slate-500 mt-1">Matches by remittance # or status.</div>
                   </div>
-                  <div className="divide-y">
+                  <div className="divide-y divide-slate-200/80">
                     {filteredRemittances.map((r) => (
                       <div key={r.id} className="px-6 py-4">
                         <div className="flex items-center justify-between gap-3">
-                          <div className="font-medium">{r.batchNumber}</div>
-                          <div className="text-xs text-muted-foreground">{r.status === "CLOSED" ? "Submitted" : "Pending"}</div>
+                          <div className="font-medium text-slate-800">{r.batchNumber}</div>
+                          <div className="text-xs text-slate-500">{r.status === "CLOSED" ? "Submitted" : "Pending"}</div>
                         </div>
-                        <div className="text-sm text-muted-foreground mt-1">{formatMoney(r.totalCents)}</div>
+                        <div className="text-sm text-slate-500 mt-1">{formatMoney(r.totalCents)}</div>
                       </div>
                     ))}
                     {filteredRemittances.length === 0 ? (
-                      <div className="px-6 py-6 text-sm text-muted-foreground">No remittance matches.</div>
+                      <div className="px-6 py-6 text-sm text-slate-500">No remittance matches.</div>
                     ) : null}
                   </div>
                 </div>
@@ -740,12 +670,12 @@ export function DealerDashboardPage() {
           </div>
 
           <div className="lg:col-span-3">
-            <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-yellow-500/10 lg:sticky lg:top-6">
-              <div className="px-6 py-4 border-b bg-gradient-to-r from-yellow-500/10 to-blue-600/10">
+            <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden ring-1 ring-slate-900/5 lg:sticky lg:top-6">
+              <div className="px-6 py-4 border-b border-slate-200/80">
                 <div className="font-semibold">Recent Activity</div>
-                <div className="text-sm text-muted-foreground mt-1">Recent updates across your work.</div>
+                <div className="text-sm text-slate-500 mt-1">Recent updates across your work.</div>
               </div>
-              <div className="divide-y">
+              <div className="divide-y divide-slate-200/80">
                 {activity.slice(0, 8).map((a) => {
                   const href = a.kind === "contract" ? `/dealer-contracts/${a.id}` : "/dealer-remittances";
                   const Icon = a.kind === "contract" ? FileText : DollarSign;
@@ -753,15 +683,15 @@ export function DealerDashboardPage() {
                     <Link
                       key={`${a.kind}-${a.id}`}
                       to={href}
-                      className="block px-6 py-4 hover:bg-muted/30 transition-colors"
+                      className="block px-6 py-4 hover:bg-slate-50/50 transition-colors"
                     >
                       <div className="flex items-start gap-3">
-                        <div className="mt-0.5 h-9 w-9 rounded-xl border bg-muted/40 flex items-center justify-center">
-                          <Icon className="h-4 w-4 text-muted-foreground" />
+                        <div className="mt-0.5 h-9 w-9 rounded-xl border border-slate-200/80 bg-slate-100/80 flex items-center justify-center">
+                          <Icon className="h-4 w-4 text-slate-500" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="text-sm font-medium truncate">{a.label}</div>
-                          <div className="text-xs text-muted-foreground mt-1">{new Date(a.createdAt).toLocaleString()}</div>
+                          <div className="text-sm font-medium truncate text-slate-800">{a.label}</div>
+                          <div className="text-xs text-slate-500 mt-1">{new Date(a.createdAt).toLocaleString()}</div>
                         </div>
                       </div>
                     </Link>
@@ -776,7 +706,7 @@ export function DealerDashboardPage() {
                   </div>
                 ) : null}
 
-                {activity.length === 0 ? <div className="px-6 py-10 text-sm text-muted-foreground">No activity yet.</div> : null}
+                {activity.length === 0 ? <div className="px-6 py-10 text-sm text-slate-500">No activity yet.</div> : null}
               </div>
             </div>
           </div>

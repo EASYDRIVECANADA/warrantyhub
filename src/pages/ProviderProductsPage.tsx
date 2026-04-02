@@ -5,6 +5,8 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { PageShell } from "../components/PageShell";
+import { getDocumentsApi } from "../lib/documents/documents";
+import type { ProductDocument } from "../lib/documents/types";
 import { getProductsApi } from "../lib/products/products";
 import { getProductPricingApi } from "../lib/productPricing/productPricing";
 import { getProductAddonsApi } from "../lib/productAddons/productAddons";
@@ -120,6 +122,14 @@ function eligibilitySummary(p: Product) {
   if (p.eligibilityModelAllowlist && p.eligibilityModelAllowlist.length > 0) parts.push(`${p.eligibilityModelAllowlist.length} models`);
   if (p.eligibilityTrimAllowlist && p.eligibilityTrimAllowlist.length > 0) parts.push(`${p.eligibilityTrimAllowlist.length} trims`);
   return parts.length > 0 ? parts.join(" • ") : "All";
+}
+
+function isWarrantyCoverageDoc(d: Pick<ProductDocument, "title">) {
+  const t = String(d.title ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  return t === "warranty coverage" || t === "warranty coverage image" || t === "brochure";
 }
 
 function pricingUniqKey(r: {
@@ -659,6 +669,7 @@ export function ProviderProductsPage() {
   const api = useMemo(() => getProductsApi(), []);
   const pricingApi = useMemo(() => getProductPricingApi(), []);
   const addonsApi = useMemo(() => getProductAddonsApi(), []);
+  const documentsApi = useMemo(() => getDocumentsApi(), []);
   const qc = useQueryClient();
 
   const [showEditor, setShowEditor] = useState(false);
@@ -667,6 +678,7 @@ export function ProviderProductsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const saveInFlightRef = useRef(false);
+  const brochureInputRef = useRef<HTMLInputElement | null>(null);
   const [saveInFlight, setSaveInFlight] = useState(false);
 
   const [pastePricingOpen, setPastePricingOpen] = useState(false);
@@ -685,6 +697,41 @@ export function ProviderProductsPage() {
   const [statusFilter, setStatusFilter] = useState<"ALL" | "DRAFT" | "PUBLISHED">("ALL");
 
   const editorProductId = (editor.id ?? "").trim();
+
+  const brochureDocsQuery = useQuery({
+    queryKey: ["product-documents", editorProductId],
+    enabled: showEditor && !!editorProductId,
+    queryFn: () => documentsApi.list({ productId: editorProductId }),
+  });
+
+  const brochureDocs = useMemo(() => {
+    const docs = (brochureDocsQuery.data ?? []) as ProductDocument[];
+    return docs.filter(isWarrantyCoverageDoc);
+  }, [brochureDocsQuery.data]);
+
+  const uploadBrochureMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const productId = editorProductId;
+      if (!productId) throw new Error("Save the product before uploading an image.");
+      const existing = (await documentsApi.list({ productId })) as ProductDocument[];
+      for (const d of existing.filter(isWarrantyCoverageDoc)) {
+        await documentsApi.remove(d.id);
+      }
+      return documentsApi.upload({ title: "Warranty Coverage", file, productId });
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["product-documents", editorProductId] });
+    },
+  });
+
+  const removeBrochureMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await documentsApi.remove(id);
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["product-documents", editorProductId] });
+    },
+  });
 
   const pricingRowsQuery = useQuery({
     queryKey: ["provider-product-pricing", editorProductId],
@@ -2075,7 +2122,13 @@ export function ProviderProductsPage() {
     }
   };
 
-  const busy = saveInFlight || createMutation.isPending || updateMutation.isPending || removeMutation.isPending;
+  const busy =
+    saveInFlight ||
+    createMutation.isPending ||
+    updateMutation.isPending ||
+    removeMutation.isPending ||
+    uploadBrochureMutation.isPending ||
+    removeBrochureMutation.isPending;
 
   const onDelete = (p: Product) => {
     void (async () => {
@@ -2284,6 +2337,107 @@ export function ProviderProductsPage() {
                       disabled={busy}
                     />
                   </div>
+                </div>
+
+                <div className="rounded-2xl border bg-background/40 p-4">
+                  <div className="font-semibold">Warranty coverage</div>
+                  <div className="text-sm text-muted-foreground mt-1">
+                    Upload an image (PNG/JPG) to show on the Dealer Marketplace product page.
+                  </div>
+
+                  <input
+                    ref={brochureInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={busy || !editorProductId}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!file) return;
+                      setError(null);
+                      void (async () => {
+                        try {
+                          await uploadBrochureMutation.mutateAsync(file);
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : "Failed to upload image");
+                        }
+                      })();
+                    }}
+                  />
+
+                  {!editorProductId ? (
+                    <div className="mt-4 text-sm text-muted-foreground">Save the product first, then upload the image.</div>
+                  ) : (
+                    <div className="mt-4 space-y-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => {
+                            brochureInputRef.current?.click();
+                          }}
+                        >
+                          Upload image
+                        </Button>
+                        {brochureDocs.length > 0 ? (
+                          <div className="text-sm text-muted-foreground truncate">{brochureDocs[0]?.fileName}</div>
+                        ) : (
+                          <div className="text-sm text-muted-foreground">No image uploaded yet.</div>
+                        )}
+                      </div>
+
+                      {brochureDocs.length > 0 ? (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => {
+                              void (async () => {
+                                const doc = brochureDocs[0];
+                                if (!doc) return;
+                                setError(null);
+                                try {
+                                  const url = await documentsApi.getDownloadUrl(doc);
+                                  window.open(url, "_blank", "noopener,noreferrer");
+                                } catch (err) {
+                                  setError(err instanceof Error ? err.message : "Failed to open image");
+                                }
+                              })();
+                            }}
+                          >
+                            View
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => {
+                              void (async () => {
+                                const doc = brochureDocs[0];
+                                if (!doc) return;
+                                const confirmed = window.confirm(`Remove warranty coverage image "${doc.fileName}"?`);
+                                if (!confirmed) return;
+                                setError(null);
+                                try {
+                                  await removeBrochureMutation.mutateAsync(doc.id);
+                                } catch (err) {
+                                  setError(err instanceof Error ? err.message : "Failed to remove image");
+                                }
+                              })();
+                            }}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      ) : null}
+
+                      {brochureDocsQuery.isLoading ? <div className="text-sm text-muted-foreground">Loading image…</div> : null}
+                      {brochureDocsQuery.isError ? <div className="text-sm text-destructive">Failed to load image.</div> : null}
+                    </div>
+                  )}
                 </div>
 
                 <div className="rounded-2xl border bg-background/40 p-4">

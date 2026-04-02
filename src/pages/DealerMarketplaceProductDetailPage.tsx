@@ -5,6 +5,8 @@ import { Check } from "lucide-react";
 
 import { Button } from "../components/ui/button";
 import { PageShell } from "../components/PageShell";
+import { getDocumentsApi } from "../lib/documents/documents";
+import type { ProductDocument } from "../lib/documents/types";
 import { getMarketplaceApi } from "../lib/marketplace/marketplace";
 import { getProductPricingApi } from "../lib/productPricing/productPricing";
 import { getProductAddonsApi } from "../lib/productAddons/productAddons";
@@ -99,6 +101,14 @@ function allowListLabel(items?: string[]) {
   const list = (items ?? []).map((x) => x.trim()).filter(Boolean);
   if (list.length === 0) return "All";
   return list.slice(0, 6).join(", ") + (list.length > 6 ? "…" : "");
+}
+
+function isWarrantyCoverageDoc(d: Pick<ProductDocument, "title">) {
+  const t = String(d.title ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  return t === "warranty coverage" || t === "warranty coverage image" || t === "brochure";
 }
 
 function norm(v: string) {
@@ -219,6 +229,7 @@ export function DealerMarketplaceProductDetailPage() {
   const productPricingApi = useMemo(() => getProductPricingApi(), []);
   const productAddonsApi = useMemo(() => getProductAddonsApi(), []);
   const providersApi = useMemo(() => getProvidersApi(), []);
+  const documentsApi = useMemo(() => getDocumentsApi(), []);
 
   const productsQuery = useQuery({
     queryKey: ["marketplace-products"],
@@ -226,6 +237,32 @@ export function DealerMarketplaceProductDetailPage() {
   });
 
   const product = ((productsQuery.data ?? []) as Product[]).find((p) => p.id === productId);
+  const docsQuery = useQuery({
+    queryKey: ["product-documents", productId],
+    enabled: Boolean(productId),
+    queryFn: () => documentsApi.list({ productId }),
+  });
+
+  const brochureDoc = useMemo(() => {
+    const docs = (docsQuery.data ?? []) as ProductDocument[];
+    return docs.find(isWarrantyCoverageDoc) ?? null;
+  }, [docsQuery.data]);
+
+  const brochureUrlQuery = useQuery({
+    queryKey: ["product-documents", productId, brochureDoc?.id ?? ""],
+    enabled: Boolean(brochureDoc?.id),
+    queryFn: () => {
+      if (!brochureDoc) throw new Error("Missing document");
+      return documentsApi.getDownloadUrl(brochureDoc);
+    },
+  });
+  const brochureUrl = (brochureUrlQuery.data ?? "") as string;
+  const [showCoverage, setShowCoverage] = useState(false);
+  const [coverageZoom, setCoverageZoom] = useState(1);
+  useEffect(() => {
+    setShowCoverage(false);
+    setCoverageZoom(1);
+  }, [productId]);
 
   const providersQuery = useQuery({
     queryKey: ["providers", product?.providerId ?? ""],
@@ -880,6 +917,86 @@ export function DealerMarketplaceProductDetailPage() {
                 )}
               </div>
             </div>
+
+            {brochureDoc ? (
+              <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
+                <div className="px-6 py-4 border-b">
+                  <div className="font-semibold">Warranty coverage</div>
+                </div>
+                <div className="px-6 py-6 text-sm">
+                  <button
+                    type="button"
+                    className="w-full text-left rounded-xl border bg-background/60 overflow-hidden hover:bg-background/80 transition-colors"
+                    disabled={!brochureUrl || brochureUrlQuery.isLoading || brochureUrlQuery.isError}
+                    onClick={() => setShowCoverage(true)}
+                  >
+                    <div className="p-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-xs text-muted-foreground">Warranty coverage</div>
+                        <div className="text-xs text-muted-foreground mt-1">Click to view full size</div>
+                      </div>
+                      <div className="h-14 w-20 rounded-lg border bg-white/70 overflow-hidden flex items-center justify-center shrink-0">
+                        {brochureUrl ? <img src={brochureUrl} alt="Warranty coverage" className="h-full w-full object-cover" /> : null}
+                      </div>
+                    </div>
+                  </button>
+
+                  {brochureUrlQuery.isLoading ? <div className="mt-3 text-xs text-muted-foreground">Loading image…</div> : null}
+                  {brochureUrlQuery.isError ? <div className="mt-3 text-xs text-destructive">Failed to load image.</div> : null}
+                </div>
+              </div>
+            ) : null}
+
+            {showCoverage && brochureUrl ? (
+              <div
+                className="fixed inset-0 z-[9999] bg-black/70 flex items-center justify-center p-4"
+                role="dialog"
+                aria-modal="true"
+                onClick={() => setShowCoverage(false)}
+              >
+                <div className="w-full max-w-5xl" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="text-sm font-medium text-white truncate">Warranty coverage</div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={coverageZoom <= 1}
+                        onClick={() => setCoverageZoom((z) => Math.max(1, Math.round((z - 0.25) * 100) / 100))}
+                      >
+                        -
+                      </Button>
+                      <div className="text-xs text-white/80 w-12 text-center">{Math.round(coverageZoom * 100)}%</div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={coverageZoom >= 4}
+                        onClick={() => setCoverageZoom((z) => Math.min(4, Math.round((z + 0.25) * 100) / 100))}
+                      >
+                        +
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setCoverageZoom(1)}>
+                        Reset
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setShowCoverage(false)}>
+                        Close
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl overflow-auto bg-black max-h-[85vh]">
+                    <img
+                      src={brochureUrl}
+                      alt="Warranty coverage"
+                      className="block mx-auto h-auto max-w-none object-contain select-none"
+                      style={{ width: `${coverageZoom * 100}%` }}
+                      onDoubleClick={() => setCoverageZoom((z) => (z === 1 ? 2 : 1))}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
               <div className="px-6 py-4 border-b">

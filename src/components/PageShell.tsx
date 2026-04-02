@@ -1,3 +1,4 @@
+
 import type { ReactNode } from "react";
 
 type PageShellProps = {
@@ -12,16 +13,7 @@ type PageShellProps = {
 export function PageShell({ title, subtitle, subtitleAsChild, badge, actions, children }: PageShellProps) {
   const hasHeader = Boolean(title.trim() || subtitle || badge || actions);
   return (
-    <div
-      className="relative isolate min-h-screen"
-      style={{
-        backgroundImage: "url(/images/Background.jpg?v=3)",
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundRepeat: "no-repeat",
-      }}
-    >
-      <div className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-b from-background/35 via-background/55 to-background/70" />
+    <div className="relative isolate min-h-screen bg-slate-50">
       <div className={"relative z-10 container mx-auto px-4 max-w-7xl " + (hasHeader ? "py-10" : "py-4")}>
       {hasHeader ? (
         <div className="flex items-start justify-between gap-4 flex-wrap">
