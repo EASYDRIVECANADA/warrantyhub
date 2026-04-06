@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { FileText, Package, Users } from "lucide-react";
 import { useMemo } from "react";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 import { Button } from "../components/ui/button";
 import { PageShell } from "../components/PageShell";
@@ -130,31 +130,27 @@ export function ProviderDashboardPage() {
   const publishedCount = products.filter((p) => p.published).length;
   const draftCount = products.filter((p) => !p.published).length;
 
-  const pricingHealthProductIds = useMemo(() => {
-    return products
-      .map((p) => (p.id ?? "").trim())
-      .filter(Boolean);
-  }, [products]);
-
-  const pricingHealthQueries = useQueries({
-    queries: pricingHealthProductIds.map((productId) => ({
-      queryKey: ["provider-dashboard-pricing-health", productId],
-      queryFn: () => pricingApi.list({ productId }),
-      staleTime: 15_000,
-    })),
+  const pricingHealthQueries = useQuery({
+    queryKey: ["provider-dashboard-pricing-health-all"],
+    queryFn: () => pricingApi.listAll(),
+    staleTime: 15_000,
   });
 
   const pricingHealthByProductId = useMemo(() => {
     const map = new Map<string, ReturnType<typeof validatePricingHealth>>();
-    for (let i = 0; i < pricingHealthQueries.length; i += 1) {
-      const q = pricingHealthQueries[i]!;
-      const productId = pricingHealthProductIds[i] ?? "";
-      if (!productId) continue;
-      const rows = (q.data ?? []) as ProductPricing[];
-      map.set(productId, validatePricingHealth(rows));
+    const allPricing = pricingHealthQueries.data ?? [];
+    const byProduct = new Map<string, ProductPricing[]>();
+    for (const p of allPricing) {
+      const pid = (p.productId ?? "").trim();
+      if (!pid) continue;
+      if (!byProduct.has(pid)) byProduct.set(pid, []);
+      byProduct.get(pid)!.push(p);
+    }
+    for (const [pid, rows] of byProduct) {
+      map.set(pid, validatePricingHealth(rows));
     }
     return map;
-  }, [pricingHealthProductIds, pricingHealthQueries]);
+  }, [pricingHealthQueries.data]);
 
   const publishedPricingIssuesCount = useMemo(() => {
     let n = 0;

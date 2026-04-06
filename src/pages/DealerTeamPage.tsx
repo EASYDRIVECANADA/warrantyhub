@@ -124,6 +124,16 @@ function statusLabel(s: DealerTeamStatus) {
   return "Invited";
 }
 
+function validatePassword(password: string): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  if (password.length < 8) errors.push("At least 8 characters");
+  if (!/[A-Z]/.test(password)) errors.push("At least 1 uppercase letter");
+  if (!/[a-z]/.test(password)) errors.push("At least 1 lowercase letter");
+  if (!/[0-9]/.test(password)) errors.push("At least 1 number");
+  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) errors.push("At least 1 special character");
+  return { valid: errors.length === 0, errors };
+}
+
 export function DealerTeamPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -177,6 +187,7 @@ export function DealerTeamPage() {
   const dealerId = (mode === "local" ? localDealerId : (dealerIdQuery.data ?? "")).trim();
 
   const [error, setError] = useState<string | null>(null);
+  const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
 
   const [editingDealerMemberId, setEditingDealerMemberId] = useState<string | null>(null);
   const [draft, setDraft] = useState<DealerTeamEmployeeDraft>({
@@ -248,6 +259,8 @@ export function DealerTeamPage() {
       if (!lastName) throw new Error("Last Name is required");
       if (!email) throw new Error("Email is required");
       if (!password) throw new Error("Password is required");
+      const pwValidation = validatePassword(password);
+      if (!pwValidation.valid) throw new Error(`Password requirements not met: ${pwValidation.errors.join(", ")}`);
       if (password !== draft.password2) throw new Error("Passwords do not match");
 
       if (mode === "local") {
@@ -315,6 +328,7 @@ export function DealerTeamPage() {
     },
     onSuccess: async () => {
       setEditingDealerMemberId(null);
+      setPasswordErrors([]);
       setDraft({ firstName: "", lastName: "", phone: "", email: "", password: "", password2: "", role: "DEALER_EMPLOYEE" });
       await qc.invalidateQueries({ queryKey: ["dealer-team"] });
     },
@@ -345,6 +359,8 @@ export function DealerTeamPage() {
       if (!lastName) throw new Error("Last Name is required");
       if (!email) throw new Error("Email is required");
       if (!password) throw new Error("Password is required");
+      const pwValidation = validatePassword(password);
+      if (!pwValidation.valid) throw new Error(`Password requirements not met: ${pwValidation.errors.join(", ")}`);
       if (password !== draft.password2) throw new Error("Passwords do not match");
 
       if (mode === "local") {
@@ -373,6 +389,7 @@ export function DealerTeamPage() {
     },
     onSuccess: async () => {
       setEditingDealerMemberId(null);
+      setPasswordErrors([]);
       setDraft({ firstName: "", lastName: "", phone: "", email: "", password: "", password2: "", role: "DEALER_EMPLOYEE" });
       await qc.invalidateQueries({ queryKey: ["dealer-team"] });
     },
@@ -594,7 +611,22 @@ export function DealerTeamPage() {
             </div>
             <div className="md:col-span-3">
               <div className="text-xs text-muted-foreground mb-1">Password</div>
-              <Input type="password" value={draft.password} onChange={(e) => setDraft((p) => ({ ...p, password: e.target.value }))} />
+              <Input type="password" value={draft.password} onChange={(e) => {
+                const val = e.target.value;
+                setDraft((p) => ({ ...p, password: val }));
+                setPasswordErrors(val ? validatePassword(val).errors : []);
+              }} />
+              {draft.password && (
+                <div className="mt-1 space-y-0.5">
+                  {passwordErrors.length === 0 ? (
+                    <div className="text-xs text-emerald-600">Password meets all requirements</div>
+                  ) : (
+                    passwordErrors.map((err) => (
+                      <div key={err} className="text-xs text-muted-foreground">✗ {err}</div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
             <div className="md:col-span-3">
               <div className="text-xs text-muted-foreground mb-1">Re-Type Password</div>

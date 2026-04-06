@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { PageShell } from "../components/PageShell";
@@ -112,6 +112,52 @@ export function SupportPage() {
     },
   });
 
+  const realtimeChannelRef = useRef<ReturnType<NonNullable<ReturnType<typeof getSupabaseClient>>["channel"]> | null>(null);
+
+  useEffect(() => {
+    if (mode !== "supabase" || !conversationId) return;
+
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    const channel = supabase
+      .channel(`support-chat:${conversationId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "support_messages",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        () => {
+          void qc.invalidateQueries({ queryKey: ["support-messages", mode, conversationId] });
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "support_conversations",
+          filter: `id=eq.${conversationId}`,
+        },
+        () => {
+          void qc.invalidateQueries({ queryKey: ["support-conversation", mode, user?.id] });
+        },
+      )
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+
+    return () => {
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+    };
+  }, [mode, conversationId, qc, user?.id]);
+
   const sendMutation = useMutation({
     mutationFn: async () => {
       if (mode !== "supabase") throw new Error("Support chat requires Supabase configuration");
@@ -143,10 +189,21 @@ export function SupportPage() {
           convId = (insertConv.data as any).id as string;
         } else {
           const code = (insertConv.error as any)?.code;
-          if (code === "23505") {
-            const again = await supabase.from("support_conversations").select("id").eq("user_id", user.id).single();
-            if (again.error) throw again.error;
-            convId = (again.data as any).id as string;
+          const isConstraintViolation = code?.startsWith("23");
+          if (isConstraintViolation) {
+            for (let attempt = 0; attempt < 3; attempt++) {
+              const delay = Math.pow(2, attempt) * 200;
+              await new Promise((r) => setTimeout(r, delay));
+              const again = await supabase.from("support_conversations").select("id").eq("user_id", user.id).maybeSingle();
+              if (again.error) {
+                if (attempt < 2) continue;
+                throw again.error;
+              }
+              if (!again.data) continue;
+              convId = (again.data as any).id as string;
+              break;
+            }
+            if (!convId) throw new Error("Failed to resolve conversation after race condition");
           } else {
             throw insertConv.error;
           }

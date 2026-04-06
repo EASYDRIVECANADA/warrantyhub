@@ -66,6 +66,7 @@ export function SuperAdminCompaniesPage() {
   const [newCompany, setNewCompany] = useState({
     providerCompanyName: "",
     legalBusinessName: "",
+    businessType: "WARRANTY_PROVIDER" as "WARRANTY_PROVIDER" | "DEALERSHIP",
     contactEmail: "",
     status: "PENDING" as ProviderCompanyStatus,
     phone: "",
@@ -146,7 +147,7 @@ export function SuperAdminCompaniesPage() {
       const insertRow = {
         provider_company_name: name,
         legal_business_name: legal,
-        business_type: "WARRANTY_PROVIDER",
+        business_type: newCompany.businessType,
         contact_email: email,
         status: newCompany.status,
         phone: newCompany.phone.trim() || null,
@@ -160,6 +161,7 @@ export function SuperAdminCompaniesPage() {
       setNewCompany({
         providerCompanyName: "",
         legalBusinessName: "",
+        businessType: "WARRANTY_PROVIDER",
         contactEmail: "",
         status: "PENDING",
         phone: "",
@@ -410,7 +412,15 @@ export function SuperAdminCompaniesPage() {
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Business Type</label>
-                <Input value="Warranty Provider" disabled className="bg-background/70" />
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background/70 px-3 text-sm shadow-sm"
+                  value={newCompany.businessType}
+                  onChange={(e) => setNewCompany((p) => ({ ...p, businessType: e.target.value as "WARRANTY_PROVIDER" | "DEALERSHIP" }))}
+                  disabled={busy}
+                >
+                  <option value="WARRANTY_PROVIDER">Warranty Provider</option>
+                  <option value="DEALERSHIP">Dealership</option>
+                </select>
               </div>
 
               <div className="space-y-2">

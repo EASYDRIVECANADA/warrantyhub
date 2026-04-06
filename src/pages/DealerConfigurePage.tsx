@@ -3,6 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { Input } from "../components/ui/input";
+import { useToast } from "../providers/ToastProvider";
 import { PageShell } from "../components/PageShell";
 import { Button } from "../components/ui/button";
 import { costFromProductOrPricing, retailFromCost } from "../lib/dealerPricing";
@@ -88,15 +89,21 @@ function readConfigureState(): { search?: string; providerId?: string; selectedP
   }
 }
 
-function writeConfigureState(next: { search: string; providerId: string; selectedProductId: string }) {
+function writeConfigureState(next: { search: string; providerId: string; selectedProductId: string }, toast?: (opts: { title?: string; message: string; variant?: "success" | "error" | "info" }) => void) {
   try {
     sessionStorage.setItem(CONFIGURE_STATE_KEY, JSON.stringify(next));
   } catch {
+    toast?.({
+      title: "Warning",
+      message: "Configuration may not persist. Your browser storage may be full or disabled.",
+      variant: "error",
+    });
   }
 }
 
 export function DealerConfigurePage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const mode = useMemo(() => getAppMode(), []);
 
   if (!user) return <Navigate to="/sign-in" replace />;
@@ -211,8 +218,8 @@ export function DealerConfigurePage() {
   }, [filtered, selectedProductId]);
 
   useEffect(() => {
-    writeConfigureState({ search, providerId, selectedProductId });
-  }, [providerId, search, selectedProductId]);
+    writeConfigureState({ search, providerId, selectedProductId }, toast);
+  }, [providerId, search, selectedProductId, toast]);
 
   const selectedProduct = useMemo(() => {
     const id = selectedProductId.trim();

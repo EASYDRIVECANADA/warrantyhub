@@ -258,6 +258,7 @@ type EditorState = {
 };
 
 type ProductEditorTab = "OVERVIEW" | "ELIGIBILITY" | "PRICING" | "ADDONS";
+type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
 
 type PendingAddon = {
   key: string;
@@ -675,6 +676,7 @@ export function ProviderProductsPage() {
   const [showEditor, setShowEditor] = useState(false);
   const [editor, setEditor] = useState<EditorState>(() => emptyEditor());
   const [activeTab, setActiveTab] = useState<ProductEditorTab>("OVERVIEW");
+  const [wizardStep, setWizardStep] = useState<WizardStep>(1);
   const [error, setError] = useState<string | null>(null);
 
   const saveInFlightRef = useRef(false);
@@ -1236,6 +1238,7 @@ export function ProviderProductsPage() {
     setError(null);
     setEditor(emptyEditor());
     setActiveTab("OVERVIEW");
+    setWizardStep(1);
     setPendingAddons([]);
     setShowEditor(true);
   };
@@ -1244,6 +1247,7 @@ export function ProviderProductsPage() {
     setError(null);
     setEditor(editorFromProduct(p));
     setActiveTab("OVERVIEW");
+    setWizardStep(1);
     setPendingAddons([]);
     setShowEditor(true);
   };
@@ -1252,6 +1256,13 @@ export function ProviderProductsPage() {
     setError(null);
     setEditor(editorFromProduct(p));
     setActiveTab(tab);
+    const stepMap: Record<ProductEditorTab, WizardStep> = {
+      OVERVIEW: 1,
+      ELIGIBILITY: 3,
+      PRICING: 4,
+      ADDONS: 5,
+    };
+    setWizardStep(stepMap[tab] ?? 1);
     setPendingAddons([]);
     setShowEditor(true);
   };
@@ -2113,6 +2124,7 @@ export function ProviderProductsPage() {
 
       setShowEditor(false);
       setEditor(emptyEditor());
+      setWizardStep(1);
       setPendingAddons([]);
     } catch (e) {
       setError(e instanceof Error ? e.message : `Failed to save product: ${formatUnknownError(e)}`);
@@ -2145,6 +2157,7 @@ export function ProviderProductsPage() {
         if ((editor.id ?? "").trim() === id) {
           setShowEditor(false);
           setEditor(emptyEditor());
+          setWizardStep(1);
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to delete product");
@@ -2189,6 +2202,7 @@ export function ProviderProductsPage() {
                   onClick={() => {
                     setShowEditor(false);
                     setEditor(emptyEditor());
+                    setWizardStep(1);
                   }}
                   disabled={busy}
                 >
@@ -2201,353 +2215,434 @@ export function ProviderProductsPage() {
             </div>
 
             <div className="px-6 pt-4">
-              <div className="inline-flex rounded-xl border bg-background/40 p-1 gap-1">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("OVERVIEW")}
-                  className={
-                    "px-3 py-1.5 text-sm rounded-lg transition-colors " +
-                    (activeTab === "OVERVIEW"
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground")
-                  }
-                  disabled={busy}
-                >
-                  Overview
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("ELIGIBILITY")}
-                  className={
-                    "px-3 py-1.5 text-sm rounded-lg transition-colors " +
-                    (activeTab === "ELIGIBILITY"
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground")
-                  }
-                  disabled={busy}
-                >
-                  Eligibility
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("PRICING")}
-                  className={
-                    "px-3 py-1.5 text-sm rounded-lg transition-colors " +
-                    (activeTab === "PRICING"
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground")
-                  }
-                  disabled={busy}
-                >
-                  Pricing
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("ADDONS")}
-                  className={
-                    "px-3 py-1.5 text-sm rounded-lg transition-colors " +
-                    (activeTab === "ADDONS" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")
-                  }
-                  disabled={busy}
-                >
-                  Add-ons
-                </button>
+              <div className="flex items-center gap-2 overflow-x-auto pb-2">
+                {(
+                  [
+                    { step: 1 as WizardStep, label: "Basics", tab: "OVERVIEW" as ProductEditorTab },
+                    { step: 2 as WizardStep, label: "Coverage", tab: "OVERVIEW" as ProductEditorTab },
+                    { step: 3 as WizardStep, label: "Eligibility", tab: "ELIGIBILITY" as ProductEditorTab },
+                    { step: 4 as WizardStep, label: "Pricing", tab: "PRICING" as ProductEditorTab },
+                    { step: 5 as WizardStep, label: "Add-ons", tab: "ADDONS" as ProductEditorTab },
+                    { step: 6 as WizardStep, label: "Review", tab: "PRICING" as ProductEditorTab },
+                  ]
+                ).map((item, idx) => {
+                  const isCompleted = wizardStep > item.step;
+                  const isCurrent = wizardStep === item.step;
+                  const isClickable = !busy;
+                  return (
+                    <div key={item.step} className="flex items-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isClickable) {
+                            setWizardStep(item.step);
+                            if (item.step <= 2) {
+                              setActiveTab("OVERVIEW");
+                            } else {
+                              setActiveTab(item.tab);
+                            }
+                          }
+                        }}
+                        disabled={!isClickable}
+                        className={
+                          "flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap " +
+                          (isCurrent
+                            ? "bg-blue-600 text-white shadow-md"
+                            : isCompleted
+                              ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                              : "bg-muted text-muted-foreground hover:bg-muted/80")
+                        }
+                      >
+                        <span
+                          className={
+                            "flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold " +
+                            (isCurrent
+                              ? "bg-white text-blue-600"
+                              : isCompleted
+                                ? "bg-emerald-600 text-white"
+                                : "bg-muted-foreground/20 text-muted-foreground")
+                          }
+                        >
+                          {isCompleted ? "✓" : item.step}
+                        </span>
+                        {item.label}
+                      </button>
+                      {idx < 5 && (
+                        <div className={"w-6 h-0.5 mx-1 " + (isCompleted ? "bg-emerald-300" : "bg-muted")} />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
             <div className="p-6">
             {activeTab === "OVERVIEW" ? (
               <div className="space-y-6">
-                <div className="rounded-2xl border bg-background/40 p-4">
-                  <div className="font-semibold">Basics</div>
-                  <div className="text-sm text-muted-foreground mt-1">Name and product type show to dealerships.</div>
-                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <div className="text-xs text-muted-foreground">Product name</div>
-                      <Input
-                        value={editor.name}
-                        onChange={(e) => setEditor((s) => ({ ...s, name: sanitizeWordsOnly(e.target.value) }))}
-                        placeholder="Example: GAP Pro"
-                        disabled={busy}
-                      />
+                {wizardStep === 1 ? (
+                  <div className="rounded-2xl border bg-background/40 p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-sm">1</div>
+                      <div>
+                        <div className="font-semibold">Product Basics</div>
+                        <div className="text-sm text-muted-foreground">Name and type identify your product to dealerships</div>
+                      </div>
                     </div>
-
-                    <div className="space-y-2">
-                      <div className="text-xs text-muted-foreground">Product type</div>
-                      <select
-                        value={editor.productType}
-                        onChange={(e) => setEditor((s) => ({ ...s, productType: e.target.value as ProductType }))}
-                        className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
-                        disabled={busy}
-                      >
-                        <option value="EXTENDED_WARRANTY">Extended Warranty</option>
-                        <option value="GAP">GAP Insurance</option>
-                        <option value="TIRE_RIM">Tire & Rim</option>
-                        <option value="APPEARANCE">Appearance / Rust / Key</option>
-                        <option value="OTHER">Other</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 space-y-2">
-                    <div className="text-xs text-muted-foreground">Program code (optional)</div>
-                    <Input
-                      value={editor.programCode}
-                      onChange={(e) => setEditor((s) => ({ ...s, programCode: e.target.value }))}
-                      placeholder="Example: AX1"
-                      disabled={busy}
-                    />
-                  </div>
-
-                  {editor.productType === "GAP" ? (
-                    <div className="mt-4 space-y-2">
-                      <div className="text-xs text-muted-foreground">Max LTV percent (GAP only)</div>
-                      <Input
-                        value={editor.coverageMaxLtvPercent}
-                        onChange={(e) => setEditor((s) => ({ ...s, coverageMaxLtvPercent: e.target.value }))}
-                        placeholder="Example: 130"
-                        disabled={busy}
-                      />
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="rounded-2xl border bg-background/40 p-4">
-                  <div className="font-semibold">Coverage details</div>
-                  <div className="text-sm text-muted-foreground mt-1">Dealerships use this to understand what’s included.</div>
-
-                  <div className="mt-4 space-y-2">
-                    <div className="text-xs text-muted-foreground">Coverage summary</div>
-                    <textarea
-                      value={editor.coverageDetails}
-                      onChange={(e) => setEditor((s) => ({ ...s, coverageDetails: e.target.value }))}
-                      placeholder="Short summary of what’s covered…"
-                      className={textareaClassName()}
-                      disabled={busy}
-                    />
-                  </div>
-
-                  <div className="mt-4 space-y-2">
-                    <div className="text-xs text-muted-foreground">Exclusions</div>
-                    <textarea
-                      value={editor.exclusions}
-                      onChange={(e) => setEditor((s) => ({ ...s, exclusions: e.target.value }))}
-                      placeholder="What’s not covered…"
-                      className={textareaClassName()}
-                      disabled={busy}
-                    />
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border bg-background/40 p-4">
-                  <div className="font-semibold">Warranty coverage</div>
-                  <div className="text-sm text-muted-foreground mt-1">
-                    Upload an image (PNG/JPG) to show on the Dealer Marketplace product page.
-                  </div>
-
-                  <input
-                    ref={brochureInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    disabled={busy || !editorProductId}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      e.target.value = "";
-                      if (!file) return;
-                      setError(null);
-                      void (async () => {
-                        try {
-                          await uploadBrochureMutation.mutateAsync(file);
-                        } catch (err) {
-                          setError(err instanceof Error ? err.message : "Failed to upload image");
-                        }
-                      })();
-                    }}
-                  />
-
-                  {!editorProductId ? (
-                    <div className="mt-4 text-sm text-muted-foreground">Save the product first, then upload the image.</div>
-                  ) : (
-                    <div className="mt-4 space-y-3">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Button
-                          type="button"
-                          variant="outline"
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium">Product name <span className="text-destructive">*</span></div>
+                        <Input
+                          value={editor.name}
+                          onChange={(e) => setEditor((s) => ({ ...s, name: sanitizeWordsOnly(e.target.value) }))}
+                          placeholder="Example: GAP Pro"
                           disabled={busy}
-                          onClick={() => {
-                            brochureInputRef.current?.click();
-                          }}
-                        >
-                          Upload image
-                        </Button>
-                        {brochureDocs.length > 0 ? (
-                          <div className="text-sm text-muted-foreground truncate">{brochureDocs[0]?.fileName}</div>
-                        ) : (
-                          <div className="text-sm text-muted-foreground">No image uploaded yet.</div>
-                        )}
+                        />
                       </div>
 
-                      {brochureDocs.length > 0 ? (
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            disabled={busy}
-                            onClick={() => {
-                              void (async () => {
-                                const doc = brochureDocs[0];
-                                if (!doc) return;
-                                setError(null);
-                                try {
-                                  const url = await documentsApi.getDownloadUrl(doc);
-                                  window.open(url, "_blank", "noopener,noreferrer");
-                                } catch (err) {
-                                  setError(err instanceof Error ? err.message : "Failed to open image");
-                                }
-                              })();
-                            }}
-                          >
-                            View
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            disabled={busy}
-                            onClick={() => {
-                              void (async () => {
-                                const doc = brochureDocs[0];
-                                if (!doc) return;
-                                const confirmed = window.confirm(`Remove warranty coverage image "${doc.fileName}"?`);
-                                if (!confirmed) return;
-                                setError(null);
-                                try {
-                                  await removeBrochureMutation.mutateAsync(doc.id);
-                                } catch (err) {
-                                  setError(err instanceof Error ? err.message : "Failed to remove image");
-                                }
-                              })();
-                            }}
-                          >
-                            Remove
-                          </Button>
-                        </div>
-                      ) : null}
-
-                      {brochureDocsQuery.isLoading ? <div className="text-sm text-muted-foreground">Loading image…</div> : null}
-                      {brochureDocsQuery.isError ? <div className="text-sm text-destructive">Failed to load image.</div> : null}
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium">Product type</div>
+                        <select
+                          value={editor.productType}
+                          onChange={(e) => setEditor((s) => ({ ...s, productType: e.target.value as ProductType }))}
+                          className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
+                          disabled={busy}
+                        >
+                          <option value="EXTENDED_WARRANTY">Extended Warranty</option>
+                          <option value="GAP">GAP Insurance</option>
+                          <option value="TIRE_RIM">Tire & Rim</option>
+                          <option value="APPEARANCE">Appearance / Rust / Key</option>
+                          <option value="OTHER">Other</option>
+                        </select>
+                      </div>
                     </div>
-                  )}
-                </div>
 
-                <div className="rounded-2xl border bg-background/40 p-4">
-                  <div className="font-semibold">Internal notes</div>
-                  <div className="text-sm text-muted-foreground mt-1">Provider-only notes for your team. Not shown to dealerships.</div>
+                    <div className="mt-4 space-y-2">
+                      <div className="text-sm font-medium">Program code <span className="text-muted-foreground font-normal">(optional)</span></div>
+                      <Input
+                        value={editor.programCode}
+                        onChange={(e) => setEditor((s) => ({ ...s, programCode: e.target.value }))}
+                        placeholder="Example: AX1"
+                        disabled={busy}
+                      />
+                    </div>
 
-                  <div className="mt-4">
-                    <textarea
-                      value={editor.internalNotes}
-                      onChange={(e) => setEditor((s) => ({ ...s, internalNotes: e.target.value }))}
-                      placeholder="Optional…"
-                      className={textareaClassName()}
-                      disabled={busy}
-                    />
+                    {editor.productType === "GAP" ? (
+                      <div className="mt-4 space-y-2">
+                        <div className="text-sm font-medium">Max LTV percent <span className="text-muted-foreground font-normal">(GAP only)</span></div>
+                        <Input
+                          value={editor.coverageMaxLtvPercent}
+                          onChange={(e) => setEditor((s) => ({ ...s, coverageMaxLtvPercent: e.target.value }))}
+                          placeholder="Example: 130"
+                          disabled={busy}
+                        />
+                      </div>
+                    ) : null}
+
+                    <div className="mt-6 flex justify-end">
+                      <Button
+                        onClick={() => {
+                          if (!editor.name.trim()) {
+                            setError("Product name is required");
+                            return;
+                          }
+                          setWizardStep(2);
+                        }}
+                        disabled={busy}
+                      >
+                        Next: Coverage Details →
+                      </Button>
+                    </div>
                   </div>
-                </div>
+                ) : null}
+
+                {wizardStep === 2 ? (
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border bg-background/40 p-6">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-sm">2</div>
+                        <div>
+                          <div className="font-semibold">Coverage Details</div>
+                          <div className="text-sm text-muted-foreground">Describe what's covered and what's excluded</div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <div className="text-sm font-medium">Coverage summary</div>
+                          <textarea
+                            value={editor.coverageDetails}
+                            onChange={(e) => setEditor((s) => ({ ...s, coverageDetails: e.target.value }))}
+                            placeholder="Short summary of what's covered…"
+                            className={textareaClassName()}
+                            disabled={busy}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="text-sm font-medium">Exclusions</div>
+                          <textarea
+                            value={editor.exclusions}
+                            onChange={(e) => setEditor((s) => ({ ...s, exclusions: e.target.value }))}
+                            placeholder="What's not covered…"
+                            className={textareaClassName()}
+                            disabled={busy}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border bg-background/40 p-6">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-sm">2</div>
+                        <div>
+                          <div className="font-semibold">Warranty Image</div>
+                          <div className="text-sm text-muted-foreground">Upload a product image for the Dealer Marketplace</div>
+                        </div>
+                      </div>
+
+                      <input
+                        ref={brochureInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={busy || !editorProductId}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = "";
+                          if (!file) return;
+                          setError(null);
+                          void (async () => {
+                            try {
+                              await uploadBrochureMutation.mutateAsync(file);
+                            } catch (err) {
+                              setError(err instanceof Error ? err.message : "Failed to upload image");
+                            }
+                          })();
+                        }}
+                      />
+
+                      {!editorProductId ? (
+                        <div className="text-sm text-muted-foreground">Save the product first to upload an image.</div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              disabled={busy}
+                              onClick={() => {
+                                brochureInputRef.current?.click();
+                              }}
+                            >
+                              Upload image
+                            </Button>
+                            {brochureDocs.length > 0 ? (
+                              <div className="text-sm text-muted-foreground truncate">{brochureDocs[0]?.fileName}</div>
+                            ) : (
+                              <div className="text-sm text-muted-foreground">No image uploaded yet.</div>
+                            )}
+                          </div>
+
+                          {brochureDocs.length > 0 ? (
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                disabled={busy}
+                                onClick={() => {
+                                  void (async () => {
+                                    const doc = brochureDocs[0];
+                                    if (!doc) return;
+                                    setError(null);
+                                    try {
+                                      const url = await documentsApi.getDownloadUrl(doc);
+                                      window.open(url, "_blank", "noopener,noreferrer");
+                                    } catch (err) {
+                                      setError(err instanceof Error ? err.message : "Failed to open image");
+                                    }
+                                  })();
+                                }}
+                              >
+                                View
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                disabled={busy}
+                                onClick={() => {
+                                  void (async () => {
+                                    const doc = brochureDocs[0];
+                                    if (!doc) return;
+                                    const confirmed = window.confirm(`Remove warranty coverage image "${doc.fileName}"?`);
+                                    if (!confirmed) return;
+                                    setError(null);
+                                    try {
+                                      await removeBrochureMutation.mutateAsync(doc.id);
+                                    } catch (err) {
+                                      setError(err instanceof Error ? err.message : "Failed to remove image");
+                                    }
+                                  })();
+                                }}
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                          ) : null}
+
+                          {brochureDocsQuery.isLoading ? <div className="text-sm text-muted-foreground">Loading image…</div> : null}
+                          {brochureDocsQuery.isError ? <div className="text-sm text-destructive">Failed to load image.</div> : null}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="rounded-2xl border bg-background/40 p-6">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-sm">2</div>
+                        <div>
+                          <div className="font-semibold">Internal Notes</div>
+                          <div className="text-sm text-muted-foreground">Provider-only notes (not shown to dealerships)</div>
+                        </div>
+                      </div>
+                      <textarea
+                        value={editor.internalNotes}
+                        onChange={(e) => setEditor((s) => ({ ...s, internalNotes: e.target.value }))}
+                        placeholder="Optional notes for your team…"
+                        className={textareaClassName()}
+                        disabled={busy}
+                      />
+                    </div>
+
+                    <div className="flex justify-between">
+                      <Button variant="outline" onClick={() => setWizardStep(1)} disabled={busy}>
+                        ← Back: Basics
+                      </Button>
+                      <Button onClick={() => { setActiveTab("ELIGIBILITY"); setWizardStep(3); }} disabled={busy}>
+                        Next: Eligibility →
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
-            {activeTab === "ELIGIBILITY" ? (
+            {activeTab === "ELIGIBILITY" && wizardStep === 3 ? (
               <div className="space-y-4">
-                <div className="rounded-xl border p-4">
-                  <div className="font-semibold">Powertrain Eligibility</div>
-                  <div className="text-sm text-muted-foreground mt-1">Controls whether the product appears for ICE/Hybrid/EV vehicles.</div>
-                  <div className="mt-3">
-                    <select
-                      value={editor.powertrainEligibility}
-                      onChange={(e) =>
-                        setEditor((s) => ({
-                          ...s,
-                          powertrainEligibility: (e.target.value as any) || "ALL",
-                        }))
-                      }
-                      disabled={busy}
-                      className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm disabled:opacity-60"
-                    >
-                      <option value="ALL">All vehicles</option>
-                      <option value="ICE">ICE (Gas/Diesel)</option>
-                      <option value="ELECTRIFIED">Electrified (BEV + PHEV + HEV)</option>
-                      <option value="HEV">HEV (Hybrid)</option>
-                      <option value="PHEV">PHEV (Plug-in Hybrid)</option>
-                      <option value="BEV">BEV (Electric)</option>
-                    </select>
+                <div className="rounded-2xl border bg-background/40 p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-sm">3</div>
+                    <div>
+                      <div className="font-semibold">Vehicle Eligibility</div>
+                      <div className="text-sm text-muted-foreground">Define which vehicles can use this product</div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Powertrain type</div>
+                      <div className="text-xs text-muted-foreground mb-2">Controls whether this product appears for ICE/Hybrid/EV vehicles</div>
+                      <select
+                        value={editor.powertrainEligibility}
+                        onChange={(e) =>
+                          setEditor((s) => ({
+                            ...s,
+                            powertrainEligibility: (e.target.value as any) || "ALL",
+                          }))
+                        }
+                        disabled={busy}
+                        className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm disabled:opacity-60"
+                      >
+                        <option value="ALL">All vehicles</option>
+                        <option value="ICE">ICE (Gas/Diesel)</option>
+                        <option value="ELECTRIFIED">Electrified (BEV + PHEV + HEV)</option>
+                        <option value="HEV">HEV (Hybrid)</option>
+                        <option value="PHEV">PHEV (Plug-in Hybrid)</option>
+                        <option value="BEV">BEV (Electric)</option>
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium">Max vehicle age</div>
+                        <Input
+                          value={editor.eligibilityMaxVehicleAgeYears}
+                          onChange={(e) =>
+                            setEditor((s) => ({ ...s, eligibilityMaxVehicleAgeYears: sanitizeDigitsOnly(e.target.value) }))
+                          }
+                          placeholder="Years (leave blank for no limit)"
+                          inputMode="numeric"
+                          disabled={busy}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium">Max mileage</div>
+                        <Input
+                          value={editor.eligibilityMaxMileageKm}
+                          onChange={(e) => setEditor((s) => ({ ...s, eligibilityMaxMileageKm: sanitizeDigitsOnly(e.target.value) }))}
+                          placeholder="KM (leave blank for no limit)"
+                          inputMode="numeric"
+                          disabled={busy}
+                        />
+                      </div>
+                    </div>
+                    {(() => {
+                      const openAge = !editor.eligibilityMaxVehicleAgeYears.trim();
+                      const openKm = !editor.eligibilityMaxMileageKm.trim();
+                      if (!(openAge && openKm)) return null;
+                      return <div className="text-sm text-emerald-600 font-medium">✓ Fully Open - All vehicles eligible</div>;
+                    })()}
                   </div>
                 </div>
 
-                <div className="rounded-xl border p-4">
-                  <div className="font-semibold">Outer Eligibility Rules</div>
-                  <div className="text-sm text-muted-foreground mt-1">
-                    These rules only control whether a product appears. Pricing differences (mileage bands / classes / terms) belong in Pricing Rows.
+                <div className="rounded-2xl border bg-background/40 p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-sm">3</div>
+                    <div>
+                      <div className="font-semibold">Make / Model / Trim Allowlists</div>
+                      <div className="text-sm text-muted-foreground">Optional - leave blank to allow all makes, models, and trims</div>
+                    </div>
                   </div>
-                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <Input
-                      value={editor.eligibilityMaxVehicleAgeYears}
-                      onChange={(e) =>
-                        setEditor((s) => ({ ...s, eligibilityMaxVehicleAgeYears: sanitizeDigitsOnly(e.target.value) }))
-                      }
-                      placeholder="Max age (years)"
-                      inputMode="numeric"
-                      disabled={busy}
-                    />
-                    <Input
-                      value={editor.eligibilityMaxMileageKm}
-                      onChange={(e) => setEditor((s) => ({ ...s, eligibilityMaxMileageKm: sanitizeDigitsOnly(e.target.value) }))}
-                      placeholder="Max mileage (km)"
-                      inputMode="numeric"
-                      disabled={busy}
-                    />
-                  </div>
-                  {(() => {
-                    const openAge = !editor.eligibilityMaxVehicleAgeYears.trim();
-                    const openKm = !editor.eligibilityMaxMileageKm.trim();
-                    if (!(openAge && openKm)) return null;
-                    return <div className="mt-3 text-sm text-muted-foreground">Fully Open Product</div>;
-                  })()}
-                </div>
 
-                <div className="rounded-xl border p-4">
-                  <div className="font-semibold">Make / Model / Trim</div>
-                  <div className="text-sm text-muted-foreground mt-1">Optional allowlists. Leave blank to allow all.</div>
-
-                  <div className="mt-3 grid grid-cols-1 gap-3">
-                    <Input
-                      value={editor.eligibilityMakeAllowlist}
-                      onChange={(e) => setEditor((s) => ({ ...s, eligibilityMakeAllowlist: e.target.value }))}
-                      placeholder="Allowed makes (comma-separated). Example: Toyota, Honda"
-                      disabled={busy}
-                    />
-                    <Input
-                      value={editor.eligibilityModelAllowlist}
-                      onChange={(e) => setEditor((s) => ({ ...s, eligibilityModelAllowlist: e.target.value }))}
-                      placeholder="Allowed models (comma-separated). Example: Camry, Civic"
-                      disabled={busy}
-                    />
-                    <Input
-                      value={editor.eligibilityTrimAllowlist}
-                      onChange={(e) => setEditor((s) => ({ ...s, eligibilityTrimAllowlist: e.target.value }))}
-                      placeholder="Allowed trims (comma-separated). Example: XLE, Touring"
-                      disabled={busy}
-                    />
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Allowed makes</div>
+                      <Input
+                        value={editor.eligibilityMakeAllowlist}
+                        onChange={(e) => setEditor((s) => ({ ...s, eligibilityMakeAllowlist: e.target.value }))}
+                        placeholder="Comma-separated. Example: Toyota, Honda, Ford"
+                        disabled={busy}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Allowed models</div>
+                      <Input
+                        value={editor.eligibilityModelAllowlist}
+                        onChange={(e) => setEditor((s) => ({ ...s, eligibilityModelAllowlist: e.target.value }))}
+                        placeholder="Comma-separated. Example: Camry, Civic, Corolla"
+                        disabled={busy}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Allowed trims</div>
+                      <Input
+                        value={editor.eligibilityTrimAllowlist}
+                        onChange={(e) => setEditor((s) => ({ ...s, eligibilityTrimAllowlist: e.target.value }))}
+                        placeholder="Comma-separated. Example: XLE, Touring, Limited"
+                        disabled={busy}
+                      />
+                    </div>
                   </div>
                 </div>
 
                 {editor.pricingStructure === "MILEAGE_CLASS" ? (
-                  <div className="rounded-xl border p-4">
-                    <div className="font-semibold">Vehicle Classes</div>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      These descriptions will show to dealerships on Marketplace for Mileage + Class products.
+                  <div className="rounded-2xl border bg-background/40 p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-sm">3</div>
+                      <div>
+                        <div className="font-semibold">Vehicle Classes</div>
+                        <div className="text-sm text-muted-foreground">Descriptive labels for vehicle class categories</div>
+                      </div>
                     </div>
-                    <div className="mt-3 space-y-2">
+                    <div className="space-y-3">
                       {editor.classVehicleTypes.map((row) => (
                         <div key={row.key} className="grid grid-cols-1 md:grid-cols-12 gap-2">
                           <div className="md:col-span-3">
@@ -2619,13 +2714,28 @@ export function ProviderProductsPage() {
                     </div>
                   </div>
                 ) : null}
+
+                <div className="flex justify-between">
+                  <Button variant="outline" onClick={() => { setActiveTab("OVERVIEW"); setWizardStep(2); }} disabled={busy}>
+                    ← Back: Coverage
+                  </Button>
+                  <Button onClick={() => { setActiveTab("PRICING"); setWizardStep(4); }} disabled={busy}>
+                    Next: Pricing →
+                  </Button>
+                </div>
               </div>
             ) : null}
 
-            {activeTab === "ADDONS" ? (
+            {activeTab === "ADDONS" && wizardStep === 5 ? (
               <div className="space-y-4">
-                <div className="rounded-xl border p-4">
-                  <div className="font-semibold">Add-ons</div>
+                <div className="rounded-2xl border bg-background/40 p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-sm">5</div>
+                    <div>
+                      <div className="font-semibold">Add-ons</div>
+                      <div className="text-sm text-muted-foreground">Optional add-ons that customers can purchase with this product</div>
+                    </div>
+                  </div>
                   <div className="text-xs text-muted-foreground mt-1">Add-ons are saved when you click the main Save button.</div>
 
                   {editorProductId ? (
@@ -2958,14 +3068,29 @@ export function ProviderProductsPage() {
                       Add row
                     </Button>
                   </div>
+
+                  <div className="mt-6 flex justify-between">
+                    <Button variant="outline" onClick={() => { setActiveTab("PRICING"); setWizardStep(4); }} disabled={busy}>
+                      ← Back: Pricing
+                    </Button>
+                    <Button onClick={() => { setWizardStep(6); }} disabled={busy}>
+                      Next: Review & Publish →
+                    </Button>
+                  </div>
                 </div>
               </div>
             ) : null}
 
-            {activeTab === "PRICING" ? (
+            {activeTab === "PRICING" && wizardStep === 4 ? (
               <div className="space-y-4">
-                <div className="rounded-xl border p-4">
-                  <div className="font-semibold">Pricing</div>
+                <div className="rounded-2xl border bg-background/40 p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-sm">4</div>
+                    <div>
+                      <div className="font-semibold">Pricing Structure</div>
+                      <div className="text-sm text-muted-foreground">Choose how pricing varies across vehicle types and terms</div>
+                    </div>
+                  </div>
 
                   {(() => {
                     const structure = editor.pricingStructure;
@@ -4052,27 +4177,123 @@ export function ProviderProductsPage() {
                     ) : null}
                   </div>
 
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <div className="text-sm text-muted-foreground">Published</div>
+                  <div className="mt-6 flex justify-between">
+                    <Button variant="outline" onClick={() => { setActiveTab("ELIGIBILITY"); setWizardStep(3); }} disabled={busy}>
+                      ← Back: Eligibility
+                    </Button>
+                    <Button onClick={() => { setActiveTab("ADDONS"); setWizardStep(5); }} disabled={busy}>
+                      Next: Add-ons →
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {wizardStep === 6 ? (
+              <div className="space-y-4">
+                <div className="rounded-2xl border bg-background/40 p-6">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-sm">6</div>
+                    <div>
+                      <div className="font-semibold">Review & Publish</div>
+                      <div className="text-sm text-muted-foreground">Review your product details before saving</div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="rounded-xl border p-4 bg-card">
+                      <div className="text-sm font-semibold text-muted-foreground mb-2">Product</div>
+                      <div className="text-lg font-semibold">{editor.name || "—"}</div>
+                      <div className="text-sm text-muted-foreground mt-1">{productTypeLabel(editor.productType)}</div>
+                      {editor.programCode && <div className="text-xs text-muted-foreground mt-1">Code: {editor.programCode}</div>}
+                    </div>
+
+                    <div className="rounded-xl border p-4 bg-card">
+                      <div className="text-sm font-semibold text-muted-foreground mb-2">Status</div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className={editor.published ? "text-emerald-600 font-semibold" : "text-amber-600 font-semibold"}>
+                          {editor.published ? "Published" : "Draft"}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          ({editor.published ? "Visible to dealerships" : "Hidden from dealerships"})
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border p-4 bg-card">
+                      <div className="text-sm font-semibold text-muted-foreground mb-2">Coverage</div>
+                      <div className="text-sm">{editor.coverageDetails || "—"}</div>
+                      {editor.exclusions && <div className="text-xs text-muted-foreground mt-2">Exclusions: {editor.exclusions}</div>}
+                    </div>
+
+                    <div className="rounded-xl border p-4 bg-card">
+                      <div className="text-sm font-semibold text-muted-foreground mb-2">Eligibility</div>
+                      <div className="text-sm">
+                        {editor.powertrainEligibility === "ALL" ? "All vehicles" : editor.powertrainEligibility}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {editor.eligibilityMaxVehicleAgeYears ? `Max age: ${editor.eligibilityMaxVehicleAgeYears}y` : ""}
+                        {editor.eligibilityMaxVehicleAgeYears && editor.eligibilityMaxMileageKm ? " • " : ""}
+                        {editor.eligibilityMaxMileageKm ? `Max km: ${Number(editor.eligibilityMaxMileageKm).toLocaleString()}km` : ""}
+                        {!editor.eligibilityMaxVehicleAgeYears && !editor.eligibilityMaxMileageKm ? "No restrictions" : ""}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border p-4 bg-card">
+                      <div className="text-sm font-semibold text-muted-foreground mb-2">Pricing</div>
+                      <div className="text-sm">
+                        {editor.pricingStructure === "FLAT" ? "Flat Pricing" :
+                         editor.pricingStructure === "MILEAGE" ? "Mileage-Based Pricing" :
+                         editor.pricingStructure === "CLASS" ? "Class-Based Pricing" :
+                         editor.pricingStructure === "MILEAGE_CLASS" ? "Mileage + Class Pricing" :
+                         editor.pricingStructure === "FINANCE_MATRIX" ? "Finance Matrix Pricing" : editor.pricingStructure}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {editor.pricingStructure === "FINANCE_MATRIX" 
+                          ? `${editor.financeBands.length} loan band(s)`
+                          : `${editor.pricingRows.length} pricing row(s)`}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border p-4 bg-card">
+                      <div className="text-sm font-semibold text-muted-foreground mb-2">Add-ons</div>
+                      <div className="text-sm">
+                        {pendingAddons.filter(a => a.name.trim()).length} add-on(s) configured
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {pendingAddons.filter(a => a.name.trim()).length === 0 
+                          ? "No add-ons (optional)" 
+                          : "Optional extras for customers"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border bg-background/40 p-6">
+                  <div className="text-sm font-medium mb-4">Publishing Status</div>
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <div className={"w-4 h-4 rounded-full " + (editor.published ? "bg-emerald-500" : "bg-amber-400")} />
+                      <div>
+                        <div className="text-sm font-medium">
+                          {editor.published ? "Published" : "Draft"}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {editor.published 
+                            ? "This product is visible to all dealerships" 
+                            : "This product is hidden from dealerships. Only you can see it."}
+                        </div>
+                      </div>
+                    </div>
                     <div className="flex gap-2">
                       <Button
                         type="button"
                         variant={editor.published ? "default" : "outline"}
                         onClick={() => {
-                          const next = true;
-                          setEditor((s) => ({ ...s, published: next }));
-                          const id = (editor.id ?? "").trim();
-                          if (!id) return;
-                          void (async () => {
-                            try {
-                              await updateMutation.mutateAsync({ id, patch: { published: next } });
-                            } catch (e) {
-                              setEditor((s) => ({ ...s, published: false }));
-                              setError(e instanceof Error ? e.message : formatUnknownError(e));
-                            }
-                          })();
+                          setEditor((s) => ({ ...s, published: true }));
                         }}
-                        disabled={busy}
+                        disabled={busy || !editor.id}
+                        className={editor.published ? "bg-emerald-600 hover:bg-emerald-700" : ""}
                       >
                         Published
                       </Button>
@@ -4080,18 +4301,7 @@ export function ProviderProductsPage() {
                         type="button"
                         variant={!editor.published ? "default" : "outline"}
                         onClick={() => {
-                          const next = false;
-                          setEditor((s) => ({ ...s, published: next }));
-                          const id = (editor.id ?? "").trim();
-                          if (!id) return;
-                          void (async () => {
-                            try {
-                              await updateMutation.mutateAsync({ id, patch: { published: next } });
-                            } catch (e) {
-                              setEditor((s) => ({ ...s, published: true }));
-                              setError(e instanceof Error ? e.message : formatUnknownError(e));
-                            }
-                          })();
+                          setEditor((s) => ({ ...s, published: false }));
                         }}
                         disabled={busy}
                       >
@@ -4099,6 +4309,20 @@ export function ProviderProductsPage() {
                       </Button>
                     </div>
                   </div>
+                  {!editor.id && (
+                    <div className="text-xs text-muted-foreground mt-3">
+                      Publishing status will apply after the product is saved for the first time.
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-between">
+                  <Button variant="outline" onClick={() => { setActiveTab("ADDONS"); setWizardStep(5); }} disabled={busy}>
+                    ← Back: Add-ons
+                  </Button>
+                  <Button onClick={() => void onSubmit()} disabled={busy} size="lg">
+                    {editor.published ? "Save & Publish" : "Save as Draft"}
+                  </Button>
                 </div>
               </div>
             ) : null}
@@ -4109,31 +4333,46 @@ export function ProviderProductsPage() {
       ) : null}
 
       <div className="mt-10 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-600/10">
-        <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 to-transparent flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <div className="font-semibold">Products</div>
-            <div className="text-sm text-muted-foreground mt-1">Create, edit, and publish products for the dealer marketplace.</div>
-          </div>
-          <div className="flex items-center gap-3 flex-wrap justify-end">
-            <Input
-              value={search}
-              onChange={(e) => setSearch(sanitizeWordsOnly(e.target.value))}
-              placeholder="Search products…"
-              className="w-[220px]"
-              disabled={busy}
-            />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as "ALL" | "DRAFT" | "PUBLISHED")}
-              className="h-10 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
-              disabled={busy}
-            >
-              <option value="ALL">All</option>
-              <option value="DRAFT">Draft</option>
-              <option value="PUBLISHED">Published</option>
-            </select>
-            <div className="text-xs text-muted-foreground whitespace-nowrap rounded-full border bg-background/40 px-3 py-1">
-              {publishedCount} published • {draftCount} draft
+        <div className="px-6 py-5 border-b bg-gradient-to-r from-blue-600/10 to-transparent">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="font-semibold text-lg">Products</div>
+              <div className="text-sm text-muted-foreground mt-1">Manage your product offerings for the dealer marketplace</div>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                  <div className="text-sm">
+                    <span className="font-semibold">{publishedCount}</span>
+                    <span className="text-muted-foreground ml-1">Published</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-amber-400" />
+                  <div className="text-sm">
+                    <span className="font-semibold">{draftCount}</span>
+                    <span className="text-muted-foreground ml-1">Draft</span>
+                  </div>
+                </div>
+              </div>
+              <Input
+                value={search}
+                onChange={(e) => setSearch(sanitizeWordsOnly(e.target.value))}
+                placeholder="Search products…"
+                className="w-[220px]"
+                disabled={busy}
+              />
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as "ALL" | "DRAFT" | "PUBLISHED")}
+                className="h-10 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
+                disabled={busy}
+              >
+                <option value="ALL">All</option>
+                <option value="DRAFT">Draft</option>
+                <option value="PUBLISHED">Published</option>
+              </select>
             </div>
           </div>
         </div>
@@ -4173,18 +4412,20 @@ export function ProviderProductsPage() {
               : "text-[10px] px-2 py-0.5 rounded-md border bg-rose-50 text-rose-700 border-rose-200";
 
             return (
-              <div key={p.id} className="rounded-2xl border bg-background/40 p-4">
+              <div key={p.id} className="rounded-2xl border bg-background/40 p-5 hover:bg-background/60 transition-colors">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div className="min-w-[240px]">
-                    <div className="text-sm font-semibold text-foreground">{p.name}</div>
-                    <div className="text-xs text-muted-foreground mt-1">{productTypeLabel(p.productType)}</div>
+                  <div className="flex-1 min-w-[240px]">
+                    <div className="flex items-center gap-3">
+                      <div className="text-base font-semibold text-foreground">{p.name}</div>
+                      <span className={statusBadge(p.published)}>{p.published ? "Published" : "Draft"}</span>
+                    </div>
+                    <div className="text-sm text-muted-foreground mt-1">{productTypeLabel(p.productType)}</div>
                   </div>
 
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className={statusBadge(p.published)}>{p.published ? "Published" : "Draft"}</span>
                     {health ? (
                       <div className="flex items-center gap-2">
-                        <div className={pricingBadgeClass}>{health.ok ? "Pricing OK" : "Pricing needs attention"}</div>
+                        <div className={pricingBadgeClass}>{health.ok ? "✓ Pricing OK" : "⚠ Needs attention"}</div>
                         {!health.ok ? (
                           <Button
                             type="button"
@@ -4194,15 +4435,12 @@ export function ProviderProductsPage() {
                             onClick={() => beginEditTab(p, "PRICING")}
                             disabled={busy}
                           >
-                            Fix pricing
+                            Fix
                           </Button>
                         ) : null}
                       </div>
                     ) : null}
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={() => beginEdit(p)} disabled={busy}>
+                    <Button size="sm" variant="outline" onClick={() => beginEdit(p)} disabled={busy} className="ml-2">
                       Edit
                     </Button>
                     <Button
@@ -4217,40 +4455,27 @@ export function ProviderProductsPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-4">
-                  <div className="md:col-span-5">
-                    <div className="text-xs text-muted-foreground">Coverage</div>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      {(p.coverageDetails ?? "").trim() || (p.exclusions ?? "").trim() ? (
-                        <div className="line-clamp-2">{(p.coverageDetails ?? "").trim() || (p.exclusions ?? "").trim()}</div>
-                      ) : (
-                        "—"
-                      )}
+                <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <div className="text-xs text-muted-foreground font-medium">Terms</div>
+                    <div className="text-sm font-medium mt-1">{months} / {km}</div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs text-muted-foreground font-medium">Provider Cost</div>
+                    <div className="text-sm font-semibold text-foreground mt-1">{money(primary?.basePriceCents ?? undefined)}</div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs text-muted-foreground font-medium">Eligibility</div>
+                    <div className="text-sm mt-1">{eligibilitySummary(p)}</div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs text-muted-foreground font-medium">Coverage</div>
+                    <div className="text-sm mt-1 line-clamp-1">
+                      {(p.coverageDetails ?? "").trim() || "—"}
                     </div>
-                  </div>
-
-                  <div className="md:col-span-3">
-                    <div className="text-xs text-muted-foreground">Primary terms</div>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      {months} / {km}
-                    </div>
-                    {primary ? (
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {(primaryClass ? `Class ${primaryClass.replace(/^CLASS_/, "")}` : "Any class")}
-                        {primaryMileageLabel ? ` • ${primaryMileageLabel}` : ""}
-                        {primaryClaimLimit ? ` • Limit ${primaryClaimLimit}` : ""}
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <div className="text-xs text-muted-foreground">Base provider cost</div>
-                    <div className="text-sm font-medium text-foreground mt-1">{money(primary?.basePriceCents ?? undefined)}</div>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <div className="text-xs text-muted-foreground">Eligibility</div>
-                    <div className="text-sm text-muted-foreground mt-1">{eligibilitySummary(p)}</div>
                   </div>
                 </div>
               </div>

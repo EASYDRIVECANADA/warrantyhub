@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+import { lazy, Suspense } from "react";
 
 import { ProtectedRoute } from "../components/ProtectedRoute";
 import { RootLayout } from "../layouts/RootLayout";
@@ -35,7 +36,10 @@ import { ProviderContractPrintPage } from "../pages/ProviderContractPrintPage";
 import { ProviderContractsPage } from "../pages/ProviderContractsPage";
 import { ProviderDashboardPage } from "../pages/ProviderDashboardPage";
 import { ProviderDocumentsPage } from "../pages/ProviderDocumentsPage";
-import { ProviderProductsPage } from "../pages/ProviderProductsPage";
+const ProviderProductsPage = lazy(async () => {
+  const mod = await import("../pages/ProviderProductsPage");
+  return { default: mod.ProviderProductsPage };
+});
 import { ProviderRemittancePrintPage } from "../pages/ProviderRemittancePrintPage";
 import { ProviderRemittancesPage } from "../pages/ProviderRemittancesPage";
 import { ProviderTermsPage } from "../pages/ProviderTermsPage";
@@ -134,7 +138,7 @@ export function AppRouter() {
           <Route path="provider-contracts/:id/print" element={<ProviderContractPrintPage />} />
           <Route path="provider-remittances" element={<ProviderRemittancesPage />} />
           <Route path="provider-remittances/:id/print" element={<ProviderRemittancePrintPage />} />
-          <Route path="provider-products" element={<ProviderProductsPage />} />
+          <Route path="provider-products" element={<Suspense fallback={<div className="flex items-center justify-center min-h-[50vh]"><div className="text-sm text-muted-foreground">Loading products…</div></div>}><ProviderProductsPage /></Suspense>} />
           <Route path="provider-documents" element={<ProviderDocumentsPage />} />
         </Route>
 

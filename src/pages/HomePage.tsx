@@ -18,6 +18,7 @@ import {
 
 import { Button } from "../components/ui/button";
 import { BRAND } from "../lib/brand";
+import { APP_CONFIG } from "../lib/config";
 
 const footerLogoUrl = new URL("../../images/warrantyhubwhite.png", import.meta.url).href;
 
@@ -89,15 +90,15 @@ const directory: ProviderDirectoryEntry[] = [
 ];
 
 const stats = [
-  { icon: Users, value: "50K+", label: "Users Served" },
+  { icon: Users, value: APP_CONFIG.homepageStats.activeUsers, label: "Users Served" },
   { icon: Car, value: "99.9%", label: "Claims Approved" },
-  { icon: ChartPie, value: "500+", label: "Active Dealerships" },
+  { icon: ChartPie, value: APP_CONFIG.homepageStats.dealerships, label: "Active Dealerships" },
   { icon: Clock, value: "24/7", label: "Support" },
 ];
 
 export function HomePage() {
   const softLaunchAt = useMemo(() => {
-    return new Date(2026, 3, 12, 0, 0, 0, 0);
+    return new Date(APP_CONFIG.softLaunchDate);
   }, []);
 
   const [now, setNow] = useState(() => new Date());

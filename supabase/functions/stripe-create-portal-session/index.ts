@@ -4,6 +4,7 @@ import { getAuthedSupabaseClient, getServiceSupabaseClient } from "../_shared/su
 
 type Body = {
   dealerId: string;
+  flow?: "payment_method_update" | "billing_history";
 };
 
 function json(status: number, body: unknown) {
@@ -55,6 +56,7 @@ Deno.serve(async (req: Request) => {
     const body = (await req.json()) as Partial<Body>;
     const dealerId = (body.dealerId ?? "").toString().trim();
     if (!dealerId) return json(400, { error: "dealerId is required" });
+    const flow = body.flow;
 
     const supabase = getAuthedSupabaseClient(jwt);
     const { data: u, error: uerr } = await supabase.auth.getUser();
@@ -107,10 +109,22 @@ Deno.serve(async (req: Request) => {
 
     const origin = getOrigin(req);
 
-    const session = await stripe.billingPortal.sessions.create({
+    const portalConfig: {
+      customer: string;
+      return_url: string;
+      flow_data?: { type: "payment_method_update" | "invoice_overview" };
+    } = {
       customer: customerId,
       return_url: `${origin}/dealer-billing`,
-    });
+    };
+
+    if (flow === "payment_method_update") {
+      portalConfig.flow_data = { type: "payment_method_update" };
+    } else if (flow === "billing_history") {
+      portalConfig.flow_data = { type: "invoice_overview" };
+    }
+
+    const session = await stripe.billingPortal.sessions.create(portalConfig);
 
     return json(200, { url: session.url });
   } catch (e) {

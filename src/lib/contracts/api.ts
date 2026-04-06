@@ -2,6 +2,7 @@ import type { Contract, CreateContractInput } from "./types";
 
 export type ContractsApi = {
   list(): Promise<Contract[]>;
+  listWithRange(from: number, to: number): Promise<{ data: Contract[]; total: number | null }>;
   get(id: string): Promise<Contract | null>;
   create(input: CreateContractInput): Promise<Contract>;
   delete(id: string): Promise<void>;

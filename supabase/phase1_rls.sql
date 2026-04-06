@@ -512,3 +512,154 @@ create policy "product_documents_storage_delete"
     bucket_id = 'product-documents'
     and (storage.foldername(name))[1] = auth.uid()::text
   );
+
+-- ---------------------------
+-- provider_companies policies
+-- ---------------------------
+alter table public.provider_companies enable row level security;
+
+drop policy if exists "provider_companies_admin_select" on public.provider_companies;
+create policy "provider_companies_admin_select"
+  on public.provider_companies
+  for select
+  to authenticated
+  using (public.current_role() in ('ADMIN','SUPER_ADMIN'));
+
+drop policy if exists "provider_companies_super_admin_all" on public.provider_companies;
+create policy "provider_companies_super_admin_all"
+  on public.provider_companies
+  for all
+  to authenticated
+  using (public.current_role() = 'SUPER_ADMIN')
+  with check (public.current_role() = 'SUPER_ADMIN');
+
+-- --------------------------------
+-- support_conversations policies
+-- --------------------------------
+alter table public.support_conversations enable row level security;
+
+drop policy if exists "support_conversations_user_scope" on public.support_conversations;
+create policy "support_conversations_user_scope"
+  on public.support_conversations
+  for all
+  to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+drop policy if exists "support_conversations_admin_all" on public.support_conversations;
+create policy "support_conversations_admin_all"
+  on public.support_conversations
+  for all
+  to authenticated
+  using (public.current_role() in ('ADMIN','SUPER_ADMIN'))
+  with check (public.current_role() in ('ADMIN','SUPER_ADMIN'));
+
+-- ---------------------------
+-- support_messages policies
+-- ---------------------------
+alter table public.support_messages enable row level security;
+
+drop policy if exists "support_messages_user_scope" on public.support_messages;
+create policy "support_messages_user_scope"
+  on public.support_messages
+  for all
+  to authenticated
+  using (
+    conversation_id in (
+      select id from public.support_conversations where user_id = auth.uid()
+    )
+  )
+  with check (
+    conversation_id in (
+      select id from public.support_conversations where user_id = auth.uid()
+    )
+  );
+
+drop policy if exists "support_messages_admin_all" on public.support_messages;
+create policy "support_messages_admin_all"
+  on public.support_messages
+  for all
+  to authenticated
+  using (public.current_role() in ('ADMIN','SUPER_ADMIN'))
+  with check (public.current_role() in ('ADMIN','SUPER_ADMIN'));
+
+-- ---------------------------
+-- product_addons policies
+-- ---------------------------
+alter table public.product_addons enable row level security;
+
+drop policy if exists "product_addons_provider_all" on public.product_addons;
+create policy "product_addons_provider_all"
+  on public.product_addons
+  for all
+  to authenticated
+  using (provider_id = auth.uid())
+  with check (provider_id = auth.uid());
+
+drop policy if exists "product_addons_dealer_select_published" on public.product_addons;
+create policy "product_addons_dealer_select_published"
+  on public.product_addons
+  for select
+  to authenticated
+  using (
+    public.current_role() in ('DEALER','DEALER_ADMIN','DEALER_EMPLOYEE')
+    and product_id is not null
+    and exists (
+      select 1
+      from public.products pr
+      where pr.id = product_addons.product_id
+        and pr.published = true
+    )
+  );
+
+drop policy if exists "product_addons_admin_select" on public.product_addons;
+create policy "product_addons_admin_select"
+  on public.product_addons
+  for select
+  to authenticated
+  using (public.current_role() in ('ADMIN','SUPER_ADMIN'));
+
+-- ---------------------------------
+-- access_request_audit policies
+-- ---------------------------------
+alter table public.access_request_audit enable row level security;
+
+drop policy if exists "access_request_audit_admin_select" on public.access_request_audit;
+create policy "access_request_audit_admin_select"
+  on public.access_request_audit
+  for select
+  to authenticated
+  using (public.current_role() in ('ADMIN','SUPER_ADMIN'));
+
+drop policy if exists "access_request_audit_system_insert" on public.access_request_audit;
+create policy "access_request_audit_system_insert"
+  on public.access_request_audit
+  for insert
+  to authenticated
+  with check (true);
+
+-- ---------------------------------
+-- dealer_markup_overrides policies
+-- ---------------------------------
+alter table public.dealer_markup_overrides enable row level security;
+
+drop policy if exists "dealer_markup_overrides_dealer_scope" on public.dealer_markup_overrides;
+create policy "dealer_markup_overrides_dealer_scope"
+  on public.dealer_markup_overrides
+  for all
+  to authenticated
+  using (
+    public.current_role() in ('DEALER','DEALER_ADMIN')
+    and dealer_id = public.current_dealer_id()
+  )
+  with check (
+    public.current_role() in ('DEALER','DEALER_ADMIN')
+    and dealer_id = public.current_dealer_id()
+  );
+
+drop policy if exists "dealer_markup_overrides_admin_select" on public.dealer_markup_overrides;
+create policy "dealer_markup_overrides_admin_select"
+  on public.dealer_markup_overrides
+  for select
+  to authenticated
+  using (public.current_role() in ('ADMIN','SUPER_ADMIN'));

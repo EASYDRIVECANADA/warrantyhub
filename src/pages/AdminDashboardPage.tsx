@@ -6,6 +6,8 @@ import { Building2, DollarSign, LifeBuoy, Store } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { getBatchesApi } from "../lib/batches/batches";
 import type { Batch, RemittanceWorkflowStatus } from "../lib/batches/types";
+import { getSupabaseClient } from "../lib/supabase/client";
+import { getAppMode } from "../lib/runtime";
 
 type SummaryCard = {
   title: string;
@@ -23,11 +25,57 @@ function iconForSummary(kind: SummaryCard["icon"]) {
 }
 
 export function AdminDashboardPage() {
+  const mode = useMemo(() => getAppMode(), []);
   const batchesApi = useMemo(() => getBatchesApi(), []);
 
   const batchesQuery = useQuery({
     queryKey: ["batches"],
     queryFn: () => batchesApi.list(),
+  });
+
+  const openSupportQuery = useQuery({
+    queryKey: ["admin-open-support-count"],
+    enabled: mode === "supabase",
+    queryFn: async () => {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error("Supabase not configured");
+      const { count, error } = await supabase
+        .from("support_conversations")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "OPEN");
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+
+  const providersCountQuery = useQuery({
+    queryKey: ["admin-providers-count"],
+    enabled: mode === "supabase",
+    queryFn: async () => {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error("Supabase not configured");
+      const { count, error } = await supabase
+        .from("profiles")
+        .select("*", { count: "exact", head: true })
+        .eq("role", "PROVIDER");
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+
+  const dealersCountQuery = useQuery({
+    queryKey: ["admin-dealers-count"],
+    enabled: mode === "supabase",
+    queryFn: async () => {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error("Supabase not configured");
+      const { count, error } = await supabase
+        .from("profiles")
+        .select("*", { count: "exact", head: true })
+        .in("role", ["DEALER_ADMIN", "DEALER_EMPLOYEE"]);
+      if (error) throw error;
+      return count ?? 0;
+    },
   });
 
   const batches = (batchesQuery.data ?? []) as Batch[];
@@ -43,6 +91,11 @@ export function AdminDashboardPage() {
 
   const awaitingReview = remittances.filter((r) => derivedWorkflow(r) === "SUBMITTED");
 
+  const supportCount = openSupportQuery.data ?? 0;
+  const providersCount = providersCountQuery.data ?? 0;
+  const dealersCount = dealersCountQuery.data ?? 0;
+  const countsLoading = mode === "supabase" && (openSupportQuery.isLoading || providersCountQuery.isLoading || dealersCountQuery.isLoading);
+
   const summaryCards: SummaryCard[] = [
     {
       title: "Pending Approvals",
@@ -53,22 +106,22 @@ export function AdminDashboardPage() {
     },
     {
       title: "Support Inbox",
-      value: "—",
-      subtitle: "Dealer & provider support",
+      value: countsLoading ? "…" : `${supportCount}`,
+      subtitle: "Open conversations",
       icon: "support",
       href: "/admin-support",
     },
     {
       title: "Providers",
-      value: "—",
-      subtitle: "Read-only visibility",
+      value: countsLoading ? "…" : `${providersCount}`,
+      subtitle: "Active provider companies",
       icon: "providers",
       href: "/admin-providers",
     },
     {
       title: "Dealers",
-      value: "—",
-      subtitle: "Read-only visibility",
+      value: countsLoading ? "…" : `${dealersCount}`,
+      subtitle: "Active dealerships",
       icon: "dealers",
       href: "/admin-dealers",
     },

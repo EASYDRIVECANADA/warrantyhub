@@ -9,6 +9,9 @@ import { AuthProvider } from "./providers/AuthProvider";
 import { ConfirmProvider } from "./providers/ConfirmProvider";
 import { AlertProvider } from "./providers/AlertProvider";
 import { ToastProvider } from "./providers/ToastProvider";
+import { initSentry } from "./lib/sentry";
+
+initSentry();
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -104,6 +104,21 @@ export const supabaseProductPricingApi: ProductPricingApi = {
     return (data as ProductPricingRow[]).map(toPricing);
   },
 
+  async listAll() {
+    const supabase = getSupabaseClient();
+    if (!supabase) throw new Error("Supabase is not configured");
+
+    const { data, error } = await supabase
+      .from("product_pricing")
+      .select("*")
+      .order("product_id", { ascending: true })
+      .order("is_default", { ascending: false })
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    return (data as ProductPricingRow[]).map(toPricing);
+  },
+
   async create(input: CreateProductPricingInput) {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error("Supabase is not configured");

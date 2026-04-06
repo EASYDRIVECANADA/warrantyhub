@@ -171,7 +171,35 @@ export function DealerContractDetailPage() {
   const [vehicleTransmission, setVehicleTransmission] = useState("");
   const [productId, setProductId] = useState("");
   const [pricingId, setPricingId] = useState("");
-  const [step, setStep] = useState<WizardStep>("PRICING");
+  const [step, setStepRaw] = useState<WizardStep>(() => {
+    try {
+      const saved = sessionStorage.getItem(`warrantyhub.contract-wizard-step.${contractId}`);
+      if (saved === "PRICING" || saved === "VEHICLE" || saved === "CUSTOMER" || saved === "CONFIRM") return saved;
+    } catch {
+      // sessionStorage may be disabled or full
+    }
+    return "PRICING";
+  });
+
+  const setStep = (next: WizardStep) => {
+    setStepRaw(next);
+    try {
+      sessionStorage.setItem(`warrantyhub.contract-wizard-step.${contractId}`, next);
+    } catch {
+      // sessionStorage may be disabled or full
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      try {
+        sessionStorage.removeItem(`warrantyhub.contract-wizard-step.${contractId}`);
+      } catch {
+        // ignore
+      }
+    };
+  }, [contractId]);
+
   const [selectedAddonIds, setSelectedAddonIds] = useState<Record<string, boolean>>({});
   const didInitStepRef = useRef(false);
 
@@ -331,6 +359,13 @@ export function DealerContractDetailPage() {
     if (!hasVin) return alertMissing("Enter a valid 17-character VIN before submission.");
     if (!selectedPlanId) return alertMissing("Select a plan before submission.");
     if (!selectedPriceId) return alertMissing("Select a pricing option before submission.");
+
+    if (pricingOptionsQuery.data && pricingOptionsQuery.data.length > 0) {
+      const selectedPricing = pricingOptionsQuery.data.find((p) => (p.id ?? "").trim() === selectedPriceId);
+      if (!selectedPricing) return alertMissing("The selected pricing option is no longer available. Please choose a different option.");
+      const isEligible = isPricingEligibleForVehicle({ pricing: selectedPricing, vehicleMileageKm: parsedMileage, vehicleClass });
+      if (!isEligible) return alertMissing("The selected pricing option is no longer eligible for this vehicle. Please choose a different option.");
+    }
 
     if (!(await confirmProceed("Submit contract? This will lock editing."))) return;
     const now = new Date().toISOString();

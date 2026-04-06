@@ -17,12 +17,12 @@ export function DealerPaymentsPage() {
   const dealerId = (user.dealerId ?? "").toString().trim();
   if (!dealerId) return <Navigate to="/request-access" replace />;
 
-  const openStripePortal = async () => {
+  const openStripePortal = async (flow?: "payment_method_update" | "billing_history") => {
     setError(null);
     setBusy(true);
     try {
       if (user.role !== "DEALER_ADMIN") throw new Error("Only Dealer Admin can manage payments");
-      const res = await invokeEdgeFunction<{ url: string }>("stripe-create-portal-session", { dealerId });
+      const res = await invokeEdgeFunction<{ url: string }>("stripe-create-portal-session", { dealerId, flow });
       if (!res?.url) throw new Error("Billing portal URL was not returned");
       window.location.href = res.url;
     } catch (e) {
@@ -57,7 +57,7 @@ export function DealerPaymentsPage() {
           <div className="text-sm font-semibold">Save card information</div>
           <div className="mt-1 text-sm text-muted-foreground">Update your default payment method.</div>
           <div className="mt-4">
-            <Button className="w-full" disabled={busy || user.role !== "DEALER_ADMIN"} onClick={() => void openStripePortal()}>
+            <Button className="w-full" disabled={busy || user.role !== "DEALER_ADMIN"} onClick={() => void openStripePortal("payment_method_update")}>
               Manage cards
             </Button>
           </div>
@@ -67,7 +67,7 @@ export function DealerPaymentsPage() {
           <div className="text-sm font-semibold">Payment history</div>
           <div className="mt-1 text-sm text-muted-foreground">View invoices and subscription payments.</div>
           <div className="mt-4">
-            <Button variant="outline" className="w-full" disabled={busy || user.role !== "DEALER_ADMIN"} onClick={() => void openStripePortal()}>
+            <Button variant="outline" className="w-full" disabled={busy || user.role !== "DEALER_ADMIN"} onClick={() => void openStripePortal("billing_history")}>
               View history
             </Button>
           </div>

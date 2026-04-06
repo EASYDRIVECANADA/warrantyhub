@@ -135,6 +135,8 @@ export function DealerReportingPage() {
   const [productType, setProductType] = useState<string>("");
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [activeTab, setActiveTab] = useState<"CONTRACTS" | "EMPLOYEE" | "PROFITABILITY">("CONTRACTS");
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
   const profitabilityKey = useMemo(() => `warrantyhub.dealer_reporting.show_profitability.${user.id}`, [user.id]);
   const [showProfitability, setShowProfitability] = useState(() => {
     const raw = localStorage.getItem(profitabilityKey);
@@ -158,6 +160,7 @@ export function DealerReportingPage() {
     setProviderId("");
     setProductType("");
     setShowAdvancedFilters(false);
+    setPage(1);
     applyLast30Days();
   };
 
@@ -664,7 +667,9 @@ export function DealerReportingPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {filtered.slice(0, 200).map((c) => {
+                  {filtered
+                    .slice((page - 1) * pageSize, page * pageSize)
+                    .map((c) => {
                     const retail = (c.pricingBasePriceCents ?? 0) + (c.addonTotalRetailCents ?? 0);
                     const cost = (c.pricingDealerCostCents ?? 0) + (c.addonTotalCostCents ?? 0);
                     const margin = retail - cost;
@@ -709,15 +714,34 @@ export function DealerReportingPage() {
                       </td>
                     </tr>
                   ) : null}
-                  {!isLoading && !isError && filtered.length > 200 ? (
-                    <tr>
-                      <td className="px-4 py-6 text-sm text-muted-foreground" colSpan={effectiveShowProfitability ? 8 : 7}>
-                        Showing first 200 rows. Use CSV export for full data.
-                      </td>
-                    </tr>
-                  ) : null}
                 </tbody>
               </table>
+
+              {filtered.length > pageSize ? (
+                <div className="flex items-center justify-between px-6 py-4 border-t">
+                  <div className="text-sm text-muted-foreground">
+                    Page {page} of {Math.ceil(filtered.length / pageSize)} ({filtered.length} total)
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={page === 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={page >= Math.ceil(filtered.length / pageSize)}
+                      onClick={() => setPage((p) => p + 1)}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>

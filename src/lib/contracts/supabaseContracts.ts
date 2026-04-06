@@ -143,6 +143,20 @@ export const supabaseContractsApi: ContractsApi = {
     return (data as ContractsRow[]).map(toContract);
   },
 
+  async listWithRange(from, to) {
+    const supabase = getSupabaseClient();
+    if (!supabase) throw new Error("Supabase is not configured");
+
+    const { data, error, count } = await supabase
+      .from("contracts")
+      .select("*", { count: "exact", head: false })
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (error) throw error;
+    return { data: (data as ContractsRow[]).map(toContract), total: count };
+  },
+
   async get(id: string) {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error("Supabase is not configured");

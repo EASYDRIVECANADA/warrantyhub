@@ -9,6 +9,7 @@ import { getSupabaseClient } from "../lib/supabase/client";
 import { alertMissing, confirmProceed, sanitizeWordsOnly } from "../lib/utils";
 import type { Role } from "../lib/auth/types";
 import { useAuth } from "../providers/AuthProvider";
+import { logAuditEvent } from "../lib/auditLog";
 
 type AdminProfile = {
   id: string;
@@ -116,7 +117,17 @@ export function AdminUsersPage() {
       next[idx] = { ...next[idx], role: input.nextRole };
       writeLocalUsers(next);
     },
-    onSuccess: async () => {
+    onSuccess: async (_, variables) => {
+      const target = (profilesQuery.data ?? []).find((p) => p.id === variables.id);
+      logAuditEvent({
+        kind: "ROLE_CHANGED",
+        actorUserId: user?.id,
+        actorEmail: user?.email,
+        actorRole: user?.role,
+        entityType: "profile",
+        entityId: variables.id,
+        message: `Changed role for ${target?.email ?? variables.id} to ${variables.nextRole}`,
+      });
       await qc.invalidateQueries({ queryKey: ["admin-profiles", mode] });
     },
   });

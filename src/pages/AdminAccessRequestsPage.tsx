@@ -171,9 +171,6 @@ export function AdminAccessRequestsPage() {
         if (input.status === "APPROVED") {
           if (!effectiveAssignedRole) throw new Error("Assigned role is required for approval");
           if (!effectiveAssignedCompany?.trim()) throw new Error("Assigned company is required for approval");
-          if (mode === "supabase" && effectiveAssignedRole === "DEALER_EMPLOYEE") {
-            throw new Error("DEALER_EMPLOYEE approval is not enabled in Supabase mode yet");
-          }
           if (current?.requestType === "PROVIDER" && user?.role !== "SUPER_ADMIN") {
             throw new Error("Only Super Admin can approve Provider access requests");
           }
@@ -445,7 +442,7 @@ export function AdminAccessRequestsPage() {
                       className="h-10 w-full rounded-md border border-input bg-background/70 px-3 text-sm shadow-sm"
                     >
                       <option value="DEALER_ADMIN">Dealer</option>
-                      {mode !== "supabase" ? <option value="DEALER_EMPLOYEE">Dealer Employee</option> : null}
+                      <option value="DEALER_EMPLOYEE">Dealer Employee</option>
                       <option value="PROVIDER">Provider</option>
                       {user?.role === "SUPER_ADMIN" ? <option value="ADMIN">Admin</option> : null}
                     </select>

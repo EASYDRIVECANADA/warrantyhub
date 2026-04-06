@@ -6,6 +6,7 @@ export type ListProductPricingOptions = {
 
 export interface ProductPricingApi {
   list(options: ListProductPricingOptions): Promise<ProductPricing[]>;
+  listAll(): Promise<ProductPricing[]>;
   create(input: CreateProductPricingInput): Promise<ProductPricing>;
   remove(id: string): Promise<void>;
 }

@@ -86,6 +86,23 @@ export const localBatchesApi: BatchesApi = {
   },
 
   async createRemittanceBatch(input: CreateRemittanceBatchInput) {
+    if (!input.contractIds || input.contractIds.length === 0) {
+      throw new Error("Cannot create a remittance batch with no contracts");
+    }
+
+    const existingBatches = read();
+    const duplicateContractIds: string[] = [];
+    for (const contractId of input.contractIds) {
+      for (const batch of existingBatches) {
+        if (batch.contractIds.includes(contractId) && batch.status !== "OPEN") {
+          duplicateContractIds.push(contractId);
+        }
+      }
+    }
+    if (duplicateContractIds.length > 0) {
+      throw new Error(`Cannot create remittance batch: ${duplicateContractIds.length} contract(s) already included in another batch`);
+    }
+
     const now = new Date().toISOString();
     const item: Batch = {
       id: crypto.randomUUID(),

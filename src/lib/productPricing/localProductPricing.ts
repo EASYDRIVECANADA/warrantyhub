@@ -119,6 +119,21 @@ export const localProductPricingApi: ProductPricingApi = {
       });
   },
 
+  async listAll() {
+    const uid = currentUserId();
+    const role = (currentUserRole() ?? "").toString().trim().toUpperCase();
+
+    return read()
+      .filter((r) => (role === "PROVIDER" ? r.providerId === uid : true))
+      .sort((a, b) => {
+        const ad = a.isDefault ? 1 : 0;
+        const bd = b.isDefault ? 1 : 0;
+        const diff = bd - ad;
+        if (diff) return diff;
+        return b.createdAt.localeCompare(a.createdAt);
+      });
+  },
+
   async create(input: CreateProductPricingInput) {
     const uid = currentUserId();
     const now = new Date().toISOString();

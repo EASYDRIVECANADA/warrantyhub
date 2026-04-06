@@ -26,7 +26,7 @@ export function sanitizeLettersOnly(value: string) {
 
 export function sanitizeWordsOnly(value: string) {
   return value
-    .replace(/[^\p{L}\p{N}\s'-]/gu, "")
+    .replace(/[^\p{L}\p{N}\s'@.+-]/gu, "")
     .replace(/\s+/g, " ");
 }
 

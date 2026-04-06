@@ -95,6 +95,11 @@ export const localContractsApi: ContractsApi = {
     return read().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   },
 
+  async listWithRange(from, to) {
+    const all = read().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return { data: all.slice(from, to + 1), total: all.length };
+  },
+
   async get(id: string) {
     const item = read().find((c) => c.id === id);
     return item ?? null;
