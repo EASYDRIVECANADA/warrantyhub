@@ -4392,21 +4392,6 @@ export function ProviderProductsPage() {
                 : `${primary.termKm} km`
               : "—";
 
-            const primaryClass = primary && typeof primary.vehicleClass === "string" && primary.vehicleClass.trim() ? primary.vehicleClass.trim() : "";
-            const primaryMileageMin = primary && typeof primary.vehicleMileageMinKm === "number" ? primary.vehicleMileageMinKm : 0;
-            const primaryMileageMax =
-              primary && primary.vehicleMileageMaxKm !== undefined
-                ? primary.vehicleMileageMaxKm === null
-                  ? null
-                  : typeof primary.vehicleMileageMaxKm === "number"
-                    ? primary.vehicleMileageMaxKm
-                    : undefined
-                : undefined;
-            const primaryMileageLabel = primary
-              ? `${primaryMileageMin.toLocaleString()} - ${primaryMileageMax === null ? "Unlimited" : typeof primaryMileageMax === "number" ? primaryMileageMax.toLocaleString() : "—"} km`
-              : "";
-            const primaryClaimLimit = primary && typeof primary.claimLimitCents === "number" ? money(primary.claimLimitCents) : "";
-
             const pricingBadgeClass = health?.ok
               ? "text-[10px] px-2 py-0.5 rounded-md border bg-emerald-50 text-emerald-700 border-emerald-200"
               : "text-[10px] px-2 py-0.5 rounded-md border bg-rose-50 text-rose-700 border-rose-200";
