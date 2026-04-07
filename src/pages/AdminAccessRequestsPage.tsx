@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import { ShieldCheck, CheckCircle, XCircle, Clock, ArrowRight, User, Building2 } from "lucide-react";
 
 import { PageShell } from "../components/PageShell";
 import { Button } from "../components/ui/button";
@@ -385,167 +387,246 @@ export function AdminAccessRequestsPage() {
     return "border-amber-500/15 bg-amber-500/10 text-amber-800 dark:text-amber-300";
   };
 
+  const pendingCount = (listQuery.data ?? []).filter((r) => r.status === "PENDING").length;
+  const approvedCount = (listQuery.data ?? []).filter((r) => r.status === "APPROVED").length;
+  const rejectedCount = (listQuery.data ?? []).filter((r) => r.status === "REJECTED").length;
+
   return (
-    <PageShell title="System Admin" subtitle="Review inbound access requests and mark them approved/rejected." badge="Access Requests">
+    <PageShell 
+      title="Access Requests" 
+      subtitle="Review and approve/reject dealer and provider access requests"
+      badge="Admin"
+      actions={
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" asChild className="gap-2">
+            <Link to="/admin-dashboard">
+              <ArrowRight className="w-4 h-4 rotate-180" />
+              Back to Dashboard
+            </Link>
+          </Button>
+        </div>
+      }
+    >
       <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
-        <div className="hidden md:grid grid-cols-12 gap-3 px-6 py-3 border-b text-xs text-muted-foreground bg-gradient-to-r from-blue-500/10 via-transparent to-transparent">
-          <div className="col-span-2">Requested</div>
-          <div className="col-span-2">Name</div>
-          <div className="col-span-3">Email</div>
-          <div className="col-span-3">Assign (company / role)</div>
-          <div className="col-span-2 text-right">Actions</div>
+        <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/5 via-transparent to-transparent">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-4">
+              <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-600">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="font-semibold text-foreground">Access Requests</div>
+                <div className="text-sm text-muted-foreground">Review and manage platform access</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-amber-500/10 text-amber-700">
+                <Clock className="w-4 h-4" />
+                <span className="text-sm font-medium">{pendingCount} Pending</span>
+              </div>
+              <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-700">
+                <CheckCircle className="w-4 h-4" />
+                <span className="text-sm font-medium">{approvedCount} Approved</span>
+              </div>
+              <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-red-500/10 text-red-700">
+                <XCircle className="w-4 h-4" />
+                <span className="text-sm font-medium">{rejectedCount} Rejected</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="divide-y">
           {(listQuery.data ?? []).map((r) => {
             const assigned = resolveAssign(r);
             const canAct = r.status === "PENDING";
+            const isApproved = r.status === "APPROVED";
+            const isRejected = r.status === "REJECTED";
+
             return (
-            <div key={r.id} className="px-6 py-4 hover:bg-white/30 dark:hover:bg-white/5 transition-colors">
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                <div className="md:col-span-2">
-                  <div className="flex items-center gap-2">
-                    <div className="text-sm font-medium">{r.requestType}</div>
-                    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusBadgeClass(r.status)}`}>
-                      {r.status}
-                    </span>
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1 break-words">{r.company}</div>
-                </div>
-                <div className="md:col-span-2 text-sm">{r.name}</div>
-                <div className="md:col-span-3 text-sm text-muted-foreground break-all">{r.email}</div>
-                <div className="md:col-span-3">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    <Input
-                      value={assigned.company}
-                      disabled={!canAct || busy || r.requestType === "PROVIDER"}
-                      onChange={(e) => {
-                        const company = e.target.value;
-                        setAssignById((prev) => ({
-                          ...prev,
-                          [r.id]: { role: assigned.role, company },
-                        }));
-                      }}
-                      placeholder="Company"
-                      className="bg-background/70"
-                    />
-                    <select
-                      value={assigned.role}
-                      disabled={!canAct || busy || r.requestType === "PROVIDER"}
-                      onChange={(e) => {
-                        const role = e.target.value as Role;
-                        setAssignById((prev) => ({
-                          ...prev,
-                          [r.id]: { role, company: assigned.company },
-                        }));
-                      }}
-                      className="h-10 w-full rounded-md border border-input bg-background/70 px-3 text-sm shadow-sm"
-                    >
-                      <option value="DEALER_ADMIN">Dealer</option>
-                      <option value="DEALER_EMPLOYEE">Dealer Employee</option>
-                      <option value="PROVIDER">Provider</option>
-                      {user?.role === "SUPER_ADMIN" ? <option value="ADMIN">Admin</option> : null}
-                    </select>
+              <div key={r.id} className={`px-6 py-5 ${canAct ? 'hover:bg-muted/30' : ''} transition-colors`}>
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="flex items-start gap-4 flex-1 min-w-0">
+                    <div className={`mt-1 p-2 rounded-xl ${isApproved ? 'bg-emerald-500/10 text-emerald-600' : isRejected ? 'bg-red-500/10 text-red-600' : 'bg-amber-500/10 text-amber-600'}`}>
+                      {isApproved ? <CheckCircle className="w-5 h-5" /> : isRejected ? <XCircle className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-muted text-[11px] font-semibold uppercase">
+                          {r.requestType}
+                        </span>
+                        <span className="text-sm font-semibold">{r.name}</span>
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium ${statusBadgeClass(r.status)}`}>
+                          {r.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <Building2 className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">{r.company}</span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <User className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">{r.email}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-2">
+                        Submitted {new Date(r.createdAt).toLocaleDateString()} at {new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {r.reviewedAt && (
+                          <span className="ml-2">• Reviewed {new Date(r.reviewedAt).toLocaleDateString()}</span>
+                        )}
+                        {r.reviewedByEmail && (
+                          <span className="ml-1">by {r.reviewedByEmail}</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="mt-2">
-                    <div className="text-xs text-muted-foreground">Rejection message (optional)</div>
-                    <textarea
-                      className="mt-1 min-h-[72px] w-full rounded-md border border-input bg-background/70 px-3 py-2 text-sm"
-                      value={resolveReject(r)}
-                      disabled={!canAct || busy}
-                      onChange={(e) => {
-                        const rejectionMessage = e.target.value;
-                        setRejectById((prev) => ({
-                          ...prev,
-                          [r.id]: rejectionMessage,
-                        }));
-                      }}
-                      placeholder="Optional note shown to the requester…"
-                    />
+                  <div className="flex items-start gap-3">
+                    {canAct && (
+                      <div className="space-y-3 min-w-[280px]">
+                        <div className="grid grid-cols-2 gap-2">
+                          <Input
+                            value={assigned.company}
+                            disabled={busy || r.requestType === "PROVIDER"}
+                            onChange={(e) => {
+                              const company = e.target.value;
+                              setAssignById((prev) => ({
+                                ...prev,
+                                [r.id]: { role: assigned.role, company },
+                              }));
+                            }}
+                            placeholder="Company name"
+                            className="bg-background/70"
+                          />
+                          <select
+                            value={assigned.role}
+                            disabled={busy || r.requestType === "PROVIDER"}
+                            onChange={(e) => {
+                              const role = e.target.value as Role;
+                              setAssignById((prev) => ({
+                                ...prev,
+                                [r.id]: { role, company: assigned.company },
+                              }));
+                            }}
+                            className="h-10 w-full rounded-md border border-input bg-background/70 px-3 text-sm shadow-sm"
+                          >
+                            <option value="DEALER_ADMIN">Dealer Admin</option>
+                            <option value="DEALER_EMPLOYEE">Dealer Employee</option>
+                            <option value="PROVIDER">Provider</option>
+                            {user?.role === "SUPER_ADMIN" ? <option value="ADMIN">Admin</option> : null}
+                          </select>
+                        </div>
+                        <div>
+                          <textarea
+                            className="min-h-[60px] w-full rounded-md border border-input bg-background/70 px-3 py-2 text-sm resize-none"
+                            value={resolveReject(r)}
+                            disabled={busy}
+                            onChange={(e) => {
+                              const rejectionMessage = e.target.value;
+                              setRejectById((prev) => ({
+                                ...prev,
+                                [r.id]: rejectionMessage,
+                              }));
+                            }}
+                            placeholder="Rejection reason (optional)…"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                            disabled={busy}
+                            onClick={() => {
+                              void (async () => {
+                                const company = assigned.company.trim();
+                                if (!company) return;
+                                if (!(await confirmProceed(`Approve access request for ${r.email}?`))) return;
+                                updateStatusMutation.mutate({
+                                  id: r.id,
+                                  status: "APPROVED",
+                                  assignedRole: assigned.role,
+                                  assignedCompany: company,
+                                });
+                              })();
+                            }}
+                          >
+                            <CheckCircle className="w-4 h-4 mr-1" />
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1 border-red-200 text-red-700 hover:bg-red-50"
+                            disabled={busy}
+                            onClick={() => {
+                              void (async () => {
+                                if (!(await confirmProceed(`Reject access request for ${r.email}?`))) return;
+                                const rejectionMessage = resolveReject(r).trim();
+                                updateStatusMutation.mutate({
+                                  id: r.id,
+                                  status: "REJECTED",
+                                  assignedRole: assigned.role,
+                                  assignedCompany: assigned.company.trim() || r.company,
+                                  rejectionMessage: rejectionMessage || undefined,
+                                });
+                              })();
+                            }}
+                          >
+                            <XCircle className="w-4 h-4 mr-1" />
+                            Reject
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  {r.reviewedByEmail ? (
-                    <div className="text-xs text-muted-foreground mt-2">Reviewed by {r.reviewedByEmail}</div>
-                  ) : null}
                 </div>
-                <div className="md:col-span-2 flex md:justify-end gap-2">
-                  <Button
-                    size="sm"
-                    disabled={busy || r.status === "APPROVED"}
-                    onClick={() => {
-                      void (async () => {
-                        const company = assigned.company.trim();
-                        if (!company) return;
-                        if (!(await confirmProceed(`Approve access request for ${r.email}?`))) return;
-                        updateStatusMutation.mutate({
-                          id: r.id,
-                          status: "APPROVED",
-                          assignedRole: assigned.role,
-                          assignedCompany: company,
-                        });
-                      })();
-                    }}
-                  >
-                    Approve
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busy || r.status === "REJECTED"}
-                    onClick={() => {
-                      void (async () => {
-                        if (!(await confirmProceed(`Reject access request for ${r.email}?`))) return;
-                        const rejectionMessage = resolveReject(r).trim();
-                        updateStatusMutation.mutate({
-                          id: r.id,
-                          status: "REJECTED",
-                          assignedRole: assigned.role,
-                          assignedCompany: assigned.company.trim() || r.company,
-                          rejectionMessage: rejectionMessage || undefined,
-                        });
-                      })();
-                    }}
-                  >
-                    Reject
-                  </Button>
-                </div>
+
+                {r.message && (
+                  <div className="mt-4 ml-11 text-sm rounded-xl border bg-muted/50 p-4">
+                    <div className="text-xs font-medium text-muted-foreground mb-1">Message from requester</div>
+                    <div className="whitespace-pre-wrap break-words">{r.message}</div>
+                  </div>
+                )}
+
+                {r.rejectionMessage && isRejected && (
+                  <div className="mt-4 ml-11 text-sm rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/30 p-4">
+                    <div className="text-xs font-medium text-red-700 dark:text-red-400 mb-1">Rejection reason</div>
+                    <div className="whitespace-pre-wrap break-words text-red-800 dark:text-red-300">{r.rejectionMessage}</div>
+                  </div>
+                )}
               </div>
-
-              <div className="mt-2 text-xs text-muted-foreground">
-                Submitted {new Date(r.createdAt).toLocaleString()}
-                {r.reviewedAt ? ` • Reviewed ${new Date(r.reviewedAt).toLocaleString()}` : ""}
-              </div>
-
-              {r.message ? (
-                <div className="mt-2 text-sm rounded-xl border bg-background/70 backdrop-blur-sm p-3">
-                  <div className="text-xs text-muted-foreground">Message</div>
-                  <div className="mt-1 whitespace-pre-wrap break-words">{r.message}</div>
-                </div>
-              ) : null}
-
-              {r.rejectionMessage && r.status === "REJECTED" ? (
-                <div className="mt-2 text-sm rounded-xl border bg-background/70 backdrop-blur-sm p-3">
-                  <div className="text-xs text-muted-foreground">Rejection message</div>
-                  <div className="mt-1 whitespace-pre-wrap break-words">{r.rejectionMessage}</div>
-                </div>
-              ) : null}
-            </div>
-          );
+            );
           })}
 
-          {listQuery.isLoading ? <div className="px-6 py-6 text-sm text-muted-foreground">Loading…</div> : null}
-          {listQuery.isError ? <div className="px-6 py-6 text-sm text-destructive">Failed to load access requests.</div> : null}
-          {!listQuery.isLoading && !listQuery.isError && (listQuery.data ?? []).length === 0 ? (
-            <div className="px-6 py-6 text-sm text-muted-foreground">No access requests yet.</div>
-          ) : null}
+          {listQuery.isLoading && (
+            <div className="px-6 py-12 text-center">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-muted mb-4">
+                <Clock className="w-6 h-6 text-muted-foreground animate-pulse" />
+              </div>
+              <div className="text-sm text-muted-foreground">Loading access requests…</div>
+            </div>
+          )}
+          {listQuery.isError && (
+            <div className="px-6 py-12 text-center">
+              <div className="text-sm text-destructive">Failed to load access requests. Please try again.</div>
+            </div>
+          )}
+          {!listQuery.isLoading && !listQuery.isError && (listQuery.data ?? []).length === 0 && (
+            <div className="px-6 py-12 text-center">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-500/10 text-emerald-600 mb-4">
+                <CheckCircle className="w-6 h-6" />
+              </div>
+              <div className="text-sm font-medium">No access requests</div>
+              <div className="text-sm text-muted-foreground mt-1">All caught up! No pending requests at this time.</div>
+            </div>
+          )}
         </div>
       </div>
 
-      {updateStatusMutation.isError ? (
-        <div className="mt-4 text-sm text-destructive">
+      {updateStatusMutation.isError && (
+        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-800 dark:text-red-200">
           {toErrorMessage(updateStatusMutation.error)}
         </div>
-      ) : null}
+      )}
     </PageShell>
   );
 }

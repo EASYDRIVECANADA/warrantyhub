@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { DollarSign, Package, Settings, Tag } from "lucide-react";
 
 import { Input } from "../components/ui/input";
 import { useToast } from "../providers/ToastProvider";
@@ -73,6 +74,7 @@ function providerDisplayName(p: ProviderPublic | undefined, fallbackId: string) 
 }
 
 const CONFIGURE_STATE_KEY = "warrantyhub.session.dealer_configure_state";
+const CONFIDENTIALITY_KEY = "warrantyhub.dealer.confidentiality_pricing";
 
 function readConfigureState(): { search?: string; providerId?: string; selectedProductId?: string } {
   const raw = sessionStorage.getItem(CONFIGURE_STATE_KEY);
@@ -147,6 +149,29 @@ export function DealerConfigurePage() {
   const initialConfigureState = useMemo(() => readConfigureState(), []);
 
   const [search, setSearch] = useState(() => initialConfigureState.search ?? "");
+
+  const [confidentialityMode, setConfidentialityMode] = useState(() => {
+    try {
+      return localStorage.getItem(CONFIDENTIALITY_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleConfidentialityMode = () => {
+    const next = !confidentialityMode;
+    setConfidentialityMode(next);
+    try {
+      localStorage.setItem(CONFIDENTIALITY_KEY, String(next));
+      window.dispatchEvent(new CustomEvent("confidentiality-mode-changed"));
+    } catch {
+      toast?.({
+        title: "Warning",
+        message: "Could not save preference. Storage may be full.",
+        variant: "error",
+      });
+    }
+  };
 
   const providerOptions = useMemo(() => {
     const ids = Array.from(new Set(products.map((p) => (p.providerId ?? "").toString().trim()).filter(Boolean)));
@@ -319,50 +344,80 @@ export function DealerConfigurePage() {
   }, [addonIdsKey, addons, dealerId, retailOverridesVersion, selectedProduct]);
 
   return (
-    <PageShell title="">
-      <div className="space-y-4">
-        <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
-          <div className="px-5 py-4 border-b bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
-            <div className="text-sm font-semibold">Retail pricing</div>
-            <div className="text-xs text-muted-foreground mt-1">
-              Select a product to configure its pricing terms. Marketplace pricing will use your configured retail when set.
+    <PageShell
+      title=""
+    >
+      <div className="space-y-6">
+        <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
+          <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/8 via-transparent to-yellow-400/8">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600/10 text-blue-600">
+                  <Settings className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="text-base font-semibold">Retail Pricing</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    Select a product to configure its pricing terms.
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <div className="relative inline-flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={confidentialityMode}
+                      onChange={toggleConfidentialityMode}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-muted rounded-full peer peer-checked:bg-blue-600 transition-colors"></div>
+                    <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow peer-checked:translate-x-4 transition-transform"></div>
+                  </div>
+                  <span className="text-xs font-medium">Confidentiality Pricing</span>
+                </label>
+              </div>
             </div>
           </div>
 
-          <div className="px-5 py-4 flex flex-col sm:flex-row sm:items-end gap-3">
-            <div>
-              <div className="text-xs text-muted-foreground mb-1">Search</div>
-              <Input
-                className="h-9 w-full sm:w-[280px]"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search product"
-              />
-            </div>
+          <div className="p-6">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1">
+                <div className="text-xs font-medium text-muted-foreground mb-1.5">Search</div>
+                <Input
+                  className="h-10"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search products..."
+                />
+              </div>
 
-            <div className="sm:w-[240px]">
-              <div className="text-xs text-muted-foreground mb-1">Provider</div>
-              <select
-                className="h-9 w-full rounded-md border border-input bg-background/40 px-2 text-sm shadow-sm"
-                value={providerId}
-                onChange={(e) => setProviderId(e.target.value)}
-              >
-                <option value="">All providers</option>
-                {providerOptions.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+              <div className="sm:w-[240px]">
+                <div className="text-xs font-medium text-muted-foreground mb-1.5">Provider</div>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background/40 px-3 text-sm shadow-sm"
+                  value={providerId}
+                  onChange={(e) => setProviderId(e.target.value)}
+                >
+                  <option value="">All providers</option>
+                  {providerOptions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          <div className="lg:col-span-5 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
-            <div className="grid grid-cols-12 gap-3 px-4 py-3 border-b bg-muted/20 text-[11px] text-muted-foreground">
-              <div className="col-span-8">Product</div>
-              <div className="col-span-4">Provider</div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-5 rounded-2xl border bg-card shadow-card overflow-hidden">
+            <div className="px-5 py-4 border-b bg-muted/20">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <Package className="h-4 w-4" />
+                Products
+              </div>
             </div>
 
             <div className="divide-y">
@@ -377,152 +432,195 @@ export function DealerConfigurePage() {
                     type="button"
                     onClick={() => setSelectedProductId(pid)}
                     className={
-                      "w-full text-left grid grid-cols-12 gap-3 px-4 py-3 items-center transition-colors relative " +
+                      "w-full text-left grid grid-cols-12 gap-3 px-4 py-3.5 items-center transition-all duration-200 hover:bg-muted/30 " +
                       (isSelected
-                        ? "bg-blue-600/10"
-                        : "hover:bg-muted/25")
+                        ? "bg-blue-600/10 border-l-2 border-blue-600"
+                        : "border-l-2 border-transparent")
                     }
                   >
-                    {isSelected ? <span className="absolute left-0 top-0 bottom-0 w-1 bg-blue-600" /> : null}
-                    <div className="col-span-8 min-w-0">
+                    <div className="col-span-7 min-w-0">
                       <div className="text-sm font-medium text-foreground truncate">{(p.name ?? "").trim() || "Untitled"}</div>
                       <div className="text-[11px] text-muted-foreground truncate">{(p.productType ?? "").toString()}</div>
                     </div>
-                    <div className="col-span-4 text-sm text-muted-foreground truncate">{providerName}</div>
+                    <div className="col-span-5 text-xs text-muted-foreground truncate">{providerName}</div>
                   </button>
                 );
               })}
 
-              {filtered.length === 0 ? <div className="px-4 py-6 text-sm text-muted-foreground">No products found.</div> : null}
+              {filtered.length === 0 ? (
+                <div className="px-4 py-8 text-sm text-muted-foreground text-center">
+                  <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>No products found.</p>
+                </div>
+              ) : null}
             </div>
           </div>
 
-          <div className="lg:col-span-7 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
-            <div className="px-5 py-4 border-b bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
-              <div className="text-sm font-semibold">Details</div>
-              <div className="text-xs text-muted-foreground mt-1">Select a product to edit term pricing.</div>
+          <div className="lg:col-span-7 rounded-2xl border bg-card shadow-card overflow-hidden">
+            <div className="px-5 py-4 border-b bg-gradient-to-r from-blue-600/8 via-transparent to-yellow-400/8">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <Tag className="h-4 w-4" />
+                Product Details
+              </div>
             </div>
 
             {!selectedProduct ? (
-              <div className="px-4 py-6 text-sm text-muted-foreground">No product selected.</div>
+              <div className="px-4 py-12 text-sm text-muted-foreground text-center">
+                <Package className="h-10 w-10 mx-auto mb-3 opacity-40" />
+                <p>Select a product to configure pricing</p>
+              </div>
             ) : (
-              <div className="p-5 space-y-4">
+              <div className="p-5 space-y-5">
                 <div>
-                  <div className="text-base font-semibold text-foreground">{(selectedProduct.name ?? "").trim() || "Untitled"}</div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    Provider: {providerDisplayName(providerById.get((selectedProduct.providerId ?? "").toString()), (selectedProduct.providerId ?? "").toString())} • Type: {(selectedProduct.productType ?? "").toString()}
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-blue-600/10 flex items-center justify-center">
+                      <Package className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <div className="text-base font-semibold text-foreground">{(selectedProduct.name ?? "").trim() || "Untitled"}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Provider: {providerDisplayName(providerById.get((selectedProduct.providerId ?? "").toString()), (selectedProduct.providerId ?? "").toString())} • Type: {(selectedProduct.productType ?? "").toString()}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                <div className="rounded-xl border overflow-hidden bg-background/40">
-                  <div className="grid grid-cols-12 gap-1.5 px-3 py-2 border-b bg-muted/20 text-[11px] text-muted-foreground">
-                    <div className="col-span-4">Term</div>
-                    <div className="col-span-2">Deductible</div>
-                    <div className="col-span-2 pl-2">Base Price</div>
-                    <div className="col-span-4 text-right">Retail Price</div>
+                <div className="rounded-xl border overflow-hidden bg-background/60">
+                  <div className="px-5 py-4 border-b bg-muted/20">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-sm font-semibold">
+                        <DollarSign className="h-4 w-4" />
+                        Pricing Configuration
+                      </div>
+                      <span className="text-xs text-muted-foreground">{pricingRows.length} {pricingRows.length === 1 ? "plan" : "plans"}</span>
+                    </div>
                   </div>
 
-                  <div className="divide-y">
-                    {pricingQuery.isLoading ? <div className="px-3 py-4 text-sm text-muted-foreground">Loading terms…</div> : null}
-                    {pricingQuery.isError ? <div className="px-3 py-4 text-sm text-destructive">Failed to load terms.</div> : null}
+                  {pricingQuery.isLoading ? (
+                    <div className="px-5 py-8 text-sm text-muted-foreground text-center">Loading pricing terms…</div>
+                  ) : pricingQuery.isError ? (
+                    <div className="px-5 py-8 text-sm text-destructive text-center">Failed to load pricing terms.</div>
+                  ) : pricingRows.length === 0 ? (
+                    <div className="px-5 py-8 text-sm text-muted-foreground text-center">No pricing terms found for this product.</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b bg-muted/10">
+                            <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground">Term</th>
+                            <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">Deductible</th>
+                            <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">Cost Price</th>
+                            <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">Suggested Retail</th>
+                            <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">Your Retail Price</th>
+                            <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">Markup %</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {pricingRows.map((r, idx) => {
+                            void retailOverridesVersion;
+                            const pid = (selectedProduct.id ?? "").trim();
+                            const rid = (r.id ?? "").trim();
+                            const costPrice = costFromProductOrPricing({ dealerCostCents: r.dealerCostCents, basePriceCents: r.basePriceCents });
+                            const suggestedRetail = (r as any).suggestedRetailPriceCents;
+                            const currentOverride = dealerId && pid && rid ? getDealerProductPricingRetailCents(dealerId, pid, rid) : null;
+                            const baseRetail = baseRetailForRow(r);
+                            const effectiveRetail = typeof currentOverride === "number" ? currentOverride : baseRetail;
+                            const termLabel =
+                              selectedProduct.productType === "GAP"
+                                ? `${typeof r.financeTermMonths === "number" ? `${r.financeTermMonths} mo` : "—"}`
+                                : `${r.termMonths === null ? "Unlimited" : `${r.termMonths} mo`} / ${r.termKm === null ? "Unlimited" : `${r.termKm.toLocaleString()} km`}`;
 
-                    {!pricingQuery.isLoading && !pricingQuery.isError && pricingRows.length === 0 ? (
-                      <div className="px-3 py-4 text-sm text-muted-foreground">No pricing terms found for this product.</div>
-                    ) : null}
+                            const markupPct = costPrice && effectiveRetail ? (((effectiveRetail - costPrice) / costPrice) * 100).toFixed(1) : null;
 
-                    {pricingRows.map((r, idx) => {
-                      void retailOverridesVersion;
-                      const pid = (selectedProduct.id ?? "").trim();
-                      const rid = (r.id ?? "").trim();
-                      const currentOverride = dealerId && pid && rid ? getDealerProductPricingRetailCents(dealerId, pid, rid) : null;
-                      const baseRetail = baseRetailForRow(r);
-                      const effectiveRetail = typeof currentOverride === "number" ? currentOverride : baseRetail;
-                      const termLabel =
-                        selectedProduct.productType === "GAP"
-                          ? `${typeof r.financeTermMonths === "number" ? `${r.financeTermMonths} mo` : "—"}`
-                          : `${r.termMonths === null ? "Unlimited" : `${r.termMonths} mo`} / ${r.termKm === null ? "Unlimited" : `${r.termKm.toLocaleString()} km`}`;
-
-                      const rowBg = idx % 2 === 0 ? "bg-transparent" : "bg-muted/10";
-                      return (
-                        <div
-                          key={rid}
-                          className={
-                            "grid grid-cols-12 gap-1.5 px-3 py-2.5 items-center border-l-2 border-transparent hover:bg-muted/15 transition-colors " +
-                            rowBg
-                          }
-                        >
-                          <div className="col-span-4 min-w-0">
-                            <div className="text-sm font-medium text-foreground truncate">{termLabel}</div>
-                            <div className="text-[11px] text-muted-foreground truncate">
-                              {typeof r.vehicleMileageMinKm === "number" || typeof r.vehicleMileageMaxKm === "number" || r.vehicleMileageMaxKm === null
-                                ? `${typeof r.vehicleMileageMinKm === "number" ? r.vehicleMileageMinKm.toLocaleString() : "—"}–${
-                                    r.vehicleMileageMaxKm === null
-                                      ? "Unlimited"
-                                      : typeof r.vehicleMileageMaxKm === "number"
-                                        ? r.vehicleMileageMaxKm.toLocaleString()
-                                        : "—"
-                                  } km`
-                                : ""}
-                            </div>
-                          </div>
-
-                          <div className="col-span-2 text-sm text-muted-foreground whitespace-nowrap tabular-nums">{moneyLabel(r.deductibleCents)}</div>
-                          <div className="col-span-2 pl-2 text-sm text-muted-foreground whitespace-nowrap tabular-nums">{moneyLabel(baseRetail)}</div>
-
-                          <div className="col-span-4 flex flex-col items-end gap-1 pr-1">
-                            <div className="flex items-center justify-end gap-2 w-full min-w-0">
-                              <Input
-                                className="h-8 w-[120px] text-right"
-                                inputMode="decimal"
-                                value={draftByPricingId[rid] ?? ""}
-                                onChange={(e) => {
-                                  const formatted = formatMoneyInput(e.target.value);
-                                  setDraftByPricingId((prev) => ({ ...prev, [rid]: formatted }));
-                                }}
-                                placeholder="0.00"
-                              />
-
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 px-2 shrink-0"
-                                onClick={() => {
-                                  const cents = parseMoneyToCents(draftByPricingId[rid] ?? "");
-                                  setDealerProductPricingRetailCents(dealerId, pid, rid, cents);
-                                }}
-                              >
-                                Save
-                              </Button>
-                            </div>
-
-                            <div className="text-[11px] text-muted-foreground tabular-nums whitespace-nowrap text-right">
-                              {typeof effectiveRetail === "number" ? moneyLabel(effectiveRetail) : "—"}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                            return (
+                              <tr key={rid} className={idx % 2 === 0 ? "bg-transparent hover:bg-muted/5" : "bg-muted/5 hover:bg-muted/10"}>
+                                <td className="px-5 py-4">
+                                  <div className="text-sm font-medium text-foreground">{termLabel}</div>
+                                  {(typeof r.vehicleMileageMinKm === "number" || typeof r.vehicleMileageMaxKm === "number" || r.vehicleMileageMaxKm === null) && (
+                                    <div className="text-xs text-muted-foreground mt-0.5">
+                                      Mileage: {typeof r.vehicleMileageMinKm === "number" ? r.vehicleMileageMinKm.toLocaleString() : "—"} – {r.vehicleMileageMaxKm === null ? "Unlimited" : typeof r.vehicleMileageMaxKm === "number" ? r.vehicleMileageMaxKm.toLocaleString() : "—"} km
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-4 py-4 text-sm text-muted-foreground whitespace-nowrap tabular-nums text-right font-medium">
+                                  {moneyLabel(r.deductibleCents)}
+                                </td>
+                                <td className="px-4 py-4 text-sm text-muted-foreground whitespace-nowrap tabular-nums text-right font-medium">
+                                  {moneyLabel(costPrice)}
+                                </td>
+                                <td className="px-4 py-4 text-sm text-emerald-600 whitespace-nowrap tabular-nums text-right font-medium bg-emerald-50/50">
+                                  {moneyLabel(suggestedRetail)}
+                                </td>
+                                <td className="px-4 py-4">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <Input
+                                      className="h-9 w-[130px] text-right text-sm font-medium"
+                                      inputMode="decimal"
+                                      value={draftByPricingId[rid] ?? ""}
+                                      onChange={(e) => {
+                                        const formatted = formatMoneyInput(e.target.value);
+                                        setDraftByPricingId((prev) => ({ ...prev, [rid]: formatted }));
+                                      }}
+                                      placeholder="Enter price"
+                                    />
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-9 px-4 shrink-0 bg-blue-600 hover:bg-blue-700 hover:text-white text-white border-blue-600 font-medium"
+                                      onClick={() => {
+                                        const cents = parseMoneyToCents(draftByPricingId[rid] ?? "");
+                                        if (typeof cents === "number" && typeof costPrice === "number" && cents < costPrice) {
+                                          toast?.({
+                                            title: "Invalid Price",
+                                            message: "Retail price cannot be below cost price.",
+                                            variant: "error",
+                                          });
+                                          return;
+                                        }
+                                        setDealerProductPricingRetailCents(dealerId, pid, rid, cents);
+                                      }}
+                                    >
+                                      Save
+                                    </Button>
+                                  </div>
+                                  {typeof effectiveRetail === "number" && (
+                                    <div className="text-xs text-muted-foreground mt-1 text-right">
+                                      Current: {moneyLabel(effectiveRetail)}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-4 py-4 text-sm whitespace-nowrap tabular-nums text-right font-semibold">
+                                  <span className={markupPct !== null ? (Number(markupPct) >= 0 ? "text-emerald-600" : "text-red-500") : "text-muted-foreground"}>
+                                    {markupPct !== null ? `${markupPct}%` : "—"}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
 
-                <div className="rounded-xl border overflow-hidden bg-background/40">
+                <div className="rounded-xl border overflow-hidden bg-background/60">
                   <div className="px-4 py-3 border-b bg-muted/20">
                     <div className="text-sm font-semibold">Add-ons</div>
-                    <div className="text-xs text-muted-foreground mt-1">Optional coverages for this product.</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">Optional coverages for this product.</div>
                   </div>
 
                   <div className="divide-y">
-                    {addonsQuery.isLoading ? <div className="px-4 py-4 text-sm text-muted-foreground">Loading add-ons…</div> : null}
-                    {addonsQuery.isError ? <div className="px-4 py-4 text-sm text-destructive">Failed to load add-ons.</div> : null}
+                    {addonsQuery.isLoading ? <div className="px-4 py-4 text-sm text-muted-foreground text-center">Loading add-ons…</div> : null}
+                    {addonsQuery.isError ? <div className="px-4 py-4 text-sm text-destructive text-center">Failed to load add-ons.</div> : null}
 
                     {!addonsQuery.isLoading && !addonsQuery.isError && addons.length === 0 ? (
-                      <div className="px-4 py-4 text-sm text-muted-foreground">No add-ons for this product.</div>
+                      <div className="px-4 py-4 text-sm text-muted-foreground text-center">No add-ons for this product.</div>
                     ) : null}
 
                     {addons.length > 0 ? (
-                      <div className="grid grid-cols-12 gap-2 px-4 py-2 border-b bg-muted/10 text-[11px] text-muted-foreground">
-                        <div className="col-span-6">Add-on</div>
-                        <div className="col-span-2 text-right">Base Price</div>
+                      <div className="grid grid-cols-12 gap-2 px-4 py-2.5 border-b bg-muted/10 text-[11px] text-muted-foreground font-medium">
+                        <div className="col-span-5">Add-on</div>
+                        <div className="col-span-3 text-right">Base Price</div>
                         <div className="col-span-4 text-right">Retail Price</div>
                       </div>
                     ) : null}
@@ -534,26 +632,26 @@ export function DealerConfigurePage() {
                       const currentOverride = dealerId && pid && aid ? getDealerProductAddonRetailCents(dealerId, pid, aid) : null;
                       const baseRetail = baseRetailForAddon(a);
                       const effectiveRetail = typeof currentOverride === "number" ? currentOverride : baseRetail;
-                      const rowBg = idx % 2 === 0 ? "bg-transparent" : "bg-muted/10";
+                      const rowBg = idx % 2 === 0 ? "bg-transparent" : "bg-muted/5";
 
                       return (
                         <div
                           key={aid}
                           className={
-                            "grid grid-cols-12 gap-2 px-4 py-2.5 items-center hover:bg-muted/15 transition-colors " + rowBg
+                            "grid grid-cols-12 gap-2 px-4 py-3 items-center hover:bg-muted/10 transition-colors " + rowBg
                           }
                         >
-                          <div className="col-span-6 min-w-0">
+                          <div className="col-span-5 min-w-0">
                             <div className="text-sm font-medium text-foreground truncate">{(a.name ?? "").trim() || "Untitled add-on"}</div>
                             {a.description ? <div className="text-[11px] text-muted-foreground truncate">{a.description}</div> : null}
                           </div>
 
-                          <div className="col-span-2 text-sm text-muted-foreground text-right whitespace-nowrap tabular-nums">{moneyLabel(baseRetail)}</div>
+                          <div className="col-span-3 text-sm text-muted-foreground text-right whitespace-nowrap tabular-nums">{moneyLabel(baseRetail)}</div>
 
-                          <div className="col-span-4 flex flex-col items-end gap-1">
+                          <div className="col-span-4 flex flex-col items-end gap-1.5">
                             <div className="flex items-center justify-end gap-2 w-full min-w-0">
                               <Input
-                                className="h-8 w-[120px] text-right"
+                                className="h-8 w-[120px] text-right text-sm"
                                 inputMode="decimal"
                                 value={draftByAddonId[aid] ?? ""}
                                 onChange={(e) => {
@@ -565,7 +663,7 @@ export function DealerConfigurePage() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-8 px-2 shrink-0"
+                                className="h-8 px-3 shrink-0 bg-blue-50 hover:bg-blue-100 hover:text-blue-700 border-blue-200"
                                 onClick={() => {
                                   const cents = parseMoneyToCents(draftByAddonId[aid] ?? "");
                                   setDealerProductAddonRetailCents(dealerId, pid, aid, cents);

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Search, ChevronRight, Package, FileText, Users, ArrowLeft } from "lucide-react";
+import { Search, ChevronRight, Package, FileText, Users, ArrowLeft, Store, Mail, Phone, MapPin, Calendar, ArrowRight } from "lucide-react";
 
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -176,78 +176,135 @@ export function AdminProvidersPage() {
   const isLoading = companiesQuery.isLoading;
   const isError = companiesQuery.isError;
 
+  const activeCount = companies.filter((c) => c.status === "ACTIVE").length;
+  const pendingCount = companies.filter((c) => c.status === "PENDING").length;
+  const suspendedCount = companies.filter((c) => c.status === "SUSPENDED").length;
+
   return (
     <PageShell
       badge="Admin"
-      title="Providers"
-      subtitle="Read-only provider visibility."
+      title="Provider Companies"
+      subtitle="View and manage warranty provider companies"
       actions={
-        <Button variant="outline" asChild>
-          <Link to="/company-dashboard">Back to dashboard</Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" asChild className="gap-2">
+            <Link to="/superadmin-companies">
+              <Store className="w-4 h-4" />
+              Manage Companies
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" asChild className="gap-2">
+            <Link to="/admin-dashboard">
+              <ArrowRight className="w-4 h-4 rotate-180" />
+              Dashboard
+            </Link>
+          </Button>
+        </div>
       }
     >
       {selectedCompany ? (
         <div className="space-y-6">
-          <Button variant="ghost" size="sm" onClick={() => setSelectedCompanyId(null)} className="gap-1">
+          <Button variant="ghost" size="sm" onClick={() => setSelectedCompanyId(null)} className="gap-2">
             <ArrowLeft className="w-4 h-4" />
-            Back to list
+            Back to providers
           </Button>
 
-          <div className="rounded-xl border bg-card shadow-card p-6">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div>
-                <div className="flex items-center gap-3">
-                  <h2 className="text-xl font-semibold">{selectedCompany.providerCompanyName}</h2>
-                  <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${statusBadgeClass(selectedCompany.status)}`}>
-                    {statusLabel(selectedCompany.status)}
-                  </span>
+          <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+            <div className="px-6 py-5 border-b bg-gradient-to-r from-emerald-500/5 via-transparent to-transparent">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-600">
+                    <Store className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-xl font-bold">{selectedCompany.providerCompanyName}</h2>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full border text-[11px] font-semibold ${statusBadgeClass(selectedCompany.status)}`}>
+                        {statusLabel(selectedCompany.status)}
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">{selectedCompany.legalBusinessName}</p>
+                  </div>
                 </div>
-                <p className="text-sm text-muted-foreground mt-1">{selectedCompany.legalBusinessName}</p>
               </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="rounded-lg border bg-muted/50 p-4">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Package className="w-4 h-4" />
-                  Products
+            <div className="p-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="rounded-xl border bg-gradient-to-br from-blue-500/5 to-transparent p-5">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Package className="w-4 h-4" />
+                    Products
+                  </div>
+                  <div className="text-3xl font-bold mt-2">{selectedCompanyProductCount}</div>
+                  <div className="text-xs text-muted-foreground mt-1">Published products</div>
                 </div>
-                <div className="text-2xl font-bold mt-1">{selectedCompanyProductCount}</div>
-              </div>
-              <div className="rounded-lg border bg-muted/50 p-4">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <FileText className="w-4 h-4" />
-                  Contracts
+                <div className="rounded-xl border bg-gradient-to-br from-violet-500/5 to-transparent p-5">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <FileText className="w-4 h-4" />
+                    Contracts
+                  </div>
+                  <div className="text-3xl font-bold mt-2">{selectedCompanyContractCount}</div>
+                  <div className="text-xs text-muted-foreground mt-1">Total contracts</div>
                 </div>
-                <div className="text-2xl font-bold mt-1">{selectedCompanyContractCount}</div>
-              </div>
-              <div className="rounded-lg border bg-muted/50 p-4">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Users className="w-4 h-4" />
-                  Team Members
+                <div className="rounded-xl border bg-gradient-to-br from-emerald-500/5 to-transparent p-5">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Users className="w-4 h-4" />
+                    Team Members
+                  </div>
+                  <div className="text-3xl font-bold mt-2">{selectedCompanyTeamCount}</div>
+                  <div className="text-xs text-muted-foreground mt-1">Active users</div>
                 </div>
-                <div className="text-2xl font-bold mt-1">{selectedCompanyTeamCount}</div>
               </div>
-            </div>
 
-            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-muted-foreground">Contact Email</span>
-                <div className="mt-1 font-medium">{selectedCompany.contactEmail || "—"}</div>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Phone</span>
-                <div className="mt-1 font-medium">{selectedCompany.phone || "—"}</div>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Address</span>
-                <div className="mt-1 font-medium">{selectedCompany.address || "—"}</div>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Registered</span>
-                <div className="mt-1 font-medium">
-                  {selectedCompany.createdAt ? new Date(selectedCompany.createdAt).toLocaleDateString() : "—"}
+              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Contact Information</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/50">
+                      <Mail className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <div className="text-xs text-muted-foreground">Email</div>
+                        <div className="text-sm font-medium">{selectedCompany.contactEmail || "—"}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/50">
+                      <Phone className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <div className="text-xs text-muted-foreground">Phone</div>
+                        <div className="text-sm font-medium">{selectedCompany.phone || "—"}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/50">
+                      <MapPin className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <div className="text-xs text-muted-foreground">Address</div>
+                        <div className="text-sm font-medium">{selectedCompany.address || "—"}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Details</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/50">
+                      <Calendar className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <div className="text-xs text-muted-foreground">Registered</div>
+                        <div className="text-sm font-medium">
+                          {selectedCompany.createdAt ? new Date(selectedCompany.createdAt).toLocaleDateString() : "—"}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/50">
+                      <Store className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <div className="text-xs text-muted-foreground">Legal Name</div>
+                        <div className="text-sm font-medium">{selectedCompany.legalBusinessName || "—"}</div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -262,19 +319,25 @@ export function AdminProvidersPage() {
             if (companyProducts.length === 0) return null;
 
             return (
-              <div className="rounded-xl border bg-card shadow-card overflow-hidden">
-                <div className="px-6 py-4 border-b">
-                  <h3 className="font-semibold">Published Products</h3>
+              <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-500/5 via-transparent to-transparent">
+                  <div className="flex items-center gap-3">
+                    <Package className="w-5 h-5 text-blue-600" />
+                    <h3 className="font-semibold">Published Products</h3>
+                  </div>
                 </div>
                 <div className="divide-y">
                   {companyProducts.map((p) => (
-                    <div key={p.id} className="px-6 py-3 flex items-center justify-between gap-4">
+                    <div key={p.id} className="px-6 py-4 flex items-center justify-between gap-4 hover:bg-muted/30 transition-colors">
                       <div>
                         <div className="font-medium text-sm">{p.displayName || p.companyName || "Unnamed Product"}</div>
-                        <div className="text-xs text-muted-foreground mt-0.5">ID: {(p.id ?? "").slice(0, 8)}</div>
+                        <div className="text-xs text-muted-foreground mt-1">ID: {(p.id ?? "").slice(0, 8)}</div>
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        {productCountByProvider[p.id ?? ""] ?? 0} pricing tier(s)
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <div className="text-sm font-medium">{productCountByProvider[p.id ?? ""] ?? 0}</div>
+                          <div className="text-[10px] text-muted-foreground uppercase">Pricing Tiers</div>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -285,43 +348,78 @@ export function AdminProvidersPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search providers by name, legal name, or email…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-
-          {isLoading && (
-            <div className="rounded-xl border bg-card shadow-card p-6">
-              <div className="animate-pulse space-y-3">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-14 bg-muted rounded-lg" />
-                ))}
+          <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b bg-gradient-to-r from-emerald-600/5 via-transparent to-transparent">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-4">
+                  <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-600">
+                    <Store className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-foreground">Provider Companies</div>
+                    <div className="text-sm text-muted-foreground">Read-only provider directory</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-700">
+                    <span className="text-sm font-medium">{activeCount}</span>
+                    <span className="text-xs text-muted-foreground ml-1">Active</span>
+                  </div>
+                  <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-amber-500/10 text-amber-700">
+                    <span className="text-sm font-medium">{pendingCount}</span>
+                    <span className="text-xs text-muted-foreground ml-1">Pending</span>
+                  </div>
+                  <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-red-500/10 text-red-700">
+                    <span className="text-sm font-medium">{suspendedCount}</span>
+                    <span className="text-xs text-muted-foreground ml-1">Suspended</span>
+                  </div>
+                </div>
               </div>
             </div>
-          )}
 
-          {isError && (
-            <div className="rounded-xl border bg-card shadow-card p-6 text-sm text-destructive">
-              Failed to load provider data.
-            </div>
-          )}
-
-          {!isLoading && !isError && filteredCompanies.length === 0 && (
-            <div className="rounded-xl border bg-card shadow-card p-6 text-sm text-muted-foreground">
-              {search ? "No providers match your search." : "No provider companies found."}
-            </div>
-          )}
-
-          {!isLoading && !isError && filteredCompanies.length > 0 && (
-            <div className="rounded-xl border bg-card shadow-card overflow-hidden">
-              <div className="px-6 py-3 border-b text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                {filteredCompanies.length} provider{filteredCompanies.length !== 1 ? "s" : ""}
+            <div className="p-4 border-b">
+              <div className="relative max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by name, legal name, or email…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-10 bg-background/70"
+                />
               </div>
+            </div>
+
+            {isLoading && (
+              <div className="p-6">
+                <div className="animate-pulse space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="h-16 bg-muted rounded-xl" />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {isError && (
+              <div className="p-6 text-center">
+                <div className="text-sm text-destructive">Failed to load provider data. Please try again.</div>
+              </div>
+            )}
+
+            {!isLoading && !isError && filteredCompanies.length === 0 && (
+              <div className="p-12 text-center">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-muted mb-4">
+                  <Store className="w-6 h-6 text-muted-foreground" />
+                </div>
+                <div className="text-sm font-medium">
+                  {search ? "No providers match your search" : "No provider companies"}
+                </div>
+                <div className="text-sm text-muted-foreground mt-1">
+                  {search ? "Try a different search term" : "Provider companies will appear here once created"}
+                </div>
+              </div>
+            )}
+
+            {!isLoading && !isError && filteredCompanies.length > 0 && (
               <div className="divide-y">
                 {filteredCompanies.map((c) => {
                   const companyProviderIds = providerProfiles
@@ -336,38 +434,49 @@ export function AdminProvidersPage() {
                       key={c.id}
                       type="button"
                       onClick={() => setSelectedCompanyId(c.id)}
-                      className="w-full px-6 py-4 flex items-center justify-between gap-4 hover:bg-muted/50 transition-colors text-left"
+                      className="w-full px-6 py-5 flex items-center justify-between gap-4 hover:bg-muted/30 transition-colors text-left"
                     >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-3">
-                          <span className="font-medium text-sm truncate">{c.providerCompanyName}</span>
-                          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium shrink-0 ${statusBadgeClass(c.status)}`}>
-                            {statusLabel(c.status)}
-                          </span>
+                      <div className="flex items-center gap-4 flex-1 min-w-0">
+                        <div className="p-2.5 rounded-xl bg-muted/50 text-muted-foreground">
+                          <Store className="w-5 h-5" />
                         </div>
-                        <div className="text-xs text-muted-foreground mt-1 truncate">{c.legalBusinessName}</div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-3">
+                            <span className="font-semibold text-sm truncate">{c.providerCompanyName}</span>
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full border text-[11px] font-medium shrink-0 ${statusBadgeClass(c.status)}`}>
+                              {statusLabel(c.status)}
+                            </span>
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1 truncate">{c.legalBusinessName}</div>
+                        </div>
                       </div>
                       <div className="flex items-center gap-6 text-sm shrink-0">
-                        <div className="text-center">
-                          <div className="font-semibold">{prodCount}</div>
-                          <div className="text-[10px] text-muted-foreground uppercase">Products</div>
+                        <div className="text-center min-w-[60px]">
+                          <div className="font-bold text-lg">{prodCount}</div>
+                          <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Products</div>
                         </div>
-                        <div className="text-center">
-                          <div className="font-semibold">{ctrCount}</div>
-                          <div className="text-[10px] text-muted-foreground uppercase">Contracts</div>
+                        <div className="text-center min-w-[60px]">
+                          <div className="font-bold text-lg">{ctrCount}</div>
+                          <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Contracts</div>
                         </div>
-                        <div className="text-center">
-                          <div className="font-semibold">{teamCount}</div>
-                          <div className="text-[10px] text-muted-foreground uppercase">Team</div>
+                        <div className="text-center min-w-[60px]">
+                          <div className="font-bold text-lg">{teamCount}</div>
+                          <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Team</div>
                         </div>
-                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                        <ChevronRight className="w-5 h-5 text-muted-foreground" />
                       </div>
                     </button>
                   );
                 })}
               </div>
+            )}
+
+            <div className="px-6 py-3 border-t bg-muted/30">
+              <div className="text-xs text-muted-foreground">
+                Showing {filteredCompanies.length} of {companies.length} provider companies
+              </div>
             </div>
-          )}
+          </div>
         </div>
       )}
     </PageShell>

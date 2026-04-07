@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useMutation } from "@tanstack/react-query";
-
 import {
   BadgeDollarSign,
   Building2,
@@ -11,9 +10,11 @@ import {
   ChevronUp,
   CircleCheck,
   DollarSign,
+  Filter,
   Gauge,
-  SlidersHorizontal,
+  Search,
   Shapes,
+  SlidersHorizontal,
   X,
 } from "lucide-react";
 
@@ -112,6 +113,7 @@ type PersistedMarketplaceState = {
 };
 
 const DEALER_MARKETPLACE_STATE_KEY = "warrantyhub.dealerMarketplace.state";
+const CONFIDENTIALITY_KEY = "warrantyhub.dealer.confidentiality_pricing";
 
 function readPersistedDealerMarketplaceState(): PersistedMarketplaceState | null {
   try {
@@ -171,26 +173,46 @@ export function DealerMarketplacePage() {
     };
   }, []);
 
+  const [confidentialityMode, setConfidentialityMode] = useState(() => {
+    try {
+      return localStorage.getItem(CONFIDENTIALITY_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+
   const shownPriceFor = (p: MarketplaceProduct, primaryPricing?: ProductPricing | null) => {
     void retailOverridesVersion;
 
     const pid = (p.id ?? "").trim();
     const primaryId = (primaryPricing?.id ?? "").trim();
-    const termOverride = dealerId && pid && primaryId ? getDealerProductPricingRetailCents(dealerId, pid, primaryId) : null;
-    if (typeof termOverride === "number" && Number.isFinite(termOverride) && termOverride > 0) return termOverride;
 
-    const override = dealerId ? getDealerProductRetailCents(dealerId, (p.id ?? "").trim()) : null;
-    if (typeof override === "number" && Number.isFinite(override) && override > 0) return override;
+    if (confidentialityMode) {
+      const termOverride = dealerId && pid && primaryId ? getDealerProductPricingRetailCents(dealerId, pid, primaryId) : null;
+      if (typeof termOverride === "number" && Number.isFinite(termOverride) && termOverride > 0) return termOverride;
 
-    const cost = costFromProductOrPricing({
-      dealerCostCents:
-        primaryPricing && typeof primaryPricing.dealerCostCents === "number"
-          ? primaryPricing.dealerCostCents
-          : p.pricingDefault?.dealerCostCents ?? p.dealerCostCents,
-      basePriceCents: primaryPricing ? primaryPricing.basePriceCents : p.pricingDefault?.basePriceCents ?? p.basePriceCents,
-    });
-    const retail = retailFromCost(cost, markupPct) ?? cost;
-    return retail;
+      const override = dealerId ? getDealerProductRetailCents(dealerId, (p.id ?? "").trim()) : null;
+      if (typeof override === "number" && Number.isFinite(override) && override > 0) return override;
+
+      const cost = costFromProductOrPricing({
+        dealerCostCents:
+          primaryPricing && typeof primaryPricing.dealerCostCents === "number"
+            ? primaryPricing.dealerCostCents
+            : p.pricingDefault?.dealerCostCents ?? p.dealerCostCents,
+        basePriceCents: primaryPricing ? primaryPricing.basePriceCents : p.pricingDefault?.basePriceCents ?? p.basePriceCents,
+      });
+      const retail = retailFromCost(cost, markupPct) ?? cost;
+      return retail;
+    } else {
+      const cost = costFromProductOrPricing({
+        dealerCostCents:
+          primaryPricing && typeof primaryPricing.dealerCostCents === "number"
+            ? primaryPricing.dealerCostCents
+            : p.pricingDefault?.dealerCostCents ?? p.dealerCostCents,
+        basePriceCents: primaryPricing ? primaryPricing.basePriceCents : p.pricingDefault?.basePriceCents ?? p.basePriceCents,
+      });
+      return cost ?? undefined;
+    }
   };
 
   const decodeMutation = useMutation({
@@ -326,9 +348,6 @@ export function DealerMarketplacePage() {
       const base = normToken(exMatch ? exMatch[1] : t);
       const exclusion = normToken(exMatch ? exMatch[2] : "");
 
-      // base supports either:
-      // - "Honda"
-      // - "Infiniti QX" (make + model prefix)
       const parts = base.split(" ").filter(Boolean);
       const make = parts[0] ?? "";
       const modelPrefix = parts.slice(1).join(" ").trim();
@@ -556,10 +575,6 @@ export function DealerMarketplacePage() {
           const inferredClass = treatClassAsWildcard ? resolveVehicleClassForProduct(product as any, decoded) : null;
           const effectiveVehicleClass = treatClassAsWildcard ? (inferredClass ?? "") : vehicleClass;
 
-          // IMPORTANT:
-          // For MILEAGE_CLASS products, class is REQUIRED.
-          // If the dealer didn't select a class and we can't infer it from the VIN,
-          // we must treat the product as NOT eligible (do NOT ignore class).
           if (isMileageClass && !effectiveVehicleClass.trim()) {
             return [pid, null] as const;
           }
@@ -575,8 +590,6 @@ export function DealerMarketplacePage() {
             }),
           );
 
-          // For non-MILEAGE_CLASS products (e.g. term + mileage), allow pricing rows to match
-          // even when the dealer didn't select a class (class is not part of the constraint).
           const finalEligibleRows = !isMileageClass && treatClassAsWildcard && !effectiveVehicleClass.trim()
             ? rows.filter((r) => isEligibleIgnoringClass(r))
             : eligibleRows;
@@ -684,44 +697,49 @@ export function DealerMarketplacePage() {
   })();
 
   return (
-    <PageShell
-      title=""
-    >
+    <PageShell title="">
       <div className="relative">
-        <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-yellow-400/10 blur-2xl" />
+        <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/8 via-transparent to-yellow-400/8 blur-2xl" />
 
-        <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
-          <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
-            <div className="flex items-center justify-between gap-3">
-              <div className="font-semibold">Search</div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 bg-sky-50 border-sky-200 text-sky-800 hover:bg-sky-100 hover:border-sky-300"
-                onClick={() => setIsSearchMinimized((v) => !v)}
-              >
-                {isSearchMinimized ? (
-                  <>
-                    <ChevronDown className="h-4 w-4" />
-                    Expand
-                  </>
-                ) : (
-                  <>
-                    <ChevronUp className="h-4 w-4" />
-                    Minimize
-                  </>
-                )}
-              </Button>
+        <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
+          <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/8 via-transparent to-yellow-400/8">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600/10 text-blue-600">
+                  <Search className="h-5 w-5" />
+                </div>
+                <div className="font-semibold text-lg">Product Search</div>
+              </div>
+              <div className="flex items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9"
+                  onClick={() => setIsSearchMinimized((v) => !v)}
+                >
+                  {isSearchMinimized ? (
+                    <>
+                      <ChevronDown className="h-4 w-4 mr-1" />
+                      Expand
+                    </>
+                  ) : (
+                    <>
+                      <ChevronUp className="h-4 w-4 mr-1" />
+                      Minimize
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
 
         {isSearchMinimized ? null : (
           <div className="p-6">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              <div className="lg:col-span-8 space-y-6">
-                <div className="rounded-2xl border bg-background/40 overflow-hidden">
-                  <div className="px-5 py-4 border-b">
+              <div className="lg:col-span-8 space-y-5">
+                <div className="rounded-xl border bg-background/60 overflow-hidden">
+                  <div className="px-5 py-4 border-b bg-muted/20">
                     <div className="flex items-center gap-2 text-base font-semibold text-foreground">
                       <Car className="h-5 w-5" />
                       Vehicle &amp; Deal Information
@@ -730,7 +748,7 @@ export function DealerMarketplacePage() {
 
                   <div className="p-5">
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                      <div className="md:col-span-9">
+                      <div className="md:col-span-8">
                         <div className="text-xs font-semibold text-foreground">VIN</div>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <Input
@@ -757,7 +775,7 @@ export function DealerMarketplacePage() {
                         </div>
                       </div>
 
-                      <div className="md:col-span-3">
+                      <div className="md:col-span-4">
                         <div className="text-xs font-semibold text-foreground">Mileage (km)</div>
                         <div className="mt-2 relative">
                           <Input
@@ -773,9 +791,9 @@ export function DealerMarketplacePage() {
                     </div>
 
                     {decoded ? (
-                      <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+                      <div className="mt-4 flex items-center gap-2 text-sm">
                         <CircleCheck className="h-4 w-4 text-emerald-600" />
-                        <div className="truncate">
+                        <div className="font-medium text-emerald-700 truncate">
                           {decoded.vehicleYear ?? "—"} {decoded.vehicleMake ?? ""} {decoded.vehicleModel ?? ""}
                           {decoded.vehicleTrim ? ` ${decoded.vehicleTrim}` : ""}
                         </div>
@@ -784,17 +802,17 @@ export function DealerMarketplacePage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border bg-background/40 overflow-hidden">
-                  <div className="px-5 py-4 border-b">
+                <div className="rounded-xl border bg-background/60 overflow-hidden">
+                  <div className="px-5 py-4 border-b bg-muted/20">
                     <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                       <DollarSign className="h-4 w-4" />
-                      Enter Gap Insurance Details
+                      GAP Insurance Details
                     </div>
                   </div>
 
                   <div className="p-5">
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                      <div className="md:col-span-6 rounded-xl border bg-background/70 p-4">
+                      <div className="md:col-span-6 rounded-lg border bg-background/70 p-4">
                         <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                           <Gauge className="h-4 w-4" />
                           Loan Details (GAP only)
@@ -819,7 +837,7 @@ export function DealerMarketplacePage() {
                         </div>
                       </div>
 
-                      <div className="md:col-span-5 rounded-xl border bg-background/70 p-4">
+                      <div className="md:col-span-6 rounded-lg border bg-background/70 p-4">
                         <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                           <Shapes className="h-4 w-4" />
                           Compare Plans
@@ -836,8 +854,8 @@ export function DealerMarketplacePage() {
                 </div>
 
                 {decoded ? (
-                  <div className="rounded-2xl border bg-background/40 overflow-hidden">
-                    <div className="px-5 py-4 border-b">
+                  <div className="rounded-xl border bg-background/60 overflow-hidden">
+                    <div className="px-5 py-4 border-b bg-muted/20">
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                           <Car className="h-4 w-4" />
@@ -927,9 +945,9 @@ export function DealerMarketplacePage() {
                 ) : null}
               </div>
 
-              <div className="lg:col-span-4 space-y-6">
-                <div className="rounded-2xl border bg-background/40 overflow-hidden">
-                  <div className="px-5 py-4 border-b">
+              <div className="lg:col-span-4 space-y-5">
+                <div className="rounded-xl border bg-background/60 overflow-hidden">
+                  <div className="px-5 py-4 border-b bg-muted/20">
                     <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                       <SlidersHorizontal className="h-4 w-4" />
                       Filters &amp; Sorting
@@ -938,12 +956,12 @@ export function DealerMarketplacePage() {
 
                   <div className="p-5 space-y-4">
                     <div>
-                      <div className="text-xs font-semibold text-foreground">Product type</div>
+                      <div className="text-xs font-semibold text-foreground mb-1.5">Product type</div>
                       <select
                         value={productType}
                         onChange={(e) => setProductType(e.target.value)}
                         disabled={!canUseFilters}
-                        className="mt-2 h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm disabled:opacity-60"
+                        className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm disabled:opacity-60"
                       >
                         <option value="">All types</option>
                         {productTypeOptions.map((t) => (
@@ -955,12 +973,12 @@ export function DealerMarketplacePage() {
                     </div>
 
                     <div>
-                      <div className="text-xs font-semibold text-foreground">Sort by</div>
+                      <div className="text-xs font-semibold text-foreground mb-1.5">Sort by</div>
                       <select
                         value={priceSort}
                         onChange={(e) => setPriceSort(e.target.value)}
                         disabled={!canUseFilters}
-                        className="mt-2 h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm disabled:opacity-60"
+                        className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm disabled:opacity-60"
                       >
                         <option value="">Sort by price</option>
                         <option value="PRICE_ASC">Low to High</option>
@@ -969,8 +987,8 @@ export function DealerMarketplacePage() {
                     </div>
 
                     <div>
-                      <div className="text-xs font-semibold text-foreground">Provider</div>
-                      <div className="mt-2 relative">
+                      <div className="text-xs font-semibold text-foreground mb-1.5">Provider</div>
+                      <div className="relative">
                         <Building2 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <select
@@ -991,9 +1009,12 @@ export function DealerMarketplacePage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border bg-background/40 overflow-hidden">
-                  <div className="px-5 py-4 border-b">
-                    <div className="text-sm font-semibold text-foreground">Active Filters</div>
+                <div className="rounded-xl border bg-background/60 overflow-hidden">
+                  <div className="px-5 py-4 border-b bg-muted/20">
+                    <div className="text-sm font-semibold text-foreground flex items-center gap-2">
+                      <Filter className="h-4 w-4" />
+                      Active Filters
+                    </div>
                   </div>
 
                   <div className="p-5 space-y-2">
@@ -1046,7 +1067,7 @@ export function DealerMarketplacePage() {
                     ) : null}
 
                     {!mileageKm.trim() && !productType.trim() && !providerId.trim() && !loanAmount.trim() ? (
-                      <div className="text-sm text-muted-foreground">No active filters.</div>
+                      <div className="text-sm text-muted-foreground py-2">No active filters.</div>
                     ) : null}
 
                     <div className="pt-2">
@@ -1069,10 +1090,12 @@ export function DealerMarketplacePage() {
                 </div>
 
                 {decoded ? (
-                  <div className="text-xs text-muted-foreground">
-                    <span className="inline-flex items-center rounded-full border bg-background px-2.5 py-1">
-                      {filteredByVariant.length} eligible product{filteredByVariant.length === 1 ? "" : "s"}
-                    </span>
+                  <div className="rounded-lg border bg-blue-50 border-blue-200 p-4">
+                    <div className="text-xs text-blue-800">
+                      <span className="inline-flex items-center font-medium">
+                        {filteredByVariant.length} eligible product{filteredByVariant.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
                   </div>
                 ) : null}
 
@@ -1082,7 +1105,7 @@ export function DealerMarketplacePage() {
 
                 {decoded && (productType.trim() === "GAP" || anyGapProductsExist) ? (
                   typeof vehicleAgeYears === "number" && vehicleAgeYears > 10 ? (
-                    <div className="text-xs text-muted-foreground">GAP Insurance is only eligible for vehicles up to 10 years old. This vehicle is {vehicleAgeYears} years old.</div>
+                    <div className="text-xs text-destructive">GAP Insurance is only eligible for vehicles up to 10 years old. This vehicle is {vehicleAgeYears} years old.</div>
                   ) : null
                 ) : null}
 
@@ -1097,50 +1120,65 @@ export function DealerMarketplacePage() {
                 ) : null}
               </div>
             </div>
-            </div>
-          )}
+          </div>
+        )}
         </div>
       </div>
 
-      <div className="mt-6 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
-        <div className="px-4 py-2.5 border-b bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
+      <div className="mt-6 rounded-2xl border bg-card shadow-card overflow-hidden">
+        <div className="px-5 py-4 border-b bg-gradient-to-r from-blue-600/8 via-transparent to-yellow-400/8">
           <div className="flex items-center justify-between gap-3">
-            <div className="font-semibold">Eligible Products</div>
-            {eligibleFlat.length ? <div className="text-xs text-muted-foreground">Showing {eligibleFlat.length}</div> : null}
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600/10 text-blue-600">
+                <Shapes className="h-4 w-4" />
+              </div>
+              <span className="font-semibold">Eligible Products</span>
+            </div>
+            {eligibleFlat.length ? (
+              <div className="text-sm text-muted-foreground">Showing {eligibleFlat.length}</div>
+            ) : null}
           </div>
         </div>
 
         {!decoded ? (
-          <div className="px-6 py-10 text-sm text-muted-foreground">
+          <div className="px-6 py-12 text-center">
+            <Car className="h-12 w-12 mx-auto mb-4 text-muted-foreground/40" />
             <div className="font-medium text-foreground">Enter VIN + mileage to view plans.</div>
           </div>
         ) : !parsedMileage ? (
-          <div className="px-6 py-10 text-sm text-muted-foreground">
+          <div className="px-6 py-12 text-center">
+            <Gauge className="h-12 w-12 mx-auto mb-4 text-muted-foreground/40" />
             <div className="font-medium text-foreground">Mileage is required</div>
           </div>
         ) : eligibleVariantPricingByProductIdQuery.isLoading ? (
-          <div className="px-6 py-10 text-sm text-muted-foreground">Checking eligible plans…</div>
+          <div className="px-6 py-12 text-center text-muted-foreground">Checking eligible plans…</div>
         ) : eligibleVariantPricingByProductIdQuery.isError ? (
-          <div className="px-6 py-10 text-sm text-destructive">Failed to load eligible plans.</div>
+          <div className="px-6 py-12 text-center text-destructive">Failed to load eligible plans.</div>
         ) : (
-          <div className="p-4">
+          <div className="p-5">
             <div className="space-y-5">
               {(() => {
                 let cardIdx = 0;
                 return grouped.map((group) => {
                   if (group.products.length === 0) return null;
                   return (
-                    <div key={group.providerId} className="rounded-2xl border bg-background/40 overflow-hidden">
-                      <div className="px-5 py-4 border-b bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
+                    <div key={group.providerId} className="rounded-xl border bg-background/60 overflow-hidden">
+                      <div className="px-5 py-4 border-b bg-muted/20">
                         <div className="flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="text-sm font-semibold text-foreground truncate">{group.providerName}</div>
-                            <div className="text-xs text-muted-foreground mt-1">
-                              {group.products.length} plan{group.products.length === 1 ? "" : "s"}
+                          <div className="min-w-0 flex items-center gap-3">
+                            {group.providerLogoUrl ? (
+                              <img src={group.providerLogoUrl} alt="" className="h-9 w-9 rounded-lg border object-contain bg-white" />
+                            ) : (
+                              <div className="h-9 w-9 rounded-lg border bg-muted flex items-center justify-center">
+                                <Building2 className="h-4 w-4 text-muted-foreground" />
+                              </div>
+                            )}
+                            <div>
+                              <div className="text-sm font-semibold text-foreground truncate">{group.providerName}</div>
+                              <div className="text-xs text-muted-foreground mt-0.5">
+                                {group.products.length} plan{group.products.length === 1 ? "" : "s"}
+                              </div>
                             </div>
-                          </div>
-                          <div className="h-9 w-9 rounded-md border bg-white/70 overflow-hidden flex items-center justify-center shrink-0">
-                            {group.providerLogoUrl ? <img src={group.providerLogoUrl} alt="" className="h-full w-full object-contain" /> : null}
                           </div>
                         </div>
                       </div>
@@ -1154,7 +1192,7 @@ export function DealerMarketplacePage() {
                             if (items.length === 0) return null;
                             return (
                               <div>
-                                <div className="text-xs font-semibold text-muted-foreground mb-2">{label}</div>
+                                <div className="text-xs font-semibold text-muted-foreground mb-3">{label}</div>
                                 <div className="flex gap-3 overflow-x-auto pb-2">
                                   {items.map((p) => {
                                     const mp = p as MarketplaceProduct;
@@ -1210,7 +1248,7 @@ export function DealerMarketplacePage() {
                                       <div
                                         key={p.id}
                                         className={
-                                          "shrink-0 w-[220px] rounded-2xl border bg-background overflow-hidden shadow-sm ring-1 transition-shadow hover:shadow-md " +
+                                          "shrink-0 w-[220px] rounded-xl border bg-background overflow-hidden shadow-sm transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 " +
                                           accent.ring +
                                           " " +
                                           accent.border
@@ -1220,29 +1258,27 @@ export function DealerMarketplacePage() {
                                           <div className="flex items-center justify-between gap-3">
                                             <div className="min-w-0">
                                               <div className="text-xs font-semibold text-foreground truncate">
-                                                <Link to={detailHrefFor(p.id)} className="hover:underline">
+                                                <Link to={detailHrefFor(p.id)} className="hover:text-blue-600">
                                                   {p.name}{gapLtvPct ? ` ${gapLtvPct}%` : ""}
                                                 </Link>
                                               </div>
                                             </div>
-                                            <div className="h-7 w-7 rounded-md border bg-white/70 overflow-hidden flex items-center justify-center shrink-0">
-                                              {group.providerLogoUrl ? (
-                                                <img src={group.providerLogoUrl} alt="" className="h-full w-full object-contain" />
-                                              ) : null}
-                                            </div>
+                                            {group.providerLogoUrl ? (
+                                              <img src={group.providerLogoUrl} alt="" className="h-6 w-6 rounded border object-contain bg-white shrink-0" />
+                                            ) : null}
                                           </div>
                                         </div>
 
                                         <div className="p-3">
                                           {isGap ? (
-                                            <div className="space-y-4">
+                                            <div className="space-y-3">
                                               <div className="min-w-0">
-                                                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                                  <span className="inline-flex items-center rounded-full border bg-background px-1.5 py-0.5">GAP Insurance</span>
+                                                <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                                                  <span className="inline-flex items-center rounded-full border bg-muted px-1.5 py-0.5">GAP Insurance</span>
                                                   {gapLtvPct ? (
-                                                    <span className="inline-flex items-center rounded-full border bg-background px-1.5 py-0.5">{gapLtvPct}% LTV</span>
+                                                    <span className="inline-flex items-center rounded-full border bg-muted px-1.5 py-0.5">{gapLtvPct}% LTV</span>
                                                   ) : null}
-                                                  <span className="inline-flex items-center rounded-full border bg-background px-1.5 py-0.5">
+                                                  <span className="inline-flex items-center rounded-full border bg-muted px-1.5 py-0.5">
                                                     Up to {gapMaxAgeYears} yrs
                                                   </span>
                                                   {matrixNeedsLoanDetails ? (
@@ -1251,40 +1287,40 @@ export function DealerMarketplacePage() {
                                                 </div>
                                               </div>
 
-                                              <div className="mt-4 flex items-center justify-between gap-3">
+                                              <div className="flex items-center justify-between gap-3">
                                                 <div className="min-w-0">
                                                   <div className="text-[11px] text-muted-foreground whitespace-nowrap">Price</div>
-                                                  <div className="text-xs font-semibold whitespace-nowrap leading-none mt-2 text-muted-foreground">
+                                                  <div className="text-xs font-semibold whitespace-nowrap leading-none mt-1 text-muted-foreground">
                                                     {matrixNeedsLoanDetails ? "Enter loan details" : "Select term in View"}
                                                   </div>
                                                 </div>
-                                                <Button size="sm" asChild className="h-10 bg-yellow-400 text-black hover:bg-yellow-300">
+                                                <Button size="sm" asChild className="h-9 bg-yellow-400 text-black hover:bg-yellow-300">
                                                   <Link to={detailHrefFor(mp.id)}>View</Link>
                                                 </Button>
                                               </div>
                                             </div>
                                           ) : (
-                                            <div className="space-y-4">
+                                            <div className="space-y-3">
                                               <div className="min-w-0">
-                                                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                                  <span className="inline-flex items-center rounded-full border bg-background px-1.5 py-0.5">
+                                                <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                                                  <span className="inline-flex items-center rounded-full border bg-muted px-1.5 py-0.5">
                                                     {productTypeLabel(mp.productType)}
                                                   </span>
-                                                  <span className="inline-flex items-center rounded-full border bg-background px-1.5 py-0.5">
+                                                  <span className="inline-flex items-center rounded-full border bg-muted px-1.5 py-0.5">
                                                     {shownMonths} / {shownKm}
                                                   </span>
-                                                  <span className="inline-flex items-center rounded-full border bg-background px-1.5 py-0.5">
+                                                  <span className="inline-flex items-center rounded-full border bg-muted px-1.5 py-0.5">
                                                     Deductible {shownDeductibleCents ? money(shownDeductibleCents) : "—" }
                                                   </span>
                                                 </div>
                                               </div>
 
-                                              <div className="mt-4 flex items-center justify-between gap-3">
+                                              <div className="flex items-center justify-between gap-3">
                                                 <div className="min-w-0">
                                                   <div className="text-[11px] text-muted-foreground whitespace-nowrap">Price</div>
                                                   <div className="text-xl font-bold whitespace-nowrap leading-none mt-1">{money(shownPrice)}</div>
                                                 </div>
-                                                <Button size="sm" asChild className="bg-yellow-400 text-black hover:bg-yellow-300 whitespace-nowrap">
+                                                <Button size="sm" asChild className="h-9 bg-yellow-400 text-black hover:bg-yellow-300 whitespace-nowrap">
                                                   <Link to={detailHrefFor(mp.id)}>View</Link>
                                                 </Button>
                                               </div>
@@ -1311,27 +1347,28 @@ export function DealerMarketplacePage() {
                   );
                 });
               })()}
-            </div>
 
-            {!productsQuery.isLoading && !productsQuery.isError && eligibleFlat.length === 0 ? (
-              <div className="px-2 py-10 text-sm text-muted-foreground">
-                <div className="font-medium text-foreground">No eligible products found</div>
-                <div className="mt-2">Try clearing filters or adjusting your selections.</div>
-                <div className="mt-4">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setProviderId("");
-                      setProductType("");
-                      setPriceSort("");
-                    }}
-                  >
-                    Clear filters
-                  </Button>
+              {!productsQuery.isLoading && !productsQuery.isError && eligibleFlat.length === 0 ? (
+                <div className="px-2 py-10 text-center">
+                  <Shapes className="h-10 w-10 mx-auto mb-3 text-muted-foreground/40" />
+                  <div className="font-medium text-foreground">No eligible products found</div>
+                  <div className="text-sm text-muted-foreground mt-1">Try clearing filters or adjusting your selections.</div>
+                  <div className="mt-4">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setProviderId("");
+                        setProductType("");
+                        setPriceSort("");
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </div>
         )}
       </div>

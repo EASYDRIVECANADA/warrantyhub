@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Search, Trash2 } from "lucide-react";
+import { CheckSquare, FileText, Loader2, Plus, Search, Square, Trash2 } from "lucide-react";
 
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -570,9 +570,7 @@ export function DealerContractsPage() {
     : undefined;
 
   return (
-    <PageShell
-      title=""
-    >
+    <PageShell title="">
       <div className="relative">
         {createFromMarketplaceMutation.isPending ? (
           <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
@@ -591,136 +589,82 @@ export function DealerContractsPage() {
           </div>
         ) : null}
 
-        <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-yellow-400/10 blur-2xl" />
+        <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/8 via-transparent to-yellow-400/8 blur-2xl" />
 
-        <div className="space-y-6">
-          <div className="rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
-            <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
-              <div className="min-w-0">
-                <Button asChild className="bg-yellow-400 text-black hover:bg-yellow-300">
-                  <Link to="/dealer-marketplace">Find Products to Create Contract</Link>
-                </Button>
-                {headerSubtitle ? <div className="mt-2 text-xs text-muted-foreground truncate">{headerSubtitle}</div> : null}
-              </div>
+        <div className="space-y-5">
+          <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
+            <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/8 via-transparent to-yellow-400/8">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600/10 text-blue-600">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <Button asChild className="bg-yellow-400 text-black hover:bg-yellow-300">
+                      <Link to="/dealer-marketplace">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Find Products to Create Contract
+                      </Link>
+                    </Button>
+                    {headerSubtitle ? <div className="mt-1.5 text-xs text-muted-foreground truncate">{headerSubtitle}</div> : null}
+                  </div>
+                </div>
 
-              <div className="w-full sm:w-[320px] relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="Search"
-                  className="h-9 pl-9"
-                />
+                <div className="w-full sm:w-[320px]">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      value={q}
+                      onChange={(e) => setQ(e.target.value)}
+                      placeholder="Search contracts..."
+                      className="h-9 pl-9"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="px-6 py-3 border-b">
+            <div className="px-6 py-3 border-b bg-muted/10">
               <div className="flex items-center justify-between gap-3 flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuickFilter("ALL");
-                  }}
-                  className={
-                    "text-sm px-3 py-1.5 rounded-lg border transition-colors " +
-                    (quickFilter === "ALL"
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-background hover:bg-muted text-muted-foreground")
-                  }
-                >
-                  All
-                  <span className="ml-2 text-xs opacity-70">{quickFilterCounts.ALL}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuickFilter("DRAFT");
-                  }}
-                  className={
-                    "text-sm px-3 py-1.5 rounded-lg border transition-colors " +
-                    (quickFilter === "DRAFT"
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-background hover:bg-muted text-muted-foreground")
-                  }
-                  title="Draft contracts in progress"
-                >
-                  Draft
-                  <span className="ml-2 text-xs opacity-70">{quickFilterCounts.DRAFT}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuickFilter("ACTIVE");
-                  }}
-                  className={
-                    "text-sm px-3 py-1.5 rounded-lg border transition-colors " +
-                    (quickFilter === "ACTIVE"
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-background hover:bg-muted text-muted-foreground")
-                  }
-                  title="Contracts in progress"
-                >
-                  Active
-                  <span className="ml-2 text-xs opacity-70">{quickFilterCounts.ACTIVE}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuickFilter("PRINTABLE");
-                  }}
-                  className={
-                    "text-sm px-3 py-1.5 rounded-lg border transition-colors " +
-                    (quickFilter === "PRINTABLE"
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-background hover:bg-muted text-muted-foreground")
-                  }
-                  title="Non-draft contracts that can be printed"
-                >
-                  Printable Contract
-                  <span className="ml-2 text-xs opacity-70">{quickFilterCounts.PRINTABLE}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuickFilter("COMPLETED");
-                  }}
-                  className={
-                    "text-sm px-3 py-1.5 rounded-lg border transition-colors " +
-                    (quickFilter === "COMPLETED"
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-background hover:bg-muted text-muted-foreground")
-                  }
-                  title="Paid contracts"
-                >
-                  Completed
-                  <span className="ml-2 text-xs opacity-70">{quickFilterCounts.COMPLETED}</span>
-                </button>
-                {isDealerAdmin ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setQuickFilter("READY_TO_REMIT");
-                    }}
-                    className={
-                      "text-sm px-3 py-1.5 rounded-lg border transition-colors " +
-                      (quickFilter === "READY_TO_REMIT"
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-background hover:bg-muted text-muted-foreground")
-                    }
-                    title="SOLD contracts not yet included in a remittance"
-                  >
-                    Ready to remit
-                    <span className="ml-2 text-xs opacity-70">{quickFilterCounts.READY_TO_REMIT}</span>
-                  </button>
-                ) : null}
-
-                <div className="flex-1" />
+                <div className="flex items-center gap-2 flex-wrap">
+                  {(["ALL", "DRAFT", "ACTIVE", "PRINTABLE", "COMPLETED"] as QuickFilterKey[]).map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setQuickFilter(key)}
+                      className={
+                        "text-sm px-3 py-1.5 rounded-lg border transition-all duration-200 flex items-center gap-2 " +
+                        (quickFilter === key
+                          ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                          : "bg-background hover:bg-muted/50 border-transparent text-muted-foreground")
+                      }
+                    >
+                      <span>{key === "ALL" ? "All" : key === "ACTIVE" ? "Active" : key === "PRINTABLE" ? "Printable" : key}</span>
+                      <span className="text-xs opacity-70">({quickFilterCounts[key]})</span>
+                    </button>
+                  ))}
+                  {isDealerAdmin ? (
+                    <button
+                      type="button"
+                      onClick={() => setQuickFilter("READY_TO_REMIT")}
+                      className={
+                        "text-sm px-3 py-1.5 rounded-lg border transition-all duration-200 flex items-center gap-2 " +
+                        (quickFilter === "READY_TO_REMIT"
+                          ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                          : "bg-background hover:bg-muted/50 border-transparent text-muted-foreground")
+                      }
+                    >
+                      <span>Ready to remit</span>
+                      <span className="text-xs opacity-70">({quickFilterCounts.READY_TO_REMIT})</span>
+                    </button>
+                  ) : null}
+                </div>
 
                 {selectedDraftIds.length > 0 ? (
                   <Button
                     size="sm"
                     variant="outline"
-                    className="hover:text-foreground hover:bg-red-500/10 hover:border-red-500/30"
+                    className="hover:text-destructive hover:bg-destructive/10 hover:border-destructive/30"
                     disabled={bulkDeleteMutation.isPending || deleteMutation.isPending}
                     onClick={() => {
                       void (async () => {
@@ -730,8 +674,8 @@ export function DealerContractsPage() {
                       })();
                     }}
                   >
-                    <Trash2 className="h-4 w-4" />
-                    <span className="ml-2">Delete Selected ({selectedDraftIds.length})</span>
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Delete ({selectedDraftIds.length})
                   </Button>
                 ) : null}
               </div>
@@ -740,15 +684,13 @@ export function DealerContractsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
+                  <tr className="border-b bg-muted/20 text-xs text-muted-foreground">
                     <th className="text-left px-6 py-3 font-medium whitespace-nowrap">
-                      <input
-                        type="checkbox"
-                        aria-label="Select all draft contracts"
-                        checked={allVisibleDraftSelected}
-                        disabled={visibleDraftIds.length === 0 || bulkDeleteMutation.isPending || deleteMutation.isPending}
-                        onChange={(e) => {
-                          const on = e.target.checked;
+                      <button
+                        type="button"
+                        className="flex items-center"
+                        onClick={() => {
+                          const on = !allVisibleDraftSelected;
                           setSelectedContractIds((prev) => {
                             const next = { ...prev };
                             for (const id of visibleDraftIds) {
@@ -758,7 +700,14 @@ export function DealerContractsPage() {
                             return next;
                           });
                         }}
-                      />
+                        disabled={visibleDraftIds.length === 0 || bulkDeleteMutation.isPending || deleteMutation.isPending}
+                      >
+                        {allVisibleDraftSelected ? (
+                          <CheckSquare className="h-5 w-5 text-blue-600" />
+                        ) : (
+                          <Square className="h-5 w-5" />
+                        )}
+                      </button>
                     </th>
                     <th className="text-left px-6 py-3 font-medium whitespace-nowrap">Contract #</th>
                     <th className="text-left px-6 py-3 font-medium">Customer</th>
@@ -771,15 +720,13 @@ export function DealerContractsPage() {
                 </thead>
                 <tbody className="divide-y">
                   {filtered.map((c) => (
-                    <tr key={c.id} className="hover:bg-muted/20">
+                    <tr key={c.id} className="hover:bg-muted/10 transition-colors">
                       <td className="px-6 py-3 whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          aria-label={`Select contract ${c.contractNumber}`}
-                          checked={Boolean(selectedContractIds[c.id])}
-                          disabled={c.status !== "DRAFT" || bulkDeleteMutation.isPending || deleteMutation.isPending}
-                          onChange={(e) => {
-                            const on = e.target.checked;
+                        <button
+                          type="button"
+                          className="flex items-center"
+                          onClick={() => {
+                            const on = !selectedContractIds[c.id];
                             const id = (c.id ?? "").trim();
                             if (!id) return;
                             setSelectedContractIds((prev) => {
@@ -789,7 +736,14 @@ export function DealerContractsPage() {
                               return next;
                             });
                           }}
-                        />
+                          disabled={c.status !== "DRAFT" || bulkDeleteMutation.isPending || deleteMutation.isPending}
+                        >
+                          {selectedContractIds[c.id] ? (
+                            <CheckSquare className="h-5 w-5 text-blue-600" />
+                          ) : (
+                            <Square className={`h-5 w-5 ${c.status === "DRAFT" ? "text-muted-foreground" : "text-transparent"}`} />
+                          )}
+                        </button>
                       </td>
                       <td className="px-6 py-3 whitespace-nowrap">
                         <div className="font-medium text-foreground">{c.contractNumber}</div>
@@ -806,7 +760,7 @@ export function DealerContractsPage() {
                       <td className="px-6 py-3 text-muted-foreground">{providerDisplay(c.providerId)}</td>
                       <td className="px-6 py-3">
                         <span
-                          className={"inline-flex items-center text-xs px-2 py-1 rounded-full border " + statusPillClass(c.status)}
+                          className={"inline-flex items-center text-xs px-2 py-0.5 rounded-full border " + statusPillClass(c.status)}
                           title={statusTooltip(c.status)}
                         >
                           {uiStatusLabel(c.status)}
@@ -854,7 +808,7 @@ export function DealerContractsPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="hover:text-foreground hover:bg-red-500/10 hover:border-red-500/30"
+                            className="hover:text-destructive hover:bg-destructive/10 hover:border-destructive/30"
                             onClick={() => {
                               void (async () => {
                                 if (c.status !== "DRAFT") return;
@@ -867,7 +821,6 @@ export function DealerContractsPage() {
                             aria-label="Delete"
                           >
                             <Trash2 className="h-4 w-4" />
-                            <span className="ml-2">Delete</span>
                           </Button>
                         </div>
                       </td>
@@ -876,7 +829,7 @@ export function DealerContractsPage() {
 
                   {listQuery.isLoading ? (
                     <tr>
-                      <td className="px-6 py-6 text-sm text-muted-foreground" colSpan={8}>
+                      <td className="px-6 py-10 text-sm text-muted-foreground text-center" colSpan={8}>
                         Loading…
                       </td>
                     </tr>
@@ -884,15 +837,17 @@ export function DealerContractsPage() {
 
                   {!listQuery.isLoading && filtered.length === 0 ? (
                     <tr>
-                      <td className="px-6 py-10 text-sm text-muted-foreground" colSpan={8}>
-                        No contracts found.
+                      <td className="px-6 py-12 text-sm text-muted-foreground text-center" colSpan={8}>
+                        <FileText className="h-10 w-10 mx-auto mb-3 opacity-40" />
+                        <div className="font-medium">No contracts found</div>
+                        <div className="text-xs mt-1">Create a contract by finding products in the marketplace.</div>
                       </td>
                     </tr>
                   ) : null}
 
                   {listQuery.isError ? (
                     <tr>
-                      <td className="px-6 py-6 text-sm text-destructive" colSpan={8}>
+                      <td className="px-6 py-10 text-sm text-destructive text-center" colSpan={8}>
                         Failed to load contracts.
                       </td>
                     </tr>

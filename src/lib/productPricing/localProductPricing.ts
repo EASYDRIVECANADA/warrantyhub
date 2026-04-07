@@ -84,6 +84,7 @@ function read(): ProductPricing[] {
           deductibleCents: typeof r.deductibleCents === "number" ? r.deductibleCents : 0,
           basePriceCents: typeof r.basePriceCents === "number" ? r.basePriceCents : 0,
           dealerCostCents: typeof r.dealerCostCents === "number" ? r.dealerCostCents : undefined,
+          suggestedRetailPriceCents: typeof (r as any).suggestedRetailPriceCents === "number" ? (r as any).suggestedRetailPriceCents : undefined,
           createdAt,
         };
       })
@@ -213,6 +214,7 @@ export const localProductPricingApi: ProductPricingApi = {
       deductibleCents: input.deductibleCents,
       basePriceCents: typeof input.providerNetCostCents === "number" ? input.providerNetCostCents : input.basePriceCents,
       dealerCostCents: typeof input.dealerCostCents === "number" ? input.dealerCostCents : undefined,
+      suggestedRetailPriceCents: typeof input.suggestedRetailPriceCents === "number" ? input.suggestedRetailPriceCents : undefined,
       createdAt: now,
     };
 

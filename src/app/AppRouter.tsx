@@ -6,7 +6,6 @@ import { RootLayout } from "../layouts/RootLayout";
 import { AdminDashboardPage } from "../pages/AdminDashboardPage";
 import { AdminUsersPage } from "../pages/AdminUsersPage";
 import { AdminAccessRequestsPage } from "../pages/AdminAccessRequestsPage";
-import { AdminDealersPage } from "../pages/AdminDealersPage";
 import { AdminProvidersPage } from "../pages/AdminProvidersPage";
 import { AuditLogsPage } from "../pages/AuditLogsPage";
 import { DealerContractDetailPage } from "../pages/DealerContractDetailPage";
@@ -85,7 +84,6 @@ export function AppRouter() {
           <Route path="admin-remittances" element={<RemittancesPage title="Admin Remittances" />} />
           <Route path="admin-support" element={<AdminSupportInboxPage />} />
           <Route path="admin-providers" element={<AdminProvidersPage />} />
-          <Route path="admin-dealers" element={<AdminDealersPage />} />
         </Route>
 
         <Route element={<ProtectedRoute allowedRoles={["SUPER_ADMIN"]} />}>

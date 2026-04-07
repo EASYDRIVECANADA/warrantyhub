@@ -23,6 +23,7 @@ type ProductPricingRow = {
   deductible_cents: number;
   base_price_cents: number;
   dealer_cost_cents?: number | null;
+  suggested_retail_price_cents?: number | null;
   created_at: string;
 };
 
@@ -60,6 +61,7 @@ function toPricing(r: ProductPricingRow): ProductPricing {
     deductibleCents: r.deductible_cents,
     basePriceCents: r.base_price_cents,
     dealerCostCents: r.dealer_cost_cents ?? undefined,
+    suggestedRetailPriceCents: typeof r.suggested_retail_price_cents === "number" ? r.suggested_retail_price_cents : undefined,
     createdAt: r.created_at,
   };
 }
@@ -227,6 +229,10 @@ export const supabaseProductPricingApi: ProductPricingApi = {
 
     if (typeof (input as any).claimLimitAmountCents === "number") {
       insertRow.claim_limit_amount_cents = (input as any).claimLimitAmountCents;
+    }
+
+    if (typeof input.suggestedRetailPriceCents === "number") {
+      insertRow.suggested_retail_price_cents = input.suggestedRetailPriceCents;
     }
 
     const { data, error } = await supabase.from("product_pricing").insert(insertRow).select("*").single();

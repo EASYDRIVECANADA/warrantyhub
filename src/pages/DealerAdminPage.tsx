@@ -11,6 +11,11 @@ import {
   Store,
   TrendingUp,
   Users,
+  ArrowRight,
+  TrendingDown,
+  Receipt,
+  PieChart,
+  Activity,
 } from "lucide-react";
 import { PageShell } from "../components/PageShell";
 import { getAppMode } from "../lib/runtime";
@@ -26,6 +31,12 @@ import type { MarketplaceProduct } from "../lib/marketplace/api";
 function money(cents: number) {
   const dollars = cents / 100;
   return `$${dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function formatCompact(num: number) {
+  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+  if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
+  return num.toString();
 }
 
 export function DealerAdminPage() {
@@ -163,59 +174,6 @@ export function DealerAdminPage() {
     return { points, max };
   }, [soldLike]);
 
-  const kpis = useMemo(() => {
-    return [
-      {
-        title: "Contracts Created",
-        value: `${contractCounts.total}`,
-        icon: FileText,
-        iconWrap: "bg-gradient-to-br from-sky-500/20 to-indigo-500/10 border-sky-500/20 text-sky-700",
-      },
-      {
-        title: "Contracts Sold",
-        value: `${contractCounts.sold}`,
-        icon: CheckCircle2,
-        iconWrap: "bg-gradient-to-br from-emerald-500/20 to-cyan-500/10 border-emerald-500/20 text-emerald-700",
-      },
-      {
-        title: "Pending Contracts",
-        value: `${contractCounts.draft}`,
-        icon: Hourglass,
-        iconWrap: "bg-gradient-to-br from-amber-500/25 to-orange-500/10 border-amber-500/25 text-amber-800",
-      },
-      {
-        title: "Remitted",
-        value: `${contractCounts.remitted}`,
-        icon: BarChart3,
-        iconWrap: "bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 border-violet-500/20 text-violet-700",
-      },
-      {
-        title: "Total Sales Volume",
-        value: money(totalSalesCents),
-        icon: DollarSign,
-        iconWrap: "bg-gradient-to-br from-blue-600/15 to-yellow-400/10 border-blue-600/20 text-blue-700",
-      },
-      {
-        title: "Outstanding Balance",
-        value: money(outstandingCents),
-        icon: TrendingUp,
-        iconWrap: "bg-gradient-to-br from-amber-500/20 to-rose-500/10 border-amber-500/20 text-amber-800",
-      },
-      {
-        title: "Avg Contract",
-        value: money(avgContractCents),
-        icon: DollarSign,
-        iconWrap: "bg-gradient-to-br from-slate-500/15 to-slate-500/5 border-slate-500/15 text-slate-700",
-      },
-      {
-        title: "Top Selling Product",
-        value: topProduct?.name ?? "—",
-        icon: Package,
-        iconWrap: "bg-gradient-to-br from-yellow-400/25 to-amber-500/10 border-yellow-500/20 text-amber-900",
-      },
-    ] as const;
-  }, [avgContractCents, contractCounts.draft, contractCounts.remitted, contractCounts.sold, contractCounts.total, outstandingCents, topProduct?.name, totalSalesCents]);
-
   const isError =
     contractsQuery.isError ||
     batchesQuery.isError ||
@@ -230,33 +188,139 @@ export function DealerAdminPage() {
   return (
     <PageShell
       title=""
+      subtitle="Overview of your dealership performance"
     >
       <div className="relative">
-        <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-yellow-400/10 blur-2xl" />
+        <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-violet-500/10 blur-2xl" />
 
         <div className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 auto-rows-fr">
-            {kpis.map((k) => (
-              <div key={k.title} className="rounded-2xl border bg-card shadow-card p-4 ring-1 ring-blue-500/10">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="text-[13px] text-muted-foreground">{k.title}</div>
-                  <div className={"shrink-0 h-10 w-10 rounded-2xl border flex items-center justify-center " + k.iconWrap}>
-                    <k.icon className="w-5 h-5" />
-                  </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm p-5 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between gap-3">
+                <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-600">
+                  <FileText className="w-5 h-5" />
                 </div>
-                <div className="text-2xl font-bold text-foreground mt-3 leading-none break-words">{k.value}</div>
+                <span className="text-xs text-muted-foreground font-medium">Total</span>
               </div>
-            ))}
+              <div className="mt-3">
+                <div className="text-2xl font-bold">{contractCounts.total}</div>
+                <div className="text-xs text-muted-foreground mt-1">Contracts Created</div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm p-5 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between gap-3">
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-600">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <span className="text-xs text-muted-foreground font-medium">Sold</span>
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-bold">{contractCounts.sold}</div>
+                <div className="text-xs text-muted-foreground mt-1">Active Contracts</div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm p-5 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between gap-3">
+                <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-600">
+                  <Hourglass className="w-5 h-5" />
+                </div>
+                <span className="text-xs text-muted-foreground font-medium">Pending</span>
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-bold">{contractCounts.draft}</div>
+                <div className="text-xs text-muted-foreground mt-1">Draft Contracts</div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm p-5 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between gap-3">
+                <div className="p-2.5 rounded-xl bg-violet-500/10 text-violet-600">
+                  <BarChart3 className="w-5 h-5" />
+                </div>
+                <span className="text-xs text-muted-foreground font-medium">Revenue</span>
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-bold">{formatCompact(totalSalesCents / 100)}</div>
+                <div className="text-xs text-muted-foreground mt-1">Total Sales</div>
+              </div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            <div className="lg:col-span-8 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10 flex flex-col min-h-[340px]">
-              <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
-                <div className="font-semibold">Sales Overview</div>
-                <div className="text-sm text-muted-foreground mt-1">Contracts sold per month</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm p-5 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between gap-3">
+                <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-600">
+                  <TrendingDown className="w-5 h-5" />
+                </div>
+                <span className="text-xs text-muted-foreground font-medium">Outstanding</span>
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-bold">{money(outstandingCents)}</div>
+                <div className="text-xs text-muted-foreground mt-1">Pending Payment</div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm p-5 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between gap-3">
+                <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-600">
+                  <Receipt className="w-5 h-5" />
+                </div>
+                <span className="text-xs text-muted-foreground font-medium">Remitted</span>
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-bold">{contractCounts.remitted}</div>
+                <div className="text-xs text-muted-foreground mt-1">Submitted Batches</div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm p-5 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between gap-3">
+                <div className="p-2.5 rounded-xl bg-slate-500/10 text-slate-600">
+                  <DollarSign className="w-5 h-5" />
+                </div>
+                <span className="text-xs text-muted-foreground font-medium">Average</span>
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-bold">{money(avgContractCents)}</div>
+                <div className="text-xs text-muted-foreground mt-1">Per Contract</div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm p-5 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between gap-3">
+                <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-600">
+                  <Package className="w-5 h-5" />
+                </div>
+                <span className="text-xs text-muted-foreground font-medium">Top Product</span>
+              </div>
+              <div className="mt-3">
+                <div className="text-lg font-bold truncate" title={topProduct?.name ?? "—"}>
+                  {topProduct?.name ?? "—"}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {topProduct ? `${topProduct.sold} sold` : "No sales yet"}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-8 rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-500/5 via-transparent to-transparent">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600">
+                    <Activity className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="font-semibold">Sales Trend</div>
+                    <div className="text-xs text-muted-foreground">Contracts sold over the last 6 months</div>
+                  </div>
+                </div>
               </div>
 
-              <div className="p-6 flex-1 min-h-0">
+              <div className="p-6">
                 {(() => {
                   const w = 720;
                   const h = 220;
@@ -313,138 +377,217 @@ export function DealerAdminPage() {
               </div>
             </div>
 
-            <div className="lg:col-span-4 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10 flex flex-col min-h-[340px]">
-              <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
-                <div className="font-semibold">Quick Actions</div>
+            <div className="lg:col-span-4 rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b bg-gradient-to-r from-violet-500/5 via-transparent to-transparent">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-violet-500/10 text-violet-600">
+                    <PieChart className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="font-semibold">Quick Actions</div>
+                    <div className="text-xs text-muted-foreground">Common tasks</div>
+                  </div>
+                </div>
               </div>
-              <div className="p-6 grid grid-cols-2 gap-3 flex-1 content-start">
-                <Link to="/dealer-contracts" className="rounded-xl border bg-background/40 p-4 hover:bg-background/60 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-2xl border bg-gradient-to-br from-sky-500/20 to-indigo-500/10 flex items-center justify-center">
-                      <FileText className="h-5 w-5 text-sky-700" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold">View Contracts</div>
-                      <div className="text-xs text-muted-foreground">Create & manage</div>
-                    </div>
+              <div className="p-4 space-y-2">
+                <Link
+                  to="/dealer-contracts"
+                  className="flex items-center gap-4 p-4 rounded-xl border bg-background/40 hover:bg-background/60 transition-colors group"
+                >
+                  <div className="p-2 rounded-lg bg-sky-500/10 text-sky-600 group-hover:bg-sky-500/20 transition-colors">
+                    <FileText className="h-5 w-5" />
                   </div>
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold">Contracts</div>
+                    <div className="text-xs text-muted-foreground">View and manage</div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:translate-x-1 transition-transform" />
                 </Link>
 
-                <Link to="/dealer-marketplace" className="rounded-xl border bg-background/40 p-4 hover:bg-background/60 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-2xl border bg-gradient-to-br from-emerald-500/20 to-cyan-500/10 flex items-center justify-center">
-                      <Store className="h-5 w-5 text-emerald-700" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold">Find Products</div>
-                      <div className="text-xs text-muted-foreground">Marketplace</div>
-                    </div>
+                <Link
+                  to="/dealer-marketplace"
+                  className="flex items-center gap-4 p-4 rounded-xl border bg-background/40 hover:bg-background/60 transition-colors group"
+                >
+                  <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 group-hover:bg-emerald-500/20 transition-colors">
+                    <Store className="h-5 w-5" />
                   </div>
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold">Find Products</div>
+                    <div className="text-xs text-muted-foreground">Browse products</div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:translate-x-1 transition-transform" />
                 </Link>
 
-                <Link to="/dealer-team" className="rounded-xl border bg-background/40 p-4 hover:bg-background/60 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-2xl border bg-gradient-to-br from-amber-500/20 to-orange-500/10 flex items-center justify-center">
-                      <Users className="h-5 w-5 text-amber-800" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold">Team</div>
-                      <div className="text-xs text-muted-foreground">Employees</div>
-                    </div>
+                <Link
+                  to="/dealer-team"
+                  className="flex items-center gap-4 p-4 rounded-xl border bg-background/40 hover:bg-background/60 transition-colors group"
+                >
+                  <div className="p-2 rounded-lg bg-amber-500/10 text-amber-600 group-hover:bg-amber-500/20 transition-colors">
+                    <Users className="h-5 w-5" />
                   </div>
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold">Team</div>
+                    <div className="text-xs text-muted-foreground">Manage employees</div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:translate-x-1 transition-transform" />
                 </Link>
 
-                <Link to="/dealer-remittances" className="rounded-xl border bg-background/40 p-4 hover:bg-background/60 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-2xl border bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 flex items-center justify-center">
-                      <DollarSign className="h-5 w-5 text-violet-700" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold">Remittances</div>
-                      <div className="text-xs text-muted-foreground">Batches</div>
-                    </div>
+                <Link
+                  to="/dealer-remittances"
+                  className="flex items-center gap-4 p-4 rounded-xl border bg-background/40 hover:bg-background/60 transition-colors group"
+                >
+                  <div className="p-2 rounded-lg bg-violet-500/10 text-violet-600 group-hover:bg-violet-500/20 transition-colors">
+                    <DollarSign className="h-5 w-5" />
                   </div>
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold">Remittances</div>
+                    <div className="text-xs text-muted-foreground">View batches</div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:translate-x-1 transition-transform" />
                 </Link>
               </div>
             </div>
 
-            <div className="lg:col-span-6 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
-              <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
-                <div className="font-semibold">Product Performance</div>
-                <div className="text-sm text-muted-foreground mt-1">Top products by revenue</div>
+            <div className="lg:col-span-6 rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b bg-gradient-to-r from-emerald-500/5 via-transparent to-transparent">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600">
+                    <Package className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="font-semibold">Top Products</div>
+                    <div className="text-xs text-muted-foreground">By revenue generated</div>
+                  </div>
+                </div>
               </div>
-              <div className="px-6 py-4">
-                <div className="grid grid-cols-12 gap-3 text-[11px] text-muted-foreground pb-2">
-                  <div className="col-span-7">Product</div>
-                  <div className="col-span-2 text-right">Sold</div>
-                  <div className="col-span-3 text-right">Revenue</div>
-                </div>
-                <div className="max-h-[240px] overflow-y-auto divide-y rounded-lg border bg-background/40">
-                  {productPerformance.slice(0, 50).map((row) => (
-                    <div key={row.productId} className="grid grid-cols-12 gap-3 px-3 py-2 items-center">
-                      <div className="col-span-7 text-[13px] font-medium text-foreground truncate">{row.name}</div>
-                      <div className="col-span-2 text-[13px] text-right text-muted-foreground">{row.sold}</div>
-                      <div className="col-span-3 text-[13px] text-right text-muted-foreground">{money(row.revenueCents)}</div>
+              <div className="divide-y">
+                {productPerformance.slice(0, 5).map((row, index) => (
+                  <div key={row.productId} className="px-6 py-4 flex items-center gap-4 hover:bg-muted/30 transition-colors">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted text-sm font-bold text-muted-foreground">
+                      {index + 1}
                     </div>
-                  ))}
-                  {!isLoading && productPerformance.length === 0 ? <div className="px-3 py-6 text-sm text-muted-foreground">No sales yet.</div> : null}
-                  {isLoading ? <div className="px-3 py-6 text-sm text-muted-foreground">Loading…</div> : null}
-                  {isError ? <div className="px-3 py-6 text-sm text-destructive">Failed to load dashboard data.</div> : null}
-                </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{row.name}</div>
+                      <div className="text-xs text-muted-foreground">{row.sold} sold</div>
+                    </div>
+                    <div className="text-sm font-semibold">{money(row.revenueCents)}</div>
+                  </div>
+                ))}
+                {!isLoading && productPerformance.length === 0 && (
+                  <div className="px-6 py-12 text-center">
+                    <div className="text-sm text-muted-foreground">No product sales yet</div>
+                  </div>
+                )}
+                {isLoading && (
+                  <div className="px-6 py-6 space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="h-10 bg-muted rounded-lg animate-pulse" />
+                    ))}
+                  </div>
+                )}
+                {isError && (
+                  <div className="px-6 py-6 text-center text-sm text-destructive">Failed to load data</div>
+                )}
               </div>
             </div>
 
-            <div className="lg:col-span-6 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
-              <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
-                <div className="font-semibold">Employee Performance</div>
-                <div className="text-sm text-muted-foreground mt-1">Top employees by revenue</div>
+            <div className="lg:col-span-6 rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-500/5 via-transparent to-transparent">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="font-semibold">Top Performers</div>
+                    <div className="text-xs text-muted-foreground">By revenue generated</div>
+                  </div>
+                </div>
               </div>
-              <div className="px-6 py-4">
-                <div className="grid grid-cols-12 gap-3 text-[11px] text-muted-foreground pb-2">
-                  <div className="col-span-7">Employee</div>
-                  <div className="col-span-2 text-right">Sold</div>
-                  <div className="col-span-3 text-right">Revenue</div>
-                </div>
-                <div className="max-h-[240px] overflow-y-auto divide-y rounded-lg border bg-background/40">
-                  {employeePerformance.slice(0, 50).map((row) => (
-                    <div key={row.email} className="grid grid-cols-12 gap-3 px-3 py-2 items-center">
-                      <div className="col-span-7 text-[13px] font-medium text-foreground truncate">{row.email}</div>
-                      <div className="col-span-2 text-[13px] text-right text-muted-foreground">{row.sold}</div>
-                      <div className="col-span-3 text-[13px] text-right text-muted-foreground">{money(row.revenueCents)}</div>
+              <div className="divide-y">
+                {employeePerformance.slice(0, 5).map((row, index) => (
+                  <div key={row.email} className="px-6 py-4 flex items-center gap-4 hover:bg-muted/30 transition-colors">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted text-sm font-bold text-muted-foreground">
+                      {index + 1}
                     </div>
-                  ))}
-                  {!isLoading && employeePerformance.length === 0 ? <div className="px-3 py-6 text-sm text-muted-foreground">No sales yet.</div> : null}
-                  {isLoading ? <div className="px-3 py-6 text-sm text-muted-foreground">Loading…</div> : null}
-                  {isError ? <div className="px-3 py-6 text-sm text-destructive">Failed to load dashboard data.</div> : null}
-                </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{row.email}</div>
+                      <div className="text-xs text-muted-foreground">{row.sold} contracts sold</div>
+                    </div>
+                    <div className="text-sm font-semibold">{money(row.revenueCents)}</div>
+                  </div>
+                ))}
+                {!isLoading && employeePerformance.length === 0 && (
+                  <div className="px-6 py-12 text-center">
+                    <div className="text-sm text-muted-foreground">No employee sales yet</div>
+                  </div>
+                )}
+                {isLoading && (
+                  <div className="px-6 py-6 space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="h-10 bg-muted rounded-lg animate-pulse" />
+                    ))}
+                  </div>
+                )}
+                {isError && (
+                  <div className="px-6 py-6 text-center text-sm text-destructive">Failed to load data</div>
+                )}
               </div>
             </div>
 
-            <div className="lg:col-span-12 rounded-2xl border bg-card shadow-card overflow-hidden ring-1 ring-blue-500/10">
-              <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/10 via-transparent to-yellow-500/10">
-                <div className="font-semibold">Contract Status Breakdown</div>
+            <div className="lg:col-span-12 rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b bg-gradient-to-r from-violet-500/5 via-transparent to-transparent">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-violet-500/10 text-violet-600">
+                    <TrendingUp className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="font-semibold">Contract Pipeline</div>
+                    <div className="text-xs text-muted-foreground">Distribution across all stages</div>
+                  </div>
+                </div>
               </div>
-              <div className="p-6 space-y-3">
-                {(() => {
-                  const total = Math.max(1, contractCounts.total);
-                  const rows = [
-                    { label: "Draft", value: contractCounts.draft, color: "bg-slate-300" },
-                    { label: "Sold", value: contractCounts.sold, color: "bg-blue-500" },
-                    { label: "Remitted", value: contractCounts.remitted, color: "bg-emerald-500" },
-                    { label: "Paid", value: contractCounts.paid, color: "bg-amber-500" },
-                  ] as const;
-                  return rows.map((r) => (
-                    <div key={r.label} className="grid grid-cols-12 gap-3 items-center">
-                      <div className="col-span-3 text-sm text-muted-foreground">{r.label}</div>
-                      <div className="col-span-7">
-                        <div className="h-2 rounded-full bg-muted overflow-hidden">
-                          <div className={"h-full rounded-full " + r.color} style={{ width: `${(r.value / total) * 100}%` }} />
+              <div className="p-6">
+                <div className="space-y-4">
+                  {(() => {
+                    const total = Math.max(1, contractCounts.total);
+                    const rows = [
+                      { label: "Draft", value: contractCounts.draft, color: "bg-slate-400" },
+                      { label: "Sold", value: contractCounts.sold, color: "bg-blue-500" },
+                      { label: "Remitted", value: contractCounts.remitted, color: "bg-emerald-500" },
+                      { label: "Paid", value: contractCounts.paid, color: "bg-amber-500" },
+                    ] as const;
+                    return (
+                      <>
+                        <div className="flex items-center gap-4 text-sm">
+                          <span className="text-muted-foreground w-20">Total</span>
+                          <div className="flex-1 h-3 rounded-full bg-muted overflow-hidden flex">
+                            {rows.map((r) => (
+                              <div
+                                key={r.label}
+                                className={`${r.color} transition-all`}
+                                style={{ width: `${(r.value / total) * 100}%` }}
+                              />
+                            ))}
+                          </div>
+                          <span className="font-semibold w-12 text-right">{contractCounts.total}</span>
                         </div>
-                      </div>
-                      <div className="col-span-2 text-sm font-semibold text-foreground text-right">{r.value}</div>
-                    </div>
-                  ));
-                })()}
+                        {rows.map((r) => (
+                          <div key={r.label} className="flex items-center gap-4">
+                            <div className="flex items-center gap-2 w-20">
+                              <div className={`w-3 h-3 rounded-full ${r.color}`} />
+                              <span className="text-sm text-muted-foreground">{r.label}</span>
+                            </div>
+                            <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                              <div className={`${r.color} h-full rounded-full transition-all`} style={{ width: `${(r.value / total) * 100}%` }} />
+                            </div>
+                            <span className="text-sm font-medium w-12 text-right">{r.value}</span>
+                            <span className="text-xs text-muted-foreground w-12">{((r.value / total) * 100).toFixed(0)}%</span>
+                          </div>
+                        ))}
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
             </div>
           </div>

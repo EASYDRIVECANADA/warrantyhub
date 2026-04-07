@@ -18,6 +18,7 @@ export type ProductPricing = {
   deductibleCents: number;
   basePriceCents: number;
   dealerCostCents?: number;
+  suggestedRetailPriceCents?: number;
   createdAt: string;
 };
 
@@ -41,4 +42,5 @@ export type CreateProductPricingInput = {
   deductibleCents: number;
   basePriceCents: number;
   dealerCostCents?: number;
+  suggestedRetailPriceCents?: number;
 };

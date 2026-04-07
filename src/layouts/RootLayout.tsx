@@ -120,6 +120,25 @@ export function RootLayout() {
   const [isProviderMobileNavOpen, setIsProviderMobileNavOpen] = useState(false);
   const [isSuperAdminMobileNavOpen, setIsSuperAdminMobileNavOpen] = useState(false);
   const [isDealerAdminSettingsOpen, setIsDealerAdminSettingsOpen] = useState(false);
+  const [dealerConfidentialityMode, setDealerConfidentialityMode] = useState(() => {
+    try {
+      return localStorage.getItem("warrantyhub.dealer.confidentiality_pricing") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    const handleConfidentialityChange = () => {
+      try {
+        const value = localStorage.getItem("warrantyhub.dealer.confidentiality_pricing") === "true";
+        setDealerConfidentialityMode(value);
+      } catch {
+      }
+    };
+    window.addEventListener("confidentiality-mode-changed", handleConfidentialityChange);
+    return () => window.removeEventListener("confidentiality-mode-changed", handleConfidentialityChange);
+  }, []);
 
   useEffect(() => {
     setIsDealerAdminMobileNavOpen(false);
@@ -305,14 +324,14 @@ export function RootLayout() {
               />
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/0 via-white/0 to-black/8" />
 
-              <div className="relative z-10 flex flex-col flex-1">
+                <div className="relative z-10 flex flex-col flex-1">
                 <div className={`h-14 px-4 flex items-center border-b border-white/15 ${isDealerAdminSidebarCollapsed ? "justify-center" : "justify-start"}`}>
                   <Link to="/dealer-admin" className={`flex items-center gap-2 ${isDealerAdminSidebarCollapsed ? "justify-center" : ""}`}>
                     <img src="/images/warrantyhubwhite.png" alt={BRAND.name} className="h-9 w-auto object-contain" />
                     {!isDealerAdminSidebarCollapsed ? (
                       <div className="leading-tight">
                         <div className="font-semibold text-sm">{BRAND.name}</div>
-                        <div className="text-[11px] text-white/80">Dealer Admin</div>
+                        <div className="text-[11px] text-white/80">Dealer Admin {dealerConfidentialityMode ? "| Confidentiality Pricing" : ""}</div>
                       </div>
                     ) : null}
                   </Link>

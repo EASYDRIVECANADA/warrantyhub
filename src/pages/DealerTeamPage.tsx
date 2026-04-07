@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Users, UserPlus, Shield, UserCheck, UserX, Mail, Phone, Lock, User, Plus, Pencil, Loader2 } from "lucide-react";
 
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -62,7 +63,6 @@ function writeLocalDealerMemberships(items: any[]) {
   localStorage.setItem(LOCAL_DEALER_MEMBERSHIPS_KEY, JSON.stringify(items));
 }
 
-
 type DealerTeamEmployeeDraft = {
   firstName: string;
   lastName: string;
@@ -108,14 +108,19 @@ function normalizeEmail(email: string) {
 }
 
 function roleLabel(r: DealerTeamRole) {
-  if (r === "DEALER_ADMIN") return "Dealer Admin";
-  return "Dealer Employee";
+  if (r === "DEALER_ADMIN") return "Admin";
+  return "Employee";
+}
+
+function roleBadgeClass(r: DealerTeamRole) {
+  if (r === "DEALER_ADMIN") return "bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/20";
+  return "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20";
 }
 
 function statusBadgeClass(s: DealerTeamStatus) {
-  if (s === "ACTIVE") return "bg-emerald-50 text-emerald-700 border-emerald-200";
-  if (s === "DISABLED") return "bg-red-50 text-red-700 border-red-200";
-  return "bg-amber-50 text-amber-800 border-amber-200";
+  if (s === "ACTIVE") return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20";
+  if (s === "DISABLED") return "bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/20";
+  return "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20";
 }
 
 function statusLabel(s: DealerTeamStatus) {
@@ -187,9 +192,9 @@ export function DealerTeamPage() {
   const dealerId = (mode === "local" ? localDealerId : (dealerIdQuery.data ?? "")).trim();
 
   const [error, setError] = useState<string | null>(null);
-  const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
 
   const [editingDealerMemberId, setEditingDealerMemberId] = useState<string | null>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
   const [draft, setDraft] = useState<DealerTeamEmployeeDraft>({
     firstName: "",
     lastName: "",
@@ -247,7 +252,7 @@ export function DealerTeamPage() {
       }
       if (!dealerId) throw new Error("Missing dealerId");
 
-      if (mode !== "local" && dealerIdQuery.isLoading) throw new Error("Loading dealership…");
+      if (mode !== "local" && dealerIdQuery.isLoading) throw new Error("Loading dealership...");
 
       const firstName = draft.firstName.trim();
       const lastName = draft.lastName.trim();
@@ -328,7 +333,8 @@ export function DealerTeamPage() {
     },
     onSuccess: async () => {
       setEditingDealerMemberId(null);
-      setPasswordErrors([]);
+      setShowAddForm(false);
+      
       setDraft({ firstName: "", lastName: "", phone: "", email: "", password: "", password2: "", role: "DEALER_EMPLOYEE" });
       await qc.invalidateQueries({ queryKey: ["dealer-team"] });
     },
@@ -347,7 +353,7 @@ export function DealerTeamPage() {
       }
 
       if (!dealerId) throw new Error("Missing dealerId");
-      if (mode !== "local" && dealerIdQuery.isLoading) throw new Error("Loading dealership…");
+      if (mode !== "local" && dealerIdQuery.isLoading) throw new Error("Loading dealership...");
 
       const firstName = draft.firstName.trim();
       const lastName = draft.lastName.trim();
@@ -389,7 +395,8 @@ export function DealerTeamPage() {
     },
     onSuccess: async () => {
       setEditingDealerMemberId(null);
-      setPasswordErrors([]);
+      setShowAddForm(false);
+      
       setDraft({ firstName: "", lastName: "", phone: "", email: "", password: "", password2: "", role: "DEALER_EMPLOYEE" });
       await qc.invalidateQueries({ queryKey: ["dealer-team"] });
     },
@@ -539,216 +546,402 @@ export function DealerTeamPage() {
     createEmployeeMutation.isPending ||
     updateEmployeeMutation.isPending;
 
+  const isEditing = editingDealerMemberId !== null;
+  const activeCount = members.filter((m) => m.status === "ACTIVE").length;
+  const adminCount = members.filter((m) => m.role === "DEALER_ADMIN").length;
+
+  const handleCancel = () => {
+    setEditingDealerMemberId(null);
+    setShowAddForm(false);
+    setDraft({ firstName: "", lastName: "", phone: "", email: "", password: "", password2: "", role: "DEALER_EMPLOYEE" });
+    setError(null);
+    
+  };
+
+  const handleEdit = (m: DealerTeamMember) => {
+    setEditingDealerMemberId(m.id);
+    setShowAddForm(true);
+    setDraft({
+      firstName: m.firstName ?? "",
+      lastName: m.lastName ?? "",
+      phone: m.phone ?? "",
+      email: m.email,
+      password: "",
+      password2: "",
+      role: m.role,
+    });
+    setError(null);
+    
+  };
+
+  const handleSubmit = () => {
+    void (async () => {
+      setError(null);
+      if (editingDealerMemberId) {
+        updateEmployeeMutation.mutate(editingDealerMemberId);
+        return;
+      }
+      createEmployeeMutation.mutate();
+    })();
+  };
+
   return (
     <PageShell
-      title=""
+      title="Team Management"
+      subtitle="Manage your dealership employees and their access"
+      badge="DEALER ADMIN"
     >
-      {error ? <div className="text-sm text-destructive">{error}</div> : null}
-      {!error && mode !== "local" && supabaseSessionQuery.isLoading ? (
-        <div className="text-sm text-muted-foreground">Checking session…</div>
-      ) : null}
-      {!error && mode !== "local" && supabaseSessionQuery.isError ? (
-        <div className="text-sm text-destructive">Failed to check session.</div>
-      ) : null}
-      {!error && mode !== "local" && dealerIdQuery.isLoading ? (
-        <div className="text-sm text-muted-foreground">Loading dealership…</div>
-      ) : null}
-      {!error && mode !== "local" && dealerIdQuery.isError ? (
-        <div className="text-sm text-destructive">
+      {error && (
+        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/30 p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/50">
+              <UserX className="w-5 h-5 text-red-600 dark:text-red-400" />
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-medium text-red-800 dark:text-red-200">{error}</div>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setError(null)}>
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {!error && mode !== "local" && supabaseSessionQuery.isLoading && (
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          <span className="text-sm">Checking session...</span>
+        </div>
+      )}
+      {!error && mode !== "local" && supabaseSessionQuery.isError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-800 dark:text-red-200">
+          Failed to check session.
+        </div>
+      )}
+      {!error && mode !== "local" && dealerIdQuery.isLoading && (
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          <span className="text-sm">Loading dealership...</span>
+        </div>
+      )}
+      {!error && mode !== "local" && dealerIdQuery.isError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-800 dark:text-red-200">
           Failed to load dealership{dealerIdQuery.error instanceof Error && dealerIdQuery.error.message ? `: ${dealerIdQuery.error.message}` : "."}
         </div>
-      ) : null}
+      )}
 
-      <div className="mt-8 rounded-2xl border bg-card shadow-card overflow-hidden">
-        <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap">
-          <div className="font-semibold">{editingDealerMemberId ? "Edit Employee" : "Add Employee"}</div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {editingDealerMemberId ? (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={busy}
-                onClick={() => {
-                  setEditingDealerMemberId(null);
-                  setDraft({ firstName: "", lastName: "", phone: "", email: "", password: "", password2: "", role: "DEALER_EMPLOYEE" });
-                }}
-              >
-                Cancel
-              </Button>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-            <div className="md:col-span-3">
-              <div className="text-xs text-muted-foreground mb-1">First Name</div>
-              <Input value={draft.firstName} onChange={(e) => setDraft((p) => ({ ...p, firstName: e.target.value }))} />
-            </div>
-            <div className="md:col-span-3">
-              <div className="text-xs text-muted-foreground mb-1">Last Name</div>
-              <Input value={draft.lastName} onChange={(e) => setDraft((p) => ({ ...p, lastName: e.target.value }))} />
-            </div>
-            <div className="md:col-span-3">
-              <div className="text-xs text-muted-foreground mb-1">Phone Number</div>
-              <Input value={draft.phone} onChange={(e) => setDraft((p) => ({ ...p, phone: e.target.value }))} />
-            </div>
-            <div className="md:col-span-3">
-              <div className="text-xs text-muted-foreground mb-1">Role</div>
-              <select
-                className="h-10 w-full rounded-md border border-input bg-white/80 px-3 text-sm shadow-sm"
-                value={draft.role}
-                onChange={(e) => setDraft((p) => ({ ...p, role: (e.target.value as DealerTeamRole) || "DEALER_EMPLOYEE" }))}
-              >
-                <option value="DEALER_EMPLOYEE">Dealer Employee</option>
-                <option value="DEALER_ADMIN">Dealer Admin</option>
-              </select>
-            </div>
-
-            <div className="md:col-span-6">
-              <div className="text-xs text-muted-foreground mb-1">Email</div>
-              <Input value={draft.email} onChange={(e) => setDraft((p) => ({ ...p, email: e.target.value }))} />
-            </div>
-            <div className="md:col-span-3">
-              <div className="text-xs text-muted-foreground mb-1">Password</div>
-              <Input type="password" value={draft.password} onChange={(e) => {
-                const val = e.target.value;
-                setDraft((p) => ({ ...p, password: val }));
-                setPasswordErrors(val ? validatePassword(val).errors : []);
-              }} />
-              {draft.password && (
-                <div className="mt-1 space-y-0.5">
-                  {passwordErrors.length === 0 ? (
-                    <div className="text-xs text-emerald-600">Password meets all requirements</div>
-                  ) : (
-                    passwordErrors.map((err) => (
-                      <div key={err} className="text-xs text-muted-foreground">✗ {err}</div>
-                    ))
-                  )}
+      <div className="space-y-6">
+        <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+          <div className="px-6 py-5 border-b bg-gradient-to-r from-violet-500/5 via-transparent to-transparent">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-4">
+                <div className="p-3 rounded-xl bg-violet-500/10 text-violet-600">
+                  <Users className="w-6 h-6" />
                 </div>
-              )}
-            </div>
-            <div className="md:col-span-3">
-              <div className="text-xs text-muted-foreground mb-1">Re-Type Password</div>
-              <Input type="password" value={draft.password2} onChange={(e) => setDraft((p) => ({ ...p, password2: e.target.value }))} />
-            </div>
-
-            <div className="md:col-span-12 flex justify-end gap-2">
-              <Button
-                disabled={
-                  busy ||
-                  (mode !== "local" && (supabaseSessionQuery.isLoading || !supabaseSessionQuery.data?.user?.id)) ||
-                  (mode !== "local" && (dealerIdQuery.isLoading || !dealerId))
-                }
-                onClick={() => {
-                  void (async () => {
-                    setError(null);
-                    if (editingDealerMemberId) {
-                      updateEmployeeMutation.mutate(editingDealerMemberId);
-                      return;
-                    }
-                    createEmployeeMutation.mutate();
-                  })();
-                }}
-              >
-                {editingDealerMemberId ? "Save Changes" : "Add Employee"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-10 rounded-2xl border bg-card shadow-card overflow-hidden">
-        <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <div className="font-semibold">Your Team</div>
-          </div>
-          <div className="text-sm text-muted-foreground">{members.length} member(s)</div>
-        </div>
-
-        <div className="hidden md:grid grid-cols-12 gap-3 px-6 py-3 border-b text-xs text-muted-foreground">
-          <div className="col-span-5">Member</div>
-          <div className="col-span-3">Role</div>
-          <div className="col-span-2">Status</div>
-          <div className="col-span-2 text-right">Action</div>
-        </div>
-
-        <div className="divide-y">
-          {members.map((m) => (
-            <div key={m.id} className="px-6 py-4">
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                <div className="md:col-span-5">
-                  <div className="text-sm text-foreground">{m.email}</div>
-                  {m.firstName || m.lastName || m.phone ? (
-                    <div className="text-xs text-muted-foreground">
-                      {[`${m.firstName ?? ""} ${m.lastName ?? ""}`.trim(), (m.phone ?? "").trim()].filter(Boolean).join(" • ")}
-                    </div>
-                  ) : null}
-                </div>
-                <div className="md:col-span-3">
-                  <div className="h-9 w-full rounded-md border border-input bg-white/80 px-2 text-sm shadow-sm flex items-center">
-                    {roleLabel(m.role)}
-                  </div>
-                </div>
-                <div className="md:col-span-2">
-                  <div
-                    className={
-                      "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold " +
-                      statusBadgeClass(m.status)
-                    }
-                  >
-                    {statusLabel(m.status)}
-                  </div>
-                </div>
-                <div className="md:col-span-2 md:text-right flex md:justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => {
-                      setEditingDealerMemberId(m.id);
-                      setDraft({
-                        firstName: m.firstName ?? "",
-                        lastName: m.lastName ?? "",
-                        phone: m.phone ?? "",
-                        email: m.email,
-                        password: "",
-                        password2: "",
-                        role: m.role,
-                      });
-                    }}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      void (async () => {
-                        setError(null);
-                        if (m.status === "DISABLED") {
-                          if (!(await confirmProceed(`Enable ${m.email}?`))) return;
-                          enableMutation.mutate(m.id);
-                          return;
-                        }
-                        if (!(await confirmProceed(`Disable ${m.email}?`))) return;
-                        disableMutation.mutate(m.id);
-                      })();
-                    }}
-                    disabled={busy}
-                  >
-                    {m.status === "DISABLED" ? "Enable" : "Disable"}
-                  </Button>
+                <div>
+                  <div className="font-semibold text-foreground">Team Members</div>
+                  <div className="text-sm text-muted-foreground">Manage employee accounts and permissions</div>
                 </div>
               </div>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-700">
+                  <UserCheck className="w-4 h-4" />
+                  <span className="text-sm font-medium">{activeCount}</span>
+                  <span className="text-xs text-muted-foreground ml-1">Active</span>
+                </div>
+                <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-violet-500/10 text-violet-700">
+                  <Shield className="w-4 h-4" />
+                  <span className="text-sm font-medium">{adminCount}</span>
+                  <span className="text-xs text-muted-foreground ml-1">Admins</span>
+                </div>
+                {!showAddForm && (
+                  <Button size="sm" onClick={() => setShowAddForm(true)} className="gap-2">
+                    <UserPlus className="w-4 h-4" />
+                    Add Member
+                  </Button>
+                )}
+              </div>
             </div>
-          ))}
+          </div>
 
-          {listQuery.isLoading ? <div className="px-6 py-6 text-sm text-muted-foreground">Loading…</div> : null}
-          {listQuery.isError ? <div className="px-6 py-6 text-sm text-destructive">Failed to load team.</div> : null}
-          {!listQuery.isLoading && !listQuery.isError && members.length === 0 ? (
-            <div className="px-6 py-10 text-sm text-muted-foreground">No staff yet. Add your first employee above.</div>
-          ) : null}
+          {showAddForm && (
+            <div className="p-6 border-b bg-gradient-to-br from-violet-500/5 via-transparent to-transparent">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-lg bg-violet-500/10 text-violet-600">
+                  {isEditing ? <Pencil className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />}
+                </div>
+                <div>
+                  <div className="font-semibold">{isEditing ? "Edit Team Member" : "Add New Team Member"}</div>
+                  <div className="text-xs text-muted-foreground">{isEditing ? "Update member details below" : "Fill in the details to add a new team member"}</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="space-y-1.5">
+                  <div className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5" />
+                    First Name
+                  </div>
+                  <Input
+                    value={draft.firstName}
+                    onChange={(e) => setDraft((p) => ({ ...p, firstName: e.target.value }))}
+                    placeholder="John"
+                    className="bg-background/70"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <div className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5" />
+                    Last Name
+                  </div>
+                  <Input
+                    value={draft.lastName}
+                    onChange={(e) => setDraft((p) => ({ ...p, lastName: e.target.value }))}
+                    placeholder="Doe"
+                    className="bg-background/70"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <div className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5" />
+                    Phone
+                  </div>
+                  <Input
+                    value={draft.phone}
+                    onChange={(e) => setDraft((p) => ({ ...p, phone: e.target.value }))}
+                    placeholder="(555) 123-4567"
+                    className="bg-background/70"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <div className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                    <Shield className="w-3.5 h-3.5" />
+                    Role
+                  </div>
+                  <select
+                    className="h-10 w-full rounded-md border border-input bg-background/70 px-3 text-sm shadow-sm"
+                    value={draft.role}
+                    onChange={(e) => setDraft((p) => ({ ...p, role: (e.target.value as DealerTeamRole) || "DEALER_EMPLOYEE" }))}
+                  >
+                    <option value="DEALER_EMPLOYEE">Employee</option>
+                    <option value="DEALER_ADMIN">Admin</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <div className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5" />
+                    Email
+                  </div>
+                  <Input
+                    type="email"
+                    value={draft.email}
+                    onChange={(e) => setDraft((p) => ({ ...p, email: e.target.value }))}
+                    placeholder="john.doe@company.com"
+                    className="bg-background/70"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <div className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5" />
+                    Password
+                  </div>
+                  <Input
+                    type="password"
+                    value={draft.password}
+                    onChange={(e) => setDraft((p) => ({ ...p, password: e.target.value }))}
+                    placeholder="Enter password"
+                    className="bg-background/70"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <div className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5" />
+                    Confirm
+                  </div>
+                  <Input
+                    type="password"
+                    value={draft.password2}
+                    onChange={(e) => setDraft((p) => ({ ...p, password2: e.target.value }))}
+                    placeholder="Confirm password"
+                    className="bg-background/70"
+                  />
+                </div>
+              </div>
+
+              {draft.password && (
+                <div className="mt-3 p-3 rounded-lg bg-muted/50">
+                  <div className="text-xs text-muted-foreground font-medium mb-2">Password Requirements:</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {[
+                      { label: "8+ characters", valid: draft.password.length >= 8 },
+                      { label: "Uppercase letter", valid: /[A-Z]/.test(draft.password) },
+                      { label: "Lowercase letter", valid: /[a-z]/.test(draft.password) },
+                      { label: "Number", valid: /[0-9]/.test(draft.password) },
+                      { label: "Special character", valid: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(draft.password) },
+                      { label: "Passwords match", valid: draft.password === draft.password2 && draft.password2 !== "" },
+                    ].map((req) => (
+                      <div key={req.label} className={`flex items-center gap-2 text-xs ${req.valid ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
+                        {req.valid ? (
+                          <div className="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                            <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                          </div>
+                        ) : (
+                          <div className="w-4 h-4 rounded-full bg-muted flex items-center justify-center">
+                            <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground" />
+                          </div>
+                        )}
+                        {req.label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-3 mt-4">
+                <Button variant="outline" onClick={handleCancel} disabled={busy}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSubmit}
+                  disabled={
+                    busy ||
+                    (mode !== "local" && (supabaseSessionQuery.isLoading || !supabaseSessionQuery.data?.user?.id)) ||
+                    (mode !== "local" && (dealerIdQuery.isLoading || !dealerId))
+                  }
+                  className="gap-2"
+                >
+                  {busy && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {isEditing ? "Save Changes" : "Add Member"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <div className="divide-y">
+            {listQuery.isLoading && (
+              <div className="p-6">
+                <div className="animate-pulse space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="h-16 bg-muted rounded-xl" />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {listQuery.isError && (
+              <div className="p-6 text-center">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/50 mb-3">
+                  <UserX className="w-6 h-6 text-red-600 dark:text-red-400" />
+                </div>
+                <div className="text-sm font-medium text-destructive">Failed to load team</div>
+              </div>
+            )}
+
+            {!listQuery.isLoading && !listQuery.isError && members.length === 0 && (
+              <div className="p-12 text-center">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-violet-100 dark:bg-violet-900/50 mb-4">
+                  <Users className="w-8 h-8 text-violet-600 dark:text-violet-400" />
+                </div>
+                <div className="text-lg font-semibold text-foreground">No team members yet</div>
+                <div className="text-sm text-muted-foreground mt-2 max-w-md mx-auto">
+                  Add your first team member to get started. Employees can be given different permission levels based on their role.
+                </div>
+                {!showAddForm && (
+                  <Button className="mt-4 gap-2" onClick={() => setShowAddForm(true)}>
+                    <Plus className="w-4 h-4" />
+                    Add First Member
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {!listQuery.isLoading && !listQuery.isError && members.map((m) => (
+              <div key={m.id} className="px-6 py-5 hover:bg-muted/30 transition-colors">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <div className="p-3 rounded-xl bg-gradient-to-br from-muted/50 to-transparent">
+                      {m.role === "DEALER_ADMIN" ? (
+                        <Shield className="w-5 h-5 text-violet-600" />
+                      ) : (
+                        <UserCheck className="w-5 h-5 text-blue-600" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className="font-medium text-sm">{m.email}</span>
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full border text-[11px] font-medium ${roleBadgeClass(m.role)}`}>
+                          {roleLabel(m.role)}
+                        </span>
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full border text-[11px] font-medium ${statusBadgeClass(m.status)}`}>
+                          {statusLabel(m.status)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-4 mt-1.5 text-xs text-muted-foreground flex-wrap">
+                        {(m.firstName || m.lastName) && (
+                          <span>
+                            {[m.firstName, m.lastName].filter(Boolean).join(" ")}
+                          </span>
+                        )}
+                        {m.phone && <span>{m.phone}</span>}
+                        <span>Added {new Date(m.createdAt).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEdit(m)}
+                      disabled={busy}
+                      className="gap-1.5"
+                    >
+                      <Pencil className="w-4 h-4" />
+                      Edit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        void (async () => {
+                          setError(null);
+                          if (m.status === "DISABLED") {
+                            if (!(await confirmProceed(`Enable ${m.email}?`))) return;
+                            enableMutation.mutate(m.id);
+                            return;
+                          }
+                          if (!(await confirmProceed(`Disable ${m.email}? This will prevent them from logging in.`))) return;
+                          disableMutation.mutate(m.id);
+                        })();
+                      }}
+                      disabled={busy}
+                      className={`gap-1.5 ${m.status === "DISABLED" ? "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30" : "text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"}`}
+                    >
+                      {m.status === "DISABLED" ? (
+                        <>
+                          <UserCheck className="w-4 h-4" />
+                          Enable
+                        </>
+                      ) : (
+                        <>
+                          <UserX className="w-4 h-4" />
+                          Disable
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="px-6 py-3 border-t bg-muted/30">
+            <div className="text-xs text-muted-foreground">
+              Showing {members.length} team member{members.length !== 1 ? "s" : ""}
+            </div>
+          </div>
         </div>
       </div>
     </PageShell>

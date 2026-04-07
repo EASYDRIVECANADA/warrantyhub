@@ -242,6 +242,7 @@ type EditorState = {
     claimLimitAmount: string;
     deductible: string;
     providerCost: string;
+    suggestedRetailPrice: string;
   }>;
   powertrainEligibility: "ALL" | "ICE" | "ELECTRIFIED" | "HEV" | "PHEV" | "BEV";
   eligibilityMaxVehicleAgeYears: string;
@@ -335,6 +336,7 @@ function emptyEditor(): EditorState {
         claimLimitAmount: "",
         deductible: "",
         providerCost: "",
+        suggestedRetailPrice: "",
       },
     ],
     powertrainEligibility: "ALL",
@@ -371,6 +373,7 @@ function editorFromProduct(p: Product): EditorState {
     claimLimitAmount: "",
     deductible: "",
     providerCost: "",
+    suggestedRetailPrice: "",
   };
 
   const toClassVehicleTypes = (): EditorState["classVehicleTypes"] => {
@@ -1051,6 +1054,7 @@ export function ProviderProductsPage() {
             claimLimitAmount: typeof amountCents === "number" ? centsToDollars(amountCents) : "",
             deductible: centsToDollars(r.deductibleCents),
             providerCost: centsToDollars(r.basePriceCents),
+            suggestedRetailPrice: typeof r.suggestedRetailPriceCents === "number" ? centsToDollars(r.suggestedRetailPriceCents) : "",
           };
         });
 
@@ -1137,7 +1141,8 @@ export function ProviderProductsPage() {
             row.claimLimitType === next.claimLimitType &&
             row.claimLimitAmount === next.claimLimitAmount &&
             row.deductible === next.deductible &&
-            row.providerCost === next.providerCost
+            row.providerCost === next.providerCost &&
+            row.suggestedRetailPrice === next.suggestedRetailPrice
           );
         });
 
@@ -1294,6 +1299,7 @@ export function ProviderProductsPage() {
       claimLimitType?: ClaimLimitType;
       claimLimitAmountCents?: number;
       providerCostCents: number;
+      suggestedRetailPriceCents?: number;
     };
 
     if (editor.pricingStructure === "FINANCE_MATRIX") {
@@ -1472,6 +1478,20 @@ export function ProviderProductsPage() {
           await qc.invalidateQueries({ queryKey: ["product-pricing", productId] });
         }
 
+        saveStep = "Refresh marketplace";
+        await qc.invalidateQueries({ queryKey: ["marketplace-products"] });
+
+        {
+          const pid = (savedProduct?.id ?? editor.id ?? "").trim();
+          if (pid) {
+            saveStep = "Update published state";
+            savedProduct = (await updateMutation.mutateAsync({
+              id: pid,
+              patch: { published: editor.published },
+            })) as Product;
+          }
+        }
+
         setShowEditor(false);
         setPastePricingOpen(false);
         setPasteFinanceOpen(false);
@@ -1512,6 +1532,7 @@ export function ProviderProductsPage() {
         claimLimitAmountCents: dollarsToCents(r.claimLimitAmount),
         deductibleCents: dollarsToCents(r.deductible) ?? 0,
         providerCostCents: dollarsToCents(r.providerCost),
+        suggestedRetailPriceCents: dollarsToCents(r.suggestedRetailPrice),
       }))
       .filter((r) => r.termMonths !== undefined || r.termKm !== undefined || r.providerCostCents || r.deductibleCents);
 
@@ -1545,6 +1566,7 @@ export function ProviderProductsPage() {
           providerNetCostCents: r.providerCostCents,
           deductibleCents: 0,
           providerCostCents: r.providerCostCents,
+          suggestedRetailPriceCents: r.suggestedRetailPriceCents,
         } as any;
       }
 
@@ -1596,6 +1618,7 @@ export function ProviderProductsPage() {
             claimLimitType: claimType,
             deductibleCents: r.deductibleCents,
             providerCostCents: r.providerCostCents,
+            suggestedRetailPriceCents: r.suggestedRetailPriceCents,
           };
         }
 
@@ -1617,6 +1640,7 @@ export function ProviderProductsPage() {
         claimLimitCents: claimType && typeof amount === "number" && amount > 0 ? amount : undefined,
         deductibleCents: r.deductibleCents,
         providerCostCents: r.providerCostCents,
+        suggestedRetailPriceCents: r.suggestedRetailPriceCents,
       };
     });
 
@@ -1874,6 +1898,7 @@ export function ProviderProductsPage() {
                 deductibleCents: 0,
                 basePriceCents: r.providerCostCents,
                 dealerCostCents: r.providerCostCents,
+                ...(typeof r.suggestedRetailPriceCents === "number" ? { suggestedRetailPriceCents: r.suggestedRetailPriceCents } : {}),
               }
             : {
                 termMonths: r.termMonths,
@@ -1887,6 +1912,7 @@ export function ProviderProductsPage() {
                 deductibleCents: r.deductibleCents,
                 basePriceCents: r.providerCostCents,
                 dealerCostCents: r.providerCostCents,
+                ...(typeof r.suggestedRetailPriceCents === "number" ? { suggestedRetailPriceCents: r.suggestedRetailPriceCents } : {}),
               }),
         });
 
@@ -1904,6 +1930,7 @@ export function ProviderProductsPage() {
           deductibleCents: r.deductibleCents,
           basePriceCents: r.basePriceCents,
           dealerCostCents: typeof r.dealerCostCents === "number" ? r.dealerCostCents : r.basePriceCents,
+          ...(typeof (r as any).suggestedRetailPriceCents === "number" ? { suggestedRetailPriceCents: (r as any).suggestedRetailPriceCents } : {}),
         }));
 
         const normalizedRestoreInputs = (() => {
@@ -3395,6 +3422,7 @@ export function ProviderProductsPage() {
                                   claimLimitAmount: sanitizeMoney(rawClaimAmt),
                                   deductible: sanitizeMoney(rawDed),
                                   providerCost: sanitizeMoney(rawCost),
+                                  suggestedRetailPrice: "",
                                 });
                               }
 
@@ -3822,6 +3850,7 @@ export function ProviderProductsPage() {
                                 ) : null}
                                 <th className="text-left px-3 py-1 text-xs text-muted-foreground">Claim Limit</th>
                                 <th className="text-left px-3 py-1 text-xs text-muted-foreground">Provider Net Cost</th>
+                                <th className="text-left px-3 py-1 text-xs text-muted-foreground">Suggested Retail</th>
                                 <th className="text-left px-3 py-1 text-xs text-muted-foreground">Deductible</th>
                                 <th className="text-left px-3 py-1 text-xs text-muted-foreground">Issues</th>
                                 <th className="text-right px-3 py-1 text-xs text-muted-foreground">Action</th>
@@ -4086,6 +4115,28 @@ export function ProviderProductsPage() {
 
                                     <td className="px-3 py-1 align-top min-w-[150px]">
                                       <Input
+                                        value={row.suggestedRetailPrice}
+                                        onChange={(e) =>
+                                          setEditor((s) => ({
+                                            ...s,
+                                            pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, suggestedRetailPrice: sanitizeMoney(e.target.value) } : r)),
+                                          }))
+                                        }
+                                        onBlur={() =>
+                                          setEditor((s) => ({
+                                            ...s,
+                                            pricingRows: s.pricingRows.map((r) => (r.key === row.key ? { ...r, suggestedRetailPrice: formatMoneyInput(r.suggestedRetailPrice) } : r)),
+                                          }))
+                                        }
+                                        placeholder="Retail price"
+                                        inputMode="decimal"
+                                        disabled={busy}
+                                        className="h-8"
+                                      />
+                                    </td>
+
+                                    <td className="px-3 py-1 align-top min-w-[150px]">
+                                      <Input
                                         value={row.deductible}
                                         onChange={(e) =>
                                           setEditor((s) => ({
@@ -4166,6 +4217,7 @@ export function ProviderProductsPage() {
                                 claimLimitAmount: "",
                                 deductible: "",
                                 providerCost: "",
+                                suggestedRetailPrice: "",
                               },
                             ],
                           }))

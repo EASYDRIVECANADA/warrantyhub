@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { Check, X } from "lucide-react";
+import { Check, CreditCard, RefreshCw, X } from "lucide-react";
 
 import { Button } from "../components/ui/button";
 import { PageShell } from "../components/PageShell";
@@ -46,8 +46,11 @@ export function DealerBillingPage() {
   if (subscriptionsDisabled) {
     return (
       <PageShell title="Subscription" subtitle="Subscriptions are temporarily disabled for testing.">
-        <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
-          Your dealership has full access while we finalize billing.
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <div className="flex items-center gap-3">
+            <Check className="h-5 w-5 text-emerald-600" />
+            <p className="text-sm text-emerald-800">Your dealership has full access while we finalize billing.</p>
+          </div>
         </div>
       </PageShell>
     );
@@ -187,6 +190,7 @@ export function DealerBillingPage() {
               })();
             }}
           >
+            <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
           <Button variant="outline" disabled={busy || !canManage} onClick={() => void manageBilling()}>
@@ -196,41 +200,51 @@ export function DealerBillingPage() {
       }
     >
       {success ? (
-        <div className="rounded-xl border bg-card p-4 text-sm">
-          Subscription started successfully. If you don’t see it yet, click Refresh.
+        <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <div className="flex items-center gap-3">
+            <Check className="h-5 w-5 text-emerald-600" />
+            <p className="text-sm text-emerald-800">Subscription started successfully. If you don't see it yet, click Refresh.</p>
+          </div>
         </div>
       ) : null}
       {cancel ? (
-        <div className="rounded-xl border bg-card p-4 text-sm">Checkout canceled. You can try again anytime.</div>
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm text-amber-800">Checkout canceled. You can try again anytime.</p>
+        </div>
       ) : null}
 
-      {error ? <div className="text-sm text-destructive">{error}</div> : null}
+      {error ? (
+        <div className="mb-6 rounded-xl border border-destructive/20 bg-destructive/5 p-4">
+          <p className="text-sm text-destructive">{error}</p>
+        </div>
+      ) : null}
 
-      <div className="mt-5 rounded-3xl border bg-card shadow-card overflow-hidden">
-        <div className="relative px-5 py-4">
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-blue-600/12 via-transparent to-yellow-500/12" />
-          <div className="pointer-events-none absolute inset-0 bg-white/35" />
-
+      <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
+        <div className="relative px-6 py-5 bg-gradient-to-r from-blue-600/8 via-transparent to-yellow-400/8">
+          <div className="pointer-events-none absolute inset-0 bg-white/40" />
           <div className="relative flex items-start justify-between gap-4 flex-wrap">
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-slate-900">Subscription</div>
+              <div className="flex items-center gap-2">
+                <CreditCard className="h-5 w-5 text-blue-600" />
+                <span className="text-base font-semibold text-slate-900">Subscription</span>
+              </div>
               <div className="mt-1 text-xs text-muted-foreground">
                 {hasExistingSubscription
-                  ? "You’re subscribed. To change plans or cancel, use Manage Billing."
+                  ? "You're subscribed. To change plans or cancel, use Manage Billing."
                   : "Choose a plan to activate your dealership subscription."}
               </div>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              <div className="rounded-full border bg-white/70 px-3 py-1">
+              <div className="rounded-full border bg-white/70 px-3 py-1.5">
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Status</span>
                 <span className="ml-2 text-xs font-semibold text-slate-900">{status}</span>
               </div>
-              <div className="rounded-full border bg-white/70 px-3 py-1">
+              <div className="rounded-full border bg-white/70 px-3 py-1.5">
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Plan</span>
                 <span className="ml-2 text-xs font-semibold text-slate-900">{plan ?? "—"}</span>
               </div>
-              <div className="rounded-full border bg-white/70 px-3 py-1">
+              <div className="rounded-full border bg-white/70 px-3 py-1.5">
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Contract fee</span>
                 <span className="ml-2 text-xs font-semibold text-slate-900">{feeCents === null ? "—" : money(feeCents)}</span>
               </div>
@@ -244,7 +258,7 @@ export function DealerBillingPage() {
           <div
             key={p.key}
             className={
-              "group relative rounded-3xl border shadow-card overflow-hidden transition-all duration-200 will-change-transform " +
+              "group relative rounded-2xl border shadow-card overflow-hidden transition-all duration-300 will-change-transform " +
               (p.featured
                 ? "bg-gradient-to-b from-blue-600 to-blue-800 text-white border-blue-500/30 lg:scale-[1.02]"
                 : "bg-card") +
@@ -253,14 +267,14 @@ export function DealerBillingPage() {
           >
             <div
               className={
-                "pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100 " +
+                "pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 " +
                 (p.featured
                   ? "bg-[radial-gradient(circle_at_30%_10%,rgba(255,255,255,0.22),transparent_55%)]"
                   : "bg-[radial-gradient(circle_at_30%_10%,rgba(37,99,235,0.12),transparent_55%)]")
               }
             />
 
-            <div className="relative p-5">
+            <div className="relative p-6">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className={"text-[11px] font-semibold tracking-widest uppercase " + (p.featured ? "text-white/80" : "text-muted-foreground")}>
@@ -276,7 +290,7 @@ export function DealerBillingPage() {
               </div>
 
               {p.key === "EARLY_ADOPTER" ? (
-                <div className="mt-4">
+                <div className="mt-5">
                   <div className="text-sm text-white/80">
                     <span className="line-through opacity-80">$1,188 / year</span>
                   </div>
@@ -284,21 +298,21 @@ export function DealerBillingPage() {
                   <div className="mt-1 text-xs font-semibold text-white/85">50% Launch Discount</div>
                 </div>
               ) : (
-                <div className={"mt-4 text-[34px] font-bold tracking-tight " + (p.featured ? "text-white" : "text-blue-600")}>
+                <div className={"mt-5 text-[34px] font-bold tracking-tight " + (p.featured ? "text-white" : "text-blue-600")}>
                   {p.price}
                 </div>
               )}
 
-              <div className={"mt-4 text-sm font-semibold " + (p.featured ? "text-white/85" : "text-muted-foreground")}>What’s included</div>
+              <div className={"mt-5 text-sm font-semibold " + (p.featured ? "text-white/85" : "text-muted-foreground")}>What's included</div>
 
-              <div className="mt-2.5 space-y-1.5">
+              <div className="mt-3 space-y-2">
                 {features.map((f) => {
                   const ok = (f as any)[p.key] as boolean;
                   return (
                     <div
                       key={f.label}
                       className={
-                        "flex items-start gap-2.5 rounded-xl px-2 py-1 " +
+                        "flex items-start gap-3 rounded-xl px-2 py-1.5 " +
                         (p.featured ? "hover:bg-white/8" : "hover:bg-slate-50")
                       }
                     >
@@ -326,10 +340,10 @@ export function DealerBillingPage() {
                 })}
               </div>
 
-              <div className="mt-5">
+              <div className="mt-6">
                 <Button
                   className={
-                    "w-full rounded-xl h-10 text-sm " +
+                    "w-full rounded-xl h-11 text-sm font-medium " +
                     (p.featured
                       ? "bg-white text-blue-700 hover:bg-white/95"
                       : "bg-blue-600 text-white hover:bg-blue-700")
@@ -349,8 +363,11 @@ export function DealerBillingPage() {
       </div>
 
       {user.role !== "DEALER_ADMIN" ? (
-        <div className="mt-8 rounded-xl border bg-card p-4 text-sm text-muted-foreground">
-          You are a dealership employee. Ask your Dealer Admin to subscribe to enable access.
+        <div className="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-center gap-3">
+            <CreditCard className="h-5 w-5 text-amber-600" />
+            <p className="text-sm text-amber-800">You are a dealership employee. Ask your Dealer Admin to subscribe to enable access.</p>
+          </div>
         </div>
       ) : null}
     </PageShell>
