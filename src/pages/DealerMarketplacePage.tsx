@@ -173,13 +173,13 @@ export function DealerMarketplacePage() {
     };
   }, []);
 
-  const [confidentialityMode, setConfidentialityMode] = useState(() => {
+  const confidentialityMode = (() => {
     try {
       return localStorage.getItem(CONFIDENTIALITY_KEY) === "true";
     } catch {
       return false;
     }
-  });
+  })();
 
   const shownPriceFor = (p: MarketplaceProduct, primaryPricing?: ProductPricing | null) => {
     void retailOverridesVersion;
