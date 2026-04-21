@@ -3,6 +3,6 @@ export const BRAND = {
   slug: "bridge-warranty",
   wordmarkLeft: "Bridge",
   wordmarkRight: "Warranty",
-  logoUrl: new URL("../../images/Bridge Warranty_Transparent.png", import.meta.url).href,
+  logoUrl: "/images/warrantyhubwhite.png",
   copyrightYear: "2026",
 } as const;

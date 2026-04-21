@@ -26,15 +26,13 @@ export default function BrochureHeader() {
 
         {/* Logo — clicks to landing page */}
         <Link to="/find-insurance" className="shrink-0 flex items-center gap-3 group">
-          <img
-            src={BRAND.logoUrl}
-            alt={BRAND.name}
-            className="h-14 w-auto object-contain transition-opacity group-hover:opacity-80"
-          />
-          <div className="hidden lg:block h-6 w-px bg-slate-200" />
-          <span className="hidden lg:block text-muted-foreground text-[11px] font-medium tracking-widest uppercase">
-            Coverage Brochure
-          </span>
+          <div className="w-9 h-9 rounded-lg bg-[#0f1b3d] flex items-center justify-center shrink-0 transition-opacity group-hover:opacity-80">
+            <span className="text-xs font-extrabold text-white tracking-tight">BW</span>
+          </div>
+          <div>
+            <span className="font-bold text-base text-foreground leading-none">{BRAND.name}</span>
+            <p className="text-muted-foreground text-[10px] font-medium tracking-widest uppercase mt-0.5">Coverage Brochure</p>
+          </div>
         </Link>
 
         {/* Desktop nav — centered */}
