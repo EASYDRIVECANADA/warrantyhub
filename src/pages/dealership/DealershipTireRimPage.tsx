@@ -59,7 +59,7 @@ export default function DealershipTireRimPage() {
     (async () => {
       const { data: rows } = await supabase
         .from("products")
-        .select("id, name, product_type, pricing_json, coverage_details_json, coverage_details, description, exclusions, provider_entity_id")
+        .select("id, name, product_type, pricing_json, coverage_details_json, coverage_details, exclusions, provider_entity_id")
         .eq("published", true)
         .eq("product_type", "Tire & Rim")
         .order("name");
