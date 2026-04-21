@@ -2152,3 +2152,495 @@ begin
 exception
   when undefined_table then null;
 end $$;
+
+-- =============================================================================
+-- Bridge Rebuild: new tables + helper functions (Phase 1 additive)
+-- =============================================================================
+
+-- Role enum
+do $$ begin
+  create type public.app_role as enum (
+    'super_admin',
+    'dealership_admin',
+    'dealership_employee',
+    'provider'
+  );
+exception when duplicate_object then null;
+end $$;
+
+-- user_roles — separate from profiles.role to prevent RLS recursion
+create table if not exists public.user_roles (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role app_role not null,
+  created_at timestamptz not null default now(),
+  unique (user_id, role)
+);
+alter table public.user_roles enable row level security;
+
+drop policy if exists "Users can view own roles" on public.user_roles;
+create policy "Users can view own roles"
+  on public.user_roles for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "Super admins can manage roles" on public.user_roles;
+create policy "Super admins can manage roles"
+  on public.user_roles for all
+  using (public.has_role(auth.uid(), 'super_admin'));
+
+-- Helper functions (security definer)
+create or replace function public.has_role(_user_id uuid, _role app_role)
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.user_roles
+    where user_id = _user_id and role = _role
+  )
+$$;
+
+create or replace function public.is_dealership_member(_user_id uuid, _dealership_id uuid)
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.dealership_members
+    where user_id = _user_id and dealership_id = _dealership_id
+  )
+$$;
+
+create or replace function public.is_provider_member(_user_id uuid, _provider_id uuid)
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.provider_members
+    where user_id = _user_id and provider_id = _provider_id
+  )
+$$;
+
+create or replace function public.update_updated_at_column()
+returns trigger as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$ language plpgsql set search_path = public;
+
+-- dealerships
+create table if not exists public.dealerships (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  phone text,
+  address text,
+  province text,
+  license_number text,
+  admin_code text not null default substr(md5(random()::text), 1, 8),
+  compliance_info jsonb default '{}',
+  status text not null default 'approved'
+    check (status in ('pending', 'approved', 'suspended')),
+  stripe_customer_id text,
+  stripe_subscription_id text,
+  subscription_status text,
+  subscription_plan_key text,
+  subscription_price_id text,
+  subscription_trial_end timestamptz,
+  subscription_current_period_end timestamptz,
+  subscription_cancel_at_period_end boolean not null default false,
+  subscription_seats_limit integer,
+  contract_fee_cents integer,
+  legacy_dealer_id uuid unique,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.dealerships enable row level security;
+
+drop trigger if exists update_dealerships_updated_at on public.dealerships;
+create trigger update_dealerships_updated_at
+  before update on public.dealerships
+  for each row execute function public.update_updated_at_column();
+
+drop policy if exists "Members can view their dealership" on public.dealerships;
+create policy "Members can view their dealership"
+  on public.dealerships for select
+  using (public.is_dealership_member(auth.uid(), id));
+
+drop policy if exists "Super admins can view all dealerships" on public.dealerships;
+create policy "Super admins can view all dealerships"
+  on public.dealerships for select
+  using (public.has_role(auth.uid(), 'super_admin'));
+
+drop policy if exists "Super admins can manage dealerships" on public.dealerships;
+create policy "Super admins can manage dealerships"
+  on public.dealerships for all
+  using (public.has_role(auth.uid(), 'super_admin'));
+
+drop policy if exists "Authenticated can insert dealerships" on public.dealerships;
+create policy "Authenticated can insert dealerships"
+  on public.dealerships for insert
+  with check (auth.uid() is not null);
+
+drop policy if exists "Dealership admins can update their dealership" on public.dealerships;
+create policy "Dealership admins can update their dealership"
+  on public.dealerships for update
+  using (
+    exists (
+      select 1 from public.dealership_members
+      where user_id = auth.uid()
+        and dealership_id = dealerships.id
+        and role = 'admin'
+    )
+  );
+
+-- dealership_members
+create table if not exists public.dealership_members (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  dealership_id uuid not null references public.dealerships(id) on delete cascade,
+  role text not null default 'employee'
+    check (role in ('admin', 'employee')),
+  created_at timestamptz not null default now(),
+  unique (user_id, dealership_id)
+);
+alter table public.dealership_members enable row level security;
+
+drop policy if exists "Members can view their dealership members" on public.dealership_members;
+create policy "Members can view their dealership members"
+  on public.dealership_members for select
+  using (public.is_dealership_member(auth.uid(), dealership_id));
+
+drop policy if exists "Authenticated can insert dealership members" on public.dealership_members;
+create policy "Authenticated can insert dealership members"
+  on public.dealership_members for insert
+  with check (auth.uid() is not null);
+
+drop policy if exists "Super admins can manage dealership members" on public.dealership_members;
+create policy "Super admins can manage dealership members"
+  on public.dealership_members for all
+  using (public.has_role(auth.uid(), 'super_admin'));
+
+-- providers
+create table if not exists public.providers (
+  id uuid primary key default gen_random_uuid(),
+  company_name text not null,
+  contact_email text,
+  contact_phone text,
+  address text,
+  regions_served text[] default '{"Ontario"}',
+  description text,
+  logo_url text,
+  status text not null default 'approved'
+    check (status in ('pending', 'approved', 'suspended')),
+  legacy_profile_id uuid unique,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.providers enable row level security;
+
+drop trigger if exists update_providers_updated_at on public.providers;
+create trigger update_providers_updated_at
+  before update on public.providers
+  for each row execute function public.update_updated_at_column();
+
+drop policy if exists "Public can view approved providers" on public.providers;
+create policy "Public can view approved providers"
+  on public.providers for select
+  using (status = 'approved');
+
+drop policy if exists "Provider members can view own" on public.providers;
+create policy "Provider members can view own"
+  on public.providers for select
+  using (public.is_provider_member(auth.uid(), id));
+
+drop policy if exists "Super admins can manage providers" on public.providers;
+create policy "Super admins can manage providers"
+  on public.providers for all
+  using (public.has_role(auth.uid(), 'super_admin'));
+
+drop policy if exists "Authenticated can insert providers" on public.providers;
+create policy "Authenticated can insert providers"
+  on public.providers for insert
+  with check (auth.uid() is not null);
+
+drop policy if exists "Provider admins can update own" on public.providers;
+create policy "Provider admins can update own"
+  on public.providers for update
+  using (
+    exists (
+      select 1 from public.provider_members
+      where user_id = auth.uid()
+        and provider_id = providers.id
+        and role = 'admin'
+    )
+  );
+
+-- provider_members
+create table if not exists public.provider_members (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  provider_id uuid not null references public.providers(id) on delete cascade,
+  role text not null default 'member'
+    check (role in ('admin', 'member')),
+  created_at timestamptz not null default now(),
+  unique (user_id, provider_id)
+);
+alter table public.provider_members enable row level security;
+
+drop policy if exists "Members can view provider members" on public.provider_members;
+create policy "Members can view provider members"
+  on public.provider_members for select
+  using (public.is_provider_member(auth.uid(), provider_id));
+
+drop policy if exists "Authenticated can insert provider members" on public.provider_members;
+create policy "Authenticated can insert provider members"
+  on public.provider_members for insert
+  with check (auth.uid() is not null);
+
+drop policy if exists "Super admins can manage provider members" on public.provider_members;
+create policy "Super admins can manage provider members"
+  on public.provider_members for all
+  using (public.has_role(auth.uid(), 'super_admin'));
+
+-- products — bridging columns (table already exists above)
+alter table public.products
+  add column if not exists provider_entity_id uuid references public.providers(id);
+
+alter table public.products
+  add column if not exists pricing_json jsonb default '{}';
+
+alter table public.products
+  add column if not exists eligibility_rules jsonb default '{}';
+
+alter table public.products
+  add column if not exists coverage_details_json jsonb default '{}';
+
+drop trigger if exists update_products_updated_at on public.products;
+create trigger update_products_updated_at
+  before update on public.products
+  for each row execute function public.update_updated_at_column();
+
+-- contracts — bridging columns (table already exists above)
+alter table public.contracts
+  add column if not exists dealership_id uuid references public.dealerships(id);
+
+alter table public.contracts
+  add column if not exists contract_price numeric(10,2);
+
+alter table public.contracts
+  add column if not exists dealer_cost_dollars numeric(10,2);
+
+alter table public.contracts
+  add column if not exists customer_first_name text;
+
+alter table public.contracts
+  add column if not exists customer_last_name text;
+
+alter table public.contracts
+  add column if not exists status_new text
+    check (status_new in ('draft', 'submitted', 'active', 'cancelled', 'expired'));
+
+alter table public.contracts
+  add column if not exists provider_entity_id uuid references public.providers(id);
+
+alter table public.contracts
+  add column if not exists start_date date;
+
+alter table public.contracts
+  add column if not exists end_date date;
+
+drop trigger if exists update_contracts_updated_at on public.contracts;
+create trigger update_contracts_updated_at
+  before update on public.contracts
+  for each row execute function public.update_updated_at_column();
+
+-- contract_remittances — new per-contract remittance model
+create table if not exists public.contract_remittances (
+  id uuid primary key default gen_random_uuid(),
+  contract_id uuid not null references public.contracts(id) on delete cascade,
+  amount numeric(10,2) not null,
+  status text not null default 'pending'
+    check (status in ('pending', 'paid', 'overdue')),
+  due_date date not null,
+  paid_date date,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.contract_remittances enable row level security;
+
+drop trigger if exists update_contract_remittances_updated_at on public.contract_remittances;
+create trigger update_contract_remittances_updated_at
+  before update on public.contract_remittances
+  for each row execute function public.update_updated_at_column();
+
+drop policy if exists "Contract parties can view remittances" on public.contract_remittances;
+create policy "Contract parties can view remittances"
+  on public.contract_remittances for select
+  using (
+    exists (
+      select 1 from public.contracts c
+      where c.id = contract_id
+      and (
+        public.is_dealership_member(auth.uid(), c.dealership_id)
+        or public.is_provider_member(auth.uid(), c.provider_entity_id)
+      )
+    )
+  );
+
+drop policy if exists "Dealership members can create remittances" on public.contract_remittances;
+create policy "Dealership members can create remittances"
+  on public.contract_remittances for insert
+  with check (
+    exists (
+      select 1 from public.contracts c
+      where c.id = contract_remittances.contract_id
+      and public.is_dealership_member(auth.uid(), c.dealership_id)
+    )
+  );
+
+drop policy if exists "Dealership members can update remittances" on public.contract_remittances;
+create policy "Dealership members can update remittances"
+  on public.contract_remittances for update
+  using (
+    exists (
+      select 1 from public.contracts c
+      where c.id = contract_remittances.contract_id
+      and public.is_dealership_member(auth.uid(), c.dealership_id)
+    )
+  );
+
+drop policy if exists "Super admins can manage contract remittances" on public.contract_remittances;
+create policy "Super admins can manage contract remittances"
+  on public.contract_remittances for all
+  using (public.has_role(auth.uid(), 'super_admin'));
+
+-- dealership_product_pricing
+create table if not exists public.dealership_product_pricing (
+  id uuid primary key default gen_random_uuid(),
+  dealership_id uuid not null references public.dealerships(id) on delete cascade,
+  product_id uuid not null references public.products(id) on delete cascade,
+  retail_price jsonb not null default '{}',
+  confidentiality_enabled boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (dealership_id, product_id)
+);
+alter table public.dealership_product_pricing enable row level security;
+
+drop trigger if exists update_dealership_product_pricing_updated_at on public.dealership_product_pricing;
+create trigger update_dealership_product_pricing_updated_at
+  before update on public.dealership_product_pricing
+  for each row execute function public.update_updated_at_column();
+
+drop policy if exists "Dealership members can view pricing" on public.dealership_product_pricing;
+create policy "Dealership members can view pricing"
+  on public.dealership_product_pricing for select
+  using (public.is_dealership_member(auth.uid(), dealership_id));
+
+drop policy if exists "Dealership admins can insert pricing" on public.dealership_product_pricing;
+create policy "Dealership admins can insert pricing"
+  on public.dealership_product_pricing for insert
+  with check (
+    public.is_dealership_member(auth.uid(), dealership_id)
+    and exists (
+      select 1 from public.dealership_members
+      where user_id = auth.uid()
+        and dealership_id = dealership_product_pricing.dealership_id
+        and role = 'admin'
+    )
+  );
+
+drop policy if exists "Dealership admins can update pricing" on public.dealership_product_pricing;
+create policy "Dealership admins can update pricing"
+  on public.dealership_product_pricing for update
+  using (
+    public.is_dealership_member(auth.uid(), dealership_id)
+    and exists (
+      select 1 from public.dealership_members
+      where user_id = auth.uid()
+        and dealership_id = dealership_product_pricing.dealership_id
+        and role = 'admin'
+    )
+  );
+
+drop policy if exists "Super admins can manage pricing" on public.dealership_product_pricing;
+create policy "Super admins can manage pricing"
+  on public.dealership_product_pricing for all
+  using (public.has_role(auth.uid(), 'super_admin'));
+
+-- ============================================================================
+-- Migration 20260414120000: products V2 fixes, contracts V2 RLS, remittances
+-- ============================================================================
+
+-- Widen product_type CHECK constraint
+do $$ begin
+  alter table public.products drop constraint if exists products_product_type_check;
+exception when undefined_object then null; end $$;
+
+alter table public.products
+  add constraint products_product_type_check
+  check (product_type in (
+    'EXTENDED_WARRANTY','GAP','TIRE_RIM','APPEARANCE','OTHER',
+    'VSC','Tire & Rim','PPF','Ceramic Coating','Undercoating','Key Replacement','Dent Repair'
+  ));
+
+-- Products V2 RLS
+drop policy if exists "products_provider_v2_own" on public.products;
+create policy "products_provider_v2_own" on public.products for all to authenticated
+  using  (public.is_provider_member(auth.uid(), provider_entity_id))
+  with check (public.is_provider_member(auth.uid(), provider_entity_id));
+
+drop policy if exists "products_super_admin" on public.products;
+create policy "products_super_admin" on public.products for all to authenticated
+  using  (public.has_role(auth.uid(), 'super_admin'))
+  with check (public.has_role(auth.uid(), 'super_admin'));
+
+drop policy if exists "products_select_published_any" on public.products;
+create policy "products_select_published_any" on public.products for select to authenticated
+  using (published = true);
+
+-- Contracts V2 RLS
+drop policy if exists "contracts_dealership_member_v2" on public.contracts;
+create policy "contracts_dealership_member_v2" on public.contracts for all to authenticated
+  using  (public.is_dealership_member(auth.uid(), dealership_id))
+  with check (public.is_dealership_member(auth.uid(), dealership_id));
+
+drop policy if exists "contracts_provider_member_v2" on public.contracts;
+create policy "contracts_provider_member_v2" on public.contracts for select to authenticated
+  using (public.is_provider_member(auth.uid(), provider_entity_id));
+
+drop policy if exists "contracts_super_admin_v2" on public.contracts;
+create policy "contracts_super_admin_v2" on public.contracts for all to authenticated
+  using  (public.has_role(auth.uid(), 'super_admin'))
+  with check (public.has_role(auth.uid(), 'super_admin'));
+
+-- Remittances table + RLS
+create table if not exists public.remittances (
+  id          uuid primary key default gen_random_uuid(),
+  contract_id uuid not null references public.contracts(id) on delete cascade,
+  amount      numeric(10,2) not null,
+  status      text not null default 'pending'
+              check (status in ('pending','submitted','paid','overdue')),
+  due_date    date not null,
+  paid_date   date,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
+alter table public.remittances enable row level security;
+
+drop policy if exists "remittances_dealership_view" on public.remittances;
+create policy "remittances_dealership_view" on public.remittances for select to authenticated
+  using (exists (select 1 from public.contracts c where c.id = contract_id and public.is_dealership_member(auth.uid(), c.dealership_id)));
+
+drop policy if exists "remittances_dealership_insert" on public.remittances;
+create policy "remittances_dealership_insert" on public.remittances for insert to authenticated
+  with check (exists (select 1 from public.contracts c where c.id = contract_id and public.is_dealership_member(auth.uid(), c.dealership_id)));
+
+drop policy if exists "remittances_provider_view" on public.remittances;
+create policy "remittances_provider_view" on public.remittances for select to authenticated
+  using (exists (select 1 from public.contracts c where c.id = contract_id and public.is_provider_member(auth.uid(), c.provider_entity_id)));
+
+drop policy if exists "remittances_super_admin" on public.remittances;
+create policy "remittances_super_admin" on public.remittances for all to authenticated
+  using  (public.has_role(auth.uid(), 'super_admin'))
+  with check (public.has_role(auth.uid(), 'super_admin'));

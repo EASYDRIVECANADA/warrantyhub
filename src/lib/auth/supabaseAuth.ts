@@ -76,9 +76,34 @@ async function getActiveDealerMembershipInfo(userId: string): Promise<DealerMemb
   };
 }
 
+const V2_TO_V1_ROLE: Record<string, Role> = {
+  super_admin: "SUPER_ADMIN",
+  dealership_admin: "DEALER_ADMIN",
+  dealership_employee: "DEALER_EMPLOYEE",
+  provider: "PROVIDER",
+};
+
 async function getProfileAuthState(userId: string, email: string): Promise<ProfileAuthState> {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error("Supabase is not configured");
+
+  // Try V2 user_roles table first
+  try {
+    const { data: roleRows } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .limit(1);
+    if (roleRows && roleRows.length > 0) {
+      const v2Role = (roleRows[0] as any).role as string;
+      const mapped = V2_TO_V1_ROLE[v2Role];
+      if (mapped) {
+        return { effectiveRole: mapped, rawRole: v2Role, isActive: true };
+      }
+    }
+  } catch {
+    // user_roles table may not exist yet; fall through to profiles
+  }
 
   const { data, error } = await supabase
     .from("profiles")
@@ -245,6 +270,8 @@ export const supabaseAuthApi: AuthApi = {
       throw new Error(insertRes.error.message);
     }
 
+    // Also insert into V2 user_roles table (UNASSIGNED users get no role yet;
+    // role will be assigned when access request is approved)
     return { id: user.id, email: user.email, role: "UNASSIGNED" };
   },
 

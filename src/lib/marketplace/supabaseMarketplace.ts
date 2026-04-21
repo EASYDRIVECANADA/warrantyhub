@@ -7,13 +7,19 @@ import type { PricingStructure, Product, ProductType } from "../products/types";
 type ProductsRow = {
   id: string;
   provider_id: string;
+  provider_entity_id?: string | null;
   name: string;
   product_type: string;
+  description?: string | null;
   powertrain_eligibility?: string | null;
   pricing_structure?: string | null;
   key_benefits?: string | null;
   coverage_max_ltv_percent?: number | null;
   coverage_details?: string | null;
+  coverage_details_json?: any;
+  pricing?: any;
+  pricing_json?: any;
+  eligibility_rules?: any;
   exclusions?: string | null;
   class_vehicle_types?: Record<string, string> | null;
   term_months?: number | null;
@@ -27,6 +33,7 @@ type ProductsRow = {
   base_price_cents?: number | null;
   dealer_cost_cents?: number | null;
   published: boolean;
+  status?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -49,34 +56,52 @@ type ProductPricingDefaultRow = {
   is_default: boolean;
 };
 
+function parseJson<T>(val: unknown): T | undefined {
+  if (!val) return undefined;
+  if (typeof val === "object") return val as T;
+  if (typeof val === "string") { try { return JSON.parse(val) as T; } catch { return undefined; } }
+  return undefined;
+}
+
 function toProduct(r: ProductsRow): Product {
   const pricing = (r.pricing_structure ?? "").toString().trim();
   const pricingStructure = pricing ? (pricing as PricingStructure) : undefined;
+  const pj = parseJson<any>(r.pricing_json ?? r.pricing);
+  const er = parseJson<any>(r.eligibility_rules);
+  const cdRaw = r.coverage_details_json ?? r.coverage_details;
+  const parsedCoverage = (() => {
+    if (!cdRaw) return undefined;
+    if (typeof cdRaw === "object") return cdRaw as any;
+    try { return JSON.parse(cdRaw as string); } catch { return undefined; }
+  })();
+
+  const benefitsFromPricing = pj?.benefits?.map((b: any) => typeof b === "string" ? b : b.name).filter(Boolean).join("\n");
+
   return {
     id: r.id,
-    providerId: r.provider_id,
+    providerId: r.provider_entity_id ?? r.provider_id,
     name: r.name,
     productType: r.product_type as ProductType,
     pricingStructure,
     powertrainEligibility: typeof r.powertrain_eligibility === "string" ? (r.powertrain_eligibility as any) : undefined,
-    keyBenefits: r.key_benefits ?? undefined,
+    programCode: parsedCoverage?.slug ?? undefined,
+    keyBenefits: r.key_benefits ?? benefitsFromPricing ?? undefined,
     coverageMaxLtvPercent: r.coverage_max_ltv_percent ?? undefined,
-    coverageDetails: r.coverage_details ?? undefined,
-    exclusions: r.exclusions ?? undefined,
+    coverageDetails: parsedCoverage,
     classVehicleTypes:
       r.class_vehicle_types && typeof r.class_vehicle_types === "object" && !Array.isArray(r.class_vehicle_types)
         ? (r.class_vehicle_types as Record<string, string>)
         : undefined,
-    termMonths: r.term_months ?? undefined,
+    termMonths: r.term_months ?? (pj?.rows?.[0]?.term ? parseInt(String(pj.rows[0].term)) : undefined),
     termKm: r.term_km ?? undefined,
-    deductibleCents: r.deductible_cents ?? undefined,
-    eligibilityMaxVehicleAgeYears: r.eligibility_max_vehicle_age_years ?? undefined,
-    eligibilityMaxMileageKm: r.eligibility_max_mileage_km ?? undefined,
-    eligibilityMakeAllowlist: r.eligibility_make_allowlist ?? undefined,
+    deductibleCents: r.deductible_cents ?? (pj?.deductible ? Math.round(Number(pj.deductible) * 100) : undefined),
+    eligibilityMaxVehicleAgeYears: r.eligibility_max_vehicle_age_years ?? (er?.maxAge ? Number(er.maxAge) : undefined),
+    eligibilityMaxMileageKm: r.eligibility_max_mileage_km ?? (er?.maxMileage ? Number(er.maxMileage) : undefined),
+    eligibilityMakeAllowlist: r.eligibility_make_allowlist ?? (er?.makes ?? undefined),
     eligibilityModelAllowlist: r.eligibility_model_allowlist ?? undefined,
     eligibilityTrimAllowlist: r.eligibility_trim_allowlist ?? undefined,
-    basePriceCents: r.base_price_cents ?? undefined,
-    dealerCostCents: r.dealer_cost_cents ?? undefined,
+    basePriceCents: r.base_price_cents ?? (pj?.rows?.[0]?.dealerCost ? Math.round(Number(pj.rows[0].dealerCost) * 100) : undefined),
+    dealerCostCents: r.dealer_cost_cents ?? (pj?.rows?.[0]?.dealerCost ? Math.round(Number(pj.rows[0].dealerCost) * 100) : undefined),
     published: r.published,
     createdAt: r.created_at,
     updatedAt: r.updated_at,

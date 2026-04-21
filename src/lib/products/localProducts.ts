@@ -1,5 +1,5 @@
 import type { ProductsApi } from "./api";
-import type { CreateProductInput, Product, ProductType, PricingStructure, PowertrainEligibility } from "./types";
+import type { CreateProductInput, Product, ProductType, PricingStructure, PowertrainEligibility, CoverageDetails } from "./types";
 
 const STORAGE_KEY = "warrantyhub.local.products";
 const DEV_BYPASS_KEY = "warrantyhub.dev.bypass_user";
@@ -81,8 +81,13 @@ function read(): Product[] {
               : typeof (p as any).coverageMaxLtvPercent === "number"
                 ? (p as any).coverageMaxLtvPercent
                 : undefined,
-          coverageDetails: p.coverageDetails,
-          exclusions: p.exclusions,
+          coverageDetails: (() => {
+            const raw = p.coverageDetails;
+            if (!raw) return null;
+            if (typeof raw === "object" && raw !== null) return raw;
+            if (typeof raw === "string") { try { return JSON.parse(raw) as CoverageDetails; } catch { return null; } }
+            return null;
+          })(),
           internalNotes: typeof p.internalNotes === "string" ? p.internalNotes : undefined,
           class1VehicleTypes: typeof (p as any).class1VehicleTypes === "string" ? (p as any).class1VehicleTypes : undefined,
           class2VehicleTypes: typeof (p as any).class2VehicleTypes === "string" ? (p as any).class2VehicleTypes : undefined,
@@ -114,6 +119,10 @@ function read(): Product[] {
             : undefined,
           basePriceCents: typeof p.basePriceCents === "number" ? p.basePriceCents : undefined,
           dealerCostCents: typeof p.dealerCostCents === "number" ? p.dealerCostCents : undefined,
+          isMostPopular: typeof (p as any).isMostPopular === "boolean" ? (p as any).isMostPopular : undefined,
+          isTopPick: typeof (p as any).isTopPick === "boolean" ? (p as any).isTopPick : undefined,
+          shortDescription: typeof (p as any).shortDescription === "string" ? (p as any).shortDescription : undefined,
+          displayOrder: typeof (p as any).displayOrder === "number" ? (p as any).displayOrder : undefined,
           published: Boolean(p.published),
           createdAt,
           updatedAt,
@@ -156,7 +165,6 @@ export const localProductsApi: ProductsApi = {
       keyBenefits: input.keyBenefits,
       coverageMaxLtvPercent: input.coverageMaxLtvPercent,
       coverageDetails: input.coverageDetails,
-      exclusions: input.exclusions,
       class1VehicleTypes: input.class1VehicleTypes,
       class2VehicleTypes: input.class2VehicleTypes,
       class3VehicleTypes: input.class3VehicleTypes,
@@ -171,6 +179,10 @@ export const localProductsApi: ProductsApi = {
       eligibilityTrimAllowlist: input.eligibilityTrimAllowlist,
       basePriceCents: input.basePriceCents,
       dealerCostCents: input.dealerCostCents,
+      isMostPopular: input.isMostPopular,
+      isTopPick: input.isTopPick,
+      shortDescription: input.shortDescription,
+      displayOrder: input.displayOrder,
       published: false,
       createdAt: now,
       updatedAt: now,

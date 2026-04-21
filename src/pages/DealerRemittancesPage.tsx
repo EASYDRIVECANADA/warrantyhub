@@ -346,25 +346,31 @@ export function DealerRemittancesPage() {
 
   return (
     <PageShell title="">
-      <div className="relative">
-        <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/8 via-transparent to-yellow-400/8 blur-2xl" />
+      <div className="space-y-6">
+        {/* Page header */}
+        <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">Remittances</h1>
+            <p className="text-sm text-slate-500 mt-0.5">Create and track your remittance batches.</p>
+          </div>
+        </div>
 
-        <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
-          <div className="px-6 py-5 border-b bg-gradient-to-r from-blue-600/8 via-transparent to-yellow-400/8">
+        <div className="rounded-2xl border bg-white shadow-sm overflow-hidden">
+          <div className="px-6 py-5 border-b bg-slate-50">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600/10 text-blue-600">
                 <DollarSign className="h-5 w-5" />
               </div>
               <div>
-                <div className="text-base font-semibold">Create Remittance</div>
-                <div className="text-xs text-muted-foreground mt-0.5">Select sold contracts to create a new remittance batch.</div>
+                <div className="text-base font-semibold text-slate-900">Create Remittance</div>
+                <div className="text-xs text-slate-500 mt-0.5">Select sold contracts to create a new remittance batch.</div>
               </div>
             </div>
           </div>
 
           <div className="p-6 space-y-5">
             <div className="flex items-center gap-3 flex-wrap">
-              <div className="inline-flex items-center rounded-lg border bg-muted/50 p-1">
+              <div className="inline-flex items-center rounded-lg border bg-slate-100 p-1">
                 <button
                   type="button"
                   disabled={busy}
@@ -436,7 +442,7 @@ export function DealerRemittancesPage() {
               </div>
             ) : null}
 
-            <div className="rounded-xl border bg-muted/20 p-4">
+            <div className="rounded-xl border bg-slate-50 p-4">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
                   <div className="text-xs text-muted-foreground">Selected contracts</div>
@@ -454,7 +460,7 @@ export function DealerRemittancesPage() {
             </div>
 
             <div className="rounded-xl border overflow-hidden">
-              <div className="px-4 py-3 border-b bg-muted/20 flex items-center justify-between gap-3 flex-wrap">
+              <div className="px-4 py-3 border-b bg-slate-50 flex items-center justify-between gap-3 flex-wrap">
                 <div className="text-xs text-muted-foreground">
                   {contractPickerView === "READY" ? "Showing ready-to-remit SOLD contracts." : "Showing all SOLD contracts."}
                 </div>
@@ -490,7 +496,7 @@ export function DealerRemittancesPage() {
               <div className="max-h-[280px] overflow-auto">
                 <div className="divide-y">
                   {filteredSoldContracts.map((c) => (
-                    <div key={c.id} className="grid grid-cols-12 gap-2 px-4 py-3 text-sm items-center hover:bg-muted/10 transition-colors">
+                    <div key={c.id} className="grid grid-cols-12 gap-2 px-4 py-3 text-sm items-center hover:bg-slate-50/60 transition-colors">
                       <div className="col-span-1">
                         <button
                           type="button"
@@ -555,12 +561,12 @@ export function DealerRemittancesPage() {
           </div>
         </div>
 
-        <div className="mt-6 rounded-2xl border bg-card shadow-card overflow-hidden">
-          <div className="px-5 py-4 border-b bg-muted/20">
+        <div className="rounded-2xl border bg-white shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b bg-slate-50">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-2 flex-wrap">
-                <Clock className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-semibold">Remittance History</span>
+                <Clock className="h-4 w-4 text-slate-500" />
+                <span className="text-sm font-semibold text-slate-900">Remittance History</span>
               </div>
               <div className="w-full sm:w-[260px]">
                 <div className="relative">
@@ -583,14 +589,14 @@ export function DealerRemittancesPage() {
                   type="button"
                   onClick={() => setRemittanceTab(t)}
                   className={
-                    "inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm border transition-all duration-200 " +
+                    "inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium border transition-all duration-200 " +
                     (remittanceTab === t
-                      ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-                      : "bg-background hover:bg-muted/50 border-transparent text-muted-foreground")
+                      ? "bg-slate-900 text-white border-slate-900"
+                      : "bg-white hover:bg-slate-50 border-slate-200 text-slate-600")
                   }
                 >
-                  <span className="font-medium">{remittanceTabLabel(t)}</span>
-                  <span className="text-xs opacity-70">({remittanceCounts[t]})</span>
+                  {remittanceTabLabel(t)}
+                  <span className={`text-xs ${remittanceTab === t ? "text-white/70" : "text-slate-400"}`}>({remittanceCounts[t]})</span>
                 </button>
               ))}
             </div>
@@ -598,22 +604,22 @@ export function DealerRemittancesPage() {
 
           <div className="overflow-auto">
             <table className="w-full text-sm">
-              <thead className="text-xs text-muted-foreground bg-muted/10">
+              <thead className="bg-slate-50">
                 <tr>
-                  <th className="px-5 py-3 text-left font-medium">Remittance #</th>
-                  <th className="px-5 py-3 text-left font-medium">Provider</th>
-                  <th className="px-5 py-3 text-center font-medium">Contracts</th>
-                  <th className="px-5 py-3 text-right font-medium">Batch Total</th>
-                  <th className="px-5 py-3 text-left font-medium">Status</th>
-                  <th className="px-5 py-3 text-left font-medium">Date</th>
-                  <th className="px-5 py-3 text-right font-medium">Actions</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Remittance #</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Provider</th>
+                  <th className="px-5 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Contracts</th>
+                  <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Batch Total</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Date</th>
+                  <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody className="divide-y divide-slate-100">
                 {remittancesForTab.map((r) => {
                   const workflow = derivedWorkflow(r);
                   return (
-                    <tr key={r.id} className="hover:bg-muted/10 transition-colors">
+                    <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
                       <td className="px-5 py-3.5 font-medium">{r.batchNumber}</td>
                       <td className="px-5 py-3.5 text-muted-foreground">{providerShort(r.providerId)}</td>
                       <td className="px-5 py-3.5 text-center">{Array.isArray(r.contractIds) ? r.contractIds.length : 0}</td>
@@ -683,3 +689,4 @@ export function DealerRemittancesPage() {
     </PageShell>
   );
 }
+

@@ -26,6 +26,8 @@ import { getAppMode } from "../lib/runtime";
 
 import { useAuth } from "../providers/AuthProvider";
 
+import { generateCoverageWording } from "../lib/contracts/coverageWording";
+
 
 
 const bridgeWarrantyLogoUrl = new URL("../../images/Bridge Warranty_White Background.png", import.meta.url).href;
@@ -76,25 +78,13 @@ function renderProviderTerms(input: {
 
 }) {
 
-  const defaultCoverageDetails = `Coverage details are provided by the Provider and may vary by plan. Refer to the Provider documentation for the complete schedule of coverages.`;
-
-
-
-  const defaultExclusions = `Exclusions are set by the Provider and may include normal wear and tear, routine maintenance, cosmetic items, and damage caused by misuse or neglect.`;
-
-
-
-  const fallback = `Vehicle Service Contract\n\nContract Schedule\nProduct: {{product_name}}\nTerm: {{term_months}} / {{term_km}}\nDeductible: {{deductible}}\n\nCoverage Details\n{{coverage_details}}\n\nExclusions\n{{exclusions}}\n\nClaims Process\nFor any covered failure, contact the Provider (or the Provider’s administrator) for instructions and authorization before repairs are performed. Unauthorized repairs may not be covered.\n\nRepair Facility\nRepairs must be performed by a licensed repair facility and may require pre-approval by the Provider.\n\nLimitations\nThis Contract is subject to limitations, conditions, and procedures set by the Provider. The Provider’s final contract language governs in the event of any conflict.\n\nCancellation\nCancellation and refund rules (if any) are determined by the Provider and the selling dealership, subject to applicable law.`;
+  const fallback = `Vehicle Service Contract\n\nContract Schedule\nProduct: {{product_name}}\nTerm: {{term_months}} / {{term_km}}\nDeductible: {{deductible}}\n\nCoverage Details\n{{coverage_details}}\n\nExclusions\n{{exclusions}}\n\nClaims Process\nFor any covered failure, contact the Provider (or the Provider's administrator) for instructions and authorization before repairs are performed. Unauthorized repairs may not be covered.\n\nRepair Facility\nRepairs must be performed by a licensed repair facility and may require pre-approval by the Provider.\n\nLimitations\nThis Contract is subject to limitations, conditions, and procedures set by the Provider. The Provider's final contract language governs in the event of any conflict.\n\nCancellation\nCancellation and refund rules (if any) are determined by the Provider and the selling dealership, subject to applicable law.`;
 
 
 
   const raw = (input.providerTermsText ?? "").trim() || fallback;
 
-
-
-  const coverage = input.coverageDetailsText.trim() || defaultCoverageDetails;
-
-  const exclusions = input.exclusionsText.trim() || defaultExclusions;
+  const coverageDetailsSection = input.coverageDetailsText || `Coverage details are provided by the Provider and may vary by plan. Refer to the Provider documentation for the complete schedule of coverages.`;
 
 
 
@@ -108,9 +98,9 @@ function renderProviderTerms(input: {
 
     .replaceAll("{{deductible}}", input.deductibleLabel)
 
-    .replaceAll("{{coverage_details}}", coverage)
+    .replaceAll("{{coverage_details}}", coverageDetailsSection)
 
-    .replaceAll("{{exclusions}}", exclusions);
+    .replaceAll("{{exclusions}}", "");
 
 }
 
@@ -698,9 +688,13 @@ export function DealerContractPrintPage() {
 
   const productName = (selectedProduct?.name ?? "—").toString();
 
-  const coverageDetailsText = (selectedProduct?.coverageDetails ?? "").trim();
+  const coverageWording = generateCoverageWording(selectedProduct?.coverageDetails ?? null);
 
-  const exclusionsText = (selectedProduct?.exclusions ?? "").trim();
+  const coverageDetailsText = coverageWording.fullWording || "Coverage details are provided by the Provider and may vary by plan.";
+
+  const exclusionsText = coverageWording.excludedComponents
+    ? `The following components are NOT covered under this warranty: ${coverageWording.excludedComponents}.`
+    : "Exclusions are set by the Provider and may include normal wear and tear, routine maintenance, cosmetic items, and damage caused by misuse or neglect.";
 
   const providerTerms = renderProviderTerms({
 

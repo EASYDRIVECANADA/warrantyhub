@@ -24,6 +24,7 @@ import {
   getDealerProductRetailCents,
   subscribeDealerProductRetail,
 } from "../lib/dealerProductRetail";
+import { Check } from "lucide-react";
 import { getAppMode } from "../lib/runtime";
 import { alertMissing, confirmProceed, sanitizeDigitsOnly, sanitizeLettersOnly, sanitizeWordsOnly } from "../lib/utils";
 import { getProvidersApi } from "../lib/providers/providers";
@@ -664,8 +665,8 @@ export function DealerContractDetailPage() {
   const vinError = canEdit && vinNormalized.length > 0 && vinNormalized.length !== 17 ? "VIN must be 17 characters." : null;
 
   const stepItems: Array<{ key: WizardStep; label: string; enabled: boolean }> = [
-    { key: "PRICING", label: "Pricing", enabled: true },
     { key: "VEHICLE", label: "Vehicle", enabled: true },
+    { key: "PRICING", label: "Coverage", enabled: true },
     { key: "CUSTOMER", label: "Customer", enabled: true },
     {
       key: "CONFIRM",
@@ -691,48 +692,65 @@ export function DealerContractDetailPage() {
         ) : null}
 
         {!contractQuery.isLoading && !contract ? (
-          <div className="mt-6 rounded-2xl border bg-card p-6 shadow-card">
+          <div className="mt-6 rounded-2xl border bg-white p-6 shadow-sm">
             <div className="text-sm text-muted-foreground">Contract not found.</div>
           </div>
         ) : null}
 
         {contract ? (
           <div className="mt-6 grid grid-cols-1 gap-6">
-            <div className="rounded-2xl border bg-card p-4 shadow-card">
-              <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="rounded-2xl border bg-white shadow-sm p-5">
+              <div className="flex items-center justify-between gap-4 flex-wrap mb-5">
                 <div>
-                  <div className="font-semibold">Contract Setup</div>
-                  <div className="text-sm text-muted-foreground mt-1">Complete each step, then submit to lock the contract.</div>
+                  <h2 className="font-semibold text-slate-900">Contract Setup</h2>
+                  <p className="text-sm text-slate-500 mt-0.5">Complete each step to create the contract.</p>
                 </div>
-                <div className="text-xs text-muted-foreground">{canEdit ? "Draft" : "Locked"}</div>
+                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${canEdit ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>
+                  {canEdit ? "Draft" : "Locked"}
+                </span>
               </div>
 
-              <div className="mt-4 flex gap-2 flex-wrap">
-                {stepItems.map((s) => (
-                  <button
-                    key={s.key}
-                    type="button"
-                    onClick={() => {
-                      if (!s.enabled) return;
-                      setStep(s.key);
-                    }}
-                    className={
-                      "text-sm px-3 py-1.5 rounded-lg border transition-colors " +
-                      (step === s.key
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : s.enabled
-                          ? "bg-background hover:bg-muted text-muted-foreground"
-                          : "bg-muted/30 text-muted-foreground border-muted")
-                    }
-                  >
-                    {s.label}
-                  </button>
-                ))}
+              {/* Numbered step indicator */}
+              <div className="flex items-center">
+                {stepItems.map((s, idx) => {
+                  const activeIdx = stepItems.findIndex((x) => x.key === step);
+                  const isActive = s.key === step;
+                  const isCompleted = idx < activeIdx;
+                  const isLast = idx === stepItems.length - 1;
+                  return (
+                    <div key={s.key} className="flex items-center flex-1 last:flex-none">
+                      <button
+                        type="button"
+                        onClick={() => s.enabled && setStep(s.key)}
+                        disabled={!s.enabled}
+                        className="flex flex-col items-center gap-1.5 shrink-0 group disabled:cursor-not-allowed"
+                      >
+                        <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold transition-colors border-2 ${
+                          isCompleted
+                            ? "bg-emerald-500 border-emerald-500 text-white"
+                            : isActive
+                              ? "bg-slate-900 border-slate-900 text-white"
+                              : s.enabled
+                                ? "border-slate-300 text-slate-500 bg-white group-hover:border-slate-500"
+                                : "border-slate-200 text-slate-300 bg-white"
+                        }`}>
+                          {isCompleted ? <Check className="h-4 w-4" /> : idx + 1}
+                        </div>
+                        <span className={`text-xs font-medium whitespace-nowrap ${isActive ? "text-slate-900" : isCompleted ? "text-emerald-600" : "text-slate-400"}`}>
+                          {s.label}
+                        </span>
+                      </button>
+                      {!isLast && (
+                        <div className={`flex-1 h-0.5 mx-2 mb-4 rounded-full ${isCompleted ? "bg-emerald-400" : "bg-slate-200"}`} />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
             {step === "CUSTOMER" ? (
-              <div className="rounded-2xl border bg-card p-4 shadow-card">
+              <div className="rounded-2xl border bg-white p-4 shadow-sm">
                 <div className="font-semibold">Customer</div>
                 <div className="text-sm text-muted-foreground mt-1">Customer contact + address (Draft only).</div>
 
@@ -827,6 +845,7 @@ export function DealerContractDetailPage() {
                 <div className="mt-3 flex gap-2 flex-wrap">
                   <Button
                     size="sm"
+                    className="bg-yellow-400 text-black hover:bg-yellow-300 rounded-full font-semibold"
                     onClick={() => {
                       void (async () => {
                         await onSaveCustomer();
@@ -835,9 +854,9 @@ export function DealerContractDetailPage() {
                     }}
                     disabled={!canEdit || updateMutation.isPending}
                   >
-                    Confirm
+                    Next: Confirm →
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => setStep("VEHICLE")}> 
+                  <Button size="sm" variant="outline" onClick={() => setStep("VEHICLE")}>
                     Back
                   </Button>
                 </div>
@@ -845,7 +864,7 @@ export function DealerContractDetailPage() {
             ) : null}
 
             {step === "VEHICLE" ? (
-              <div className="rounded-2xl border bg-card p-6 shadow-card">
+              <div className="rounded-2xl border bg-white p-6 shadow-sm">
                 <div className="font-semibold">Vehicle</div>
                 <div className="text-sm text-muted-foreground mt-1">Enter VIN and vehicle details (Draft only).</div>
 
@@ -958,6 +977,7 @@ export function DealerContractDetailPage() {
 
                 <div className="mt-4 flex gap-2 flex-wrap">
                   <Button
+                    className="bg-yellow-400 text-black hover:bg-yellow-300 rounded-full font-semibold"
                     onClick={() => {
                       void (async () => {
                         await onSaveVehicle();
@@ -966,7 +986,7 @@ export function DealerContractDetailPage() {
                     }}
                     disabled={!canEdit || updateMutation.isPending}
                   >
-                    Next
+                    Next: Customer →
                   </Button>
                   <Button variant="outline" onClick={() => setStep("PRICING")}>
                     Back
@@ -976,7 +996,7 @@ export function DealerContractDetailPage() {
             ) : null}
 
             {step === "PRICING" ? (
-              <div className="rounded-2xl border bg-card p-6 shadow-card">
+              <div className="rounded-2xl border bg-white p-6 shadow-sm">
                 <div className="font-semibold">Pricing</div>
                 <div className="text-sm text-muted-foreground mt-1">
                   {selectedProduct?.productType === "GAP"
@@ -1218,15 +1238,19 @@ export function DealerContractDetailPage() {
                 </div>
 
                 <div className="mt-4 flex gap-2 flex-wrap">
-                  <Button onClick={() => setStep("VEHICLE")} disabled={!selectedProductId || !selectedPricingId}>
-                    Next
+                  <Button
+                    className="bg-yellow-400 text-black hover:bg-yellow-300 rounded-full font-semibold"
+                    onClick={() => setStep("VEHICLE")}
+                    disabled={!selectedProductId || !selectedPricingId}
+                  >
+                    Next: Vehicle →
                   </Button>
                 </div>
               </div>
             ) : null}
 
             {step === "CONFIRM" ? (
-              <div className="rounded-2xl border bg-card p-6 shadow-card">
+              <div className="rounded-2xl border bg-white p-6 shadow-sm">
                 <div className="font-semibold">Confirmation</div>
                 <div className="text-sm text-muted-foreground mt-1">Confirm details and submit to finalize the contract.</div>
 
@@ -1290,8 +1314,12 @@ export function DealerContractDetailPage() {
 
                 {contract.status === "DRAFT" ? (
                   <div className="mt-4 flex gap-2 flex-wrap">
-                    <Button onClick={() => void onSubmit()} disabled={updateMutation.isPending}>
-                      Submit contract
+                    <Button
+                      className="bg-yellow-400 text-black hover:bg-yellow-300 rounded-full font-semibold"
+                      onClick={() => void onSubmit()}
+                      disabled={updateMutation.isPending}
+                    >
+                      Submit Contract
                     </Button>
                     <Button variant="outline" onClick={() => setStep("CUSTOMER")}>
                       Review details
@@ -1324,7 +1352,7 @@ export function DealerContractDetailPage() {
               </div>
             ) : null}
 
-            <div className="rounded-2xl border bg-card p-6 shadow-card">
+            <div className="rounded-2xl border bg-white p-6 shadow-sm">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <div className="text-sm text-muted-foreground">Warranty ID</div>

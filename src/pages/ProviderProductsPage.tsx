@@ -252,13 +252,16 @@ type EditorState = {
   eligibilityTrimAllowlist: string;
   keyBenefits: string;
   coverageMaxLtvPercent: string;
-  coverageDetails: string;
-  exclusions: string;
+  coverageItems: Array<{ id: string; name: string; status: "included" | "not_included" | "term_specific" }>;
   internalNotes: string;
+  shortDescription: string;
+  isMostPopular: boolean;
+  isTopPick: boolean;
+  displayOrder: string;
   published: boolean;
 };
 
-type ProductEditorTab = "OVERVIEW" | "ELIGIBILITY" | "PRICING" | "ADDONS";
+type ProductEditorTab = "OVERVIEW" | "COVERAGE" | "ELIGIBILITY" | "PRICING" | "ADDONS";
 type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
 
 type PendingAddon = {
@@ -347,9 +350,12 @@ function emptyEditor(): EditorState {
     eligibilityTrimAllowlist: "",
     keyBenefits: "",
     coverageMaxLtvPercent: "",
-    coverageDetails: "",
-    exclusions: "",
+    coverageItems: [],
     internalNotes: "",
+    shortDescription: "",
+    isMostPopular: false,
+    isTopPick: false,
+    displayOrder: "",
     published: false,
   };
 }
@@ -452,9 +458,16 @@ function editorFromProduct(p: Product): EditorState {
         : typeof p.coverageMaxLtvPercent === "number"
           ? String(p.coverageMaxLtvPercent)
           : "",
-    coverageDetails: p.coverageDetails ?? "",
-    exclusions: p.exclusions ?? "",
+    coverageItems: (p.coverageDetails?.items || []).map((item) => ({
+      id: item.id || crypto.randomUUID(),
+      name: item.name,
+      status: item.status,
+    })),
     internalNotes: p.internalNotes ?? "",
+    shortDescription: p.shortDescription ?? "",
+    isMostPopular: p.isMostPopular ?? false,
+    isTopPick: p.isTopPick ?? false,
+    displayOrder: typeof p.displayOrder === "number" ? String(p.displayOrder) : "",
     published: p.published,
   };
 }
@@ -683,7 +696,6 @@ export function ProviderProductsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const saveInFlightRef = useRef(false);
-  const brochureInputRef = useRef<HTMLInputElement | null>(null);
   const [saveInFlight, setSaveInFlight] = useState(false);
 
   const [pastePricingOpen, setPastePricingOpen] = useState(false);
@@ -702,17 +714,6 @@ export function ProviderProductsPage() {
   const [statusFilter, setStatusFilter] = useState<"ALL" | "DRAFT" | "PUBLISHED">("ALL");
 
   const editorProductId = (editor.id ?? "").trim();
-
-  const brochureDocsQuery = useQuery({
-    queryKey: ["product-documents", editorProductId],
-    enabled: showEditor && !!editorProductId,
-    queryFn: () => documentsApi.list({ productId: editorProductId }),
-  });
-
-  const brochureDocs = useMemo(() => {
-    const docs = (brochureDocsQuery.data ?? []) as ProductDocument[];
-    return docs.filter(isWarrantyCoverageDoc);
-  }, [brochureDocsQuery.data]);
 
   const uploadBrochureMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -1228,11 +1229,11 @@ export function ProviderProductsPage() {
     .filter((p) => {
       const q = search.trim().toLowerCase();
       if (!q) return true;
+      const coverageNames = (p.coverageDetails?.items || []).map((i) => i.name).join(" ").toLowerCase();
       return (
         p.name.toLowerCase().includes(q) ||
         productTypeLabel(p.productType).toLowerCase().includes(q) ||
-        (p.coverageDetails ?? "").toLowerCase().includes(q) ||
-        (p.exclusions ?? "").toLowerCase().includes(q)
+        coverageNames.includes(q)
       );
     });
 
@@ -1263,6 +1264,7 @@ export function ProviderProductsPage() {
     setActiveTab(tab);
     const stepMap: Record<ProductEditorTab, WizardStep> = {
       OVERVIEW: 1,
+      COVERAGE: 2,
       ELIGIBILITY: 3,
       PRICING: 4,
       ADDONS: 5,
@@ -1366,6 +1368,10 @@ export function ProviderProductsPage() {
       setSaveInFlight(true);
       let saveStep = "";
       try {
+        const coverageDetails = {
+          items: editor.coverageItems.filter((item) => item.name.trim()),
+        };
+
         const input: CreateProductInput = {
           name,
           productType: editor.productType,
@@ -1373,8 +1379,7 @@ export function ProviderProductsPage() {
           powertrainEligibility: editor.powertrainEligibility,
           keyBenefits: editor.keyBenefits.trim(),
           coverageMaxLtvPercent: parseOptionalPct(editor.coverageMaxLtvPercent),
-          coverageDetails: editor.coverageDetails.trim(),
-          exclusions: editor.exclusions.trim(),
+          coverageDetails,
           classVehicleTypes: Object.fromEntries(
             editor.classVehicleTypes
               .map((x) => ({ classCode: (x.classCode ?? "").trim(), vehicleTypes: (x.vehicleTypes ?? "").trim() }))
@@ -1391,6 +1396,10 @@ export function ProviderProductsPage() {
         const overviewExtrasPatch = {
           programCode: editor.programCode.trim() || "",
           internalNotes: editor.internalNotes.trim() || "",
+          shortDescription: editor.shortDescription.trim() || "",
+          isMostPopular: editor.isMostPopular,
+          isTopPick: editor.isTopPick,
+          displayOrder: editor.displayOrder.trim() ? Number(editor.displayOrder) : undefined,
         };
 
         const allowlistsForUpdate = {
@@ -1416,8 +1425,7 @@ export function ProviderProductsPage() {
               powertrainEligibility: input.powertrainEligibility,
               keyBenefits: input.keyBenefits ?? "",
               coverageMaxLtvPercent: input.coverageMaxLtvPercent ?? null,
-              coverageDetails: input.coverageDetails ?? "",
-              exclusions: input.exclusions ?? "",
+              coverageDetails: input.coverageDetails,
               classVehicleTypes: input.classVehicleTypes ?? {},
               ...overviewExtrasPatch,
               ...(input.coverageMaxLtvPercent === null ? { coverageMaxLtvPercent: null } : {}),
@@ -1722,6 +1730,10 @@ export function ProviderProductsPage() {
       return;
     }
 
+    const coverageDetails = {
+      items: editor.coverageItems.filter((item) => item.name.trim()),
+    };
+
     const input: CreateProductInput = {
       name,
       productType: editor.productType,
@@ -1729,8 +1741,7 @@ export function ProviderProductsPage() {
       powertrainEligibility: editor.powertrainEligibility,
       keyBenefits: editor.keyBenefits.trim(),
       coverageMaxLtvPercent: parseOptionalPct(editor.coverageMaxLtvPercent),
-      coverageDetails: editor.coverageDetails.trim(),
-      exclusions: editor.exclusions.trim(),
+      coverageDetails,
       classVehicleTypes: Object.fromEntries(
         editor.classVehicleTypes
           .map((x) => ({ classCode: (x.classCode ?? "").trim(), vehicleTypes: (x.vehicleTypes ?? "").trim() }))
@@ -1845,8 +1856,7 @@ export function ProviderProductsPage() {
             powertrainEligibility: input.powertrainEligibility,
             keyBenefits: input.keyBenefits ?? "",
             coverageMaxLtvPercent: input.coverageMaxLtvPercent ?? null,
-            coverageDetails: input.coverageDetails ?? "",
-            exclusions: input.exclusions ?? "",
+            coverageDetails: input.coverageDetails ?? null,
             classVehicleTypes: input.classVehicleTypes ?? {},
             ...overviewExtrasPatch,
             ...(typeof input.termMonths === "number" ? { termMonths: input.termMonths } : {}),
@@ -2246,7 +2256,7 @@ export function ProviderProductsPage() {
                 {(
                   [
                     { step: 1 as WizardStep, label: "Basics", tab: "OVERVIEW" as ProductEditorTab },
-                    { step: 2 as WizardStep, label: "Coverage", tab: "OVERVIEW" as ProductEditorTab },
+                    { step: 2 as WizardStep, label: "Coverage", tab: "COVERAGE" as ProductEditorTab },
                     { step: 3 as WizardStep, label: "Eligibility", tab: "ELIGIBILITY" as ProductEditorTab },
                     { step: 4 as WizardStep, label: "Pricing", tab: "PRICING" as ProductEditorTab },
                     { step: 5 as WizardStep, label: "Add-ons", tab: "ADDONS" as ProductEditorTab },
@@ -2263,11 +2273,7 @@ export function ProviderProductsPage() {
                         onClick={() => {
                           if (isClickable) {
                             setWizardStep(item.step);
-                            if (item.step <= 2) {
-                              setActiveTab("OVERVIEW");
-                            } else {
-                              setActiveTab(item.tab);
-                            }
+                            setActiveTab(item.tab);
                           }
                         }}
                         disabled={!isClickable}
@@ -2365,6 +2371,76 @@ export function ProviderProductsPage() {
                       </div>
                     ) : null}
 
+                    <div className="mt-4 space-y-2">
+                      <div className="text-sm font-medium">Short description <span className="text-muted-foreground font-normal">(optional — shown on marketplace cards)</span></div>
+                      <Input
+                        value={editor.shortDescription}
+                        onChange={(e) => setEditor((s) => ({ ...s, shortDescription: e.target.value }))}
+                        placeholder="e.g. Comprehensive engine & drivetrain protection"
+                        disabled={busy}
+                        maxLength={120}
+                      />
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium">Marketplace badges</div>
+                        <div className="flex flex-col gap-2 pt-1">
+                          <label className="flex items-center gap-3 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={editor.isMostPopular}
+                              onChange={(e) => setEditor((s) => ({ ...s, isMostPopular: e.target.checked }))}
+                              disabled={busy}
+                              className="h-4 w-4 rounded border-gray-300"
+                            />
+                            <span className="inline-flex items-center gap-1.5 text-sm">
+                              <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Most Popular</span>
+                              badge
+                            </span>
+                          </label>
+                          <label className="flex items-center gap-3 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={editor.isTopPick}
+                              onChange={(e) => setEditor((s) => ({ ...s, isTopPick: e.target.checked }))}
+                              disabled={busy}
+                              className="h-4 w-4 rounded border-gray-300"
+                            />
+                            <span className="inline-flex items-center gap-1.5 text-sm">
+                              <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800">Top Pick</span>
+                              badge
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium">Display order <span className="text-muted-foreground font-normal">(optional — lower number = shown first)</span></div>
+                        <Input
+                          type="number"
+                          value={editor.displayOrder}
+                          onChange={(e) => setEditor((s) => ({ ...s, displayOrder: e.target.value }))}
+                          placeholder="e.g. 1"
+                          disabled={busy}
+                          min={0}
+                          step={1}
+                        />
+                      </div>
+
+                      <div className="mt-4 space-y-2">
+                        <div className="text-sm font-medium">Plan Benefits <span className="text-muted-foreground font-normal">(shown on the Benefits tab for dealers)</span></div>
+                        <textarea
+                          value={editor.keyBenefits}
+                          onChange={(e) => setEditor((s) => ({ ...s, keyBenefits: e.target.value }))}
+                          placeholder={"One benefit per line, e.g.:\nCovers engine and transmission failures\n24/7 roadside assistance included\nNo deductible on first claim"}
+                          disabled={busy}
+                          rows={6}
+                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-y"
+                        />
+                        <p className="text-xs text-muted-foreground">Enter one benefit per line. Each line becomes a bullet point on the marketplace product detail page.</p>
+                      </div>
+                    </div>
+
                     <div className="mt-6 flex justify-end">
                       <Button
                         onClick={() => {
@@ -2372,183 +2448,132 @@ export function ProviderProductsPage() {
                             setError("Product name is required");
                             return;
                           }
-                          setWizardStep(2);
+                          setActiveTab("COVERAGE");
+                            setWizardStep(2);
                         }}
                         disabled={busy}
                       >
-                        Next: Coverage Details →
+                        Next: Coverage →
                       </Button>
                     </div>
                   </div>
                 ) : null}
+              </div>
+            ) : null}
 
-                {wizardStep === 2 ? (
-                  <div className="space-y-4">
-                    <div className="rounded-2xl border bg-background/40 p-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-sm">2</div>
-                        <div>
-                          <div className="font-semibold">Coverage Details</div>
-                          <div className="text-sm text-muted-foreground">Describe what's covered and what's excluded</div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <div className="text-sm font-medium">Coverage summary</div>
-                          <textarea
-                            value={editor.coverageDetails}
-                            onChange={(e) => setEditor((s) => ({ ...s, coverageDetails: e.target.value }))}
-                            placeholder="Short summary of what's covered…"
-                            className={textareaClassName()}
-                            disabled={busy}
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <div className="text-sm font-medium">Exclusions</div>
-                          <textarea
-                            value={editor.exclusions}
-                            onChange={(e) => setEditor((s) => ({ ...s, exclusions: e.target.value }))}
-                            placeholder="What's not covered…"
-                            className={textareaClassName()}
-                            disabled={busy}
-                          />
-                        </div>
-                      </div>
+            {activeTab === "COVERAGE" && wizardStep === 2 ? (
+              <div className="space-y-4">
+                <div className="rounded-2xl border bg-background/40 p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-sm">1</div>
+                    <div>
+                      <div className="font-semibold">Coverage Configuration</div>
+                      <div className="text-sm text-muted-foreground">Define what components are covered under this warranty</div>
                     </div>
+                  </div>
 
-                    <div className="rounded-2xl border bg-background/40 p-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-sm">2</div>
-                        <div>
-                          <div className="font-semibold">Warranty Image</div>
-                          <div className="text-sm text-muted-foreground">Upload a product image for the Dealer Marketplace</div>
+                  <div className="space-y-2">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="text-sm font-semibold">Coverage Items</div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setEditor((s) => ({
+                                ...s,
+                                coverageItems: [
+                                  ...s.coverageItems,
+                                  { id: crypto.randomUUID(), name: "", status: "included" },
+                                ],
+                              }));
+                            }}
+                            disabled={busy}
+                          >
+                            + Add Item
+                          </Button>
                         </div>
-                      </div>
-
-                      <input
-                        ref={brochureInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        disabled={busy || !editorProductId}
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          e.target.value = "";
-                          if (!file) return;
-                          setError(null);
-                          void (async () => {
-                            try {
-                              await uploadBrochureMutation.mutateAsync(file);
-                            } catch (err) {
-                              setError(err instanceof Error ? err.message : "Failed to upload image");
-                            }
-                          })();
-                        }}
-                      />
-
-                      {!editorProductId ? (
-                        <div className="text-sm text-muted-foreground">Save the product first to upload an image.</div>
-                      ) : (
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              disabled={busy}
-                              onClick={() => {
-                                brochureInputRef.current?.click();
-                              }}
-                            >
-                              Upload image
-                            </Button>
-                            {brochureDocs.length > 0 ? (
-                              <div className="text-sm text-muted-foreground truncate">{brochureDocs[0]?.fileName}</div>
-                            ) : (
-                              <div className="text-sm text-muted-foreground">No image uploaded yet.</div>
-                            )}
-                          </div>
-
-                          {brochureDocs.length > 0 ? (
-                            <div className="flex items-center gap-2 flex-wrap">
+                        {editor.coverageItems.length === 0 ? (
+                          <div className="text-sm text-muted-foreground text-center py-4">No coverage items. Click "+ Add Item" to define what is covered under this warranty.</div>
+                        ) : (
+                          editor.coverageItems.map((item) => (
+                            <div key={item.id} className="flex items-center gap-2">
+                              <Input
+                                value={item.name}
+                                onChange={(e) => {
+                                  setEditor((s) => ({
+                                    ...s,
+                                    coverageItems: s.coverageItems.map((i) =>
+                                      i.id === item.id ? { ...i, name: e.target.value } : i
+                                    ),
+                                  }));
+                                }}
+                                placeholder="e.g., Engine, Transmission, Air Conditioning…"
+                                className="flex-1"
+                                disabled={busy}
+                              />
+                              <select
+                                value={item.status}
+                                onChange={(e) => {
+                                  setEditor((s) => ({
+                                    ...s,
+                                    coverageItems: s.coverageItems.map((i) =>
+                                      i.id === item.id ? { ...i, status: e.target.value as any } : i
+                                    ),
+                                  }));
+                                }}
+                                className="h-10 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
+                                disabled={busy}
+                              >
+                                <option value="included">Included</option>
+                                <option value="not_included">Not Included</option>
+                                <option value="term_specific">Term/Coverage Specific</option>
+                              </select>
                               <Button
                                 type="button"
-                                variant="outline"
-                                disabled={busy}
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => {
-                                  void (async () => {
-                                    const doc = brochureDocs[0];
-                                    if (!doc) return;
-                                    setError(null);
-                                    try {
-                                      const url = await documentsApi.getDownloadUrl(doc);
-                                      window.open(url, "_blank", "noopener,noreferrer");
-                                    } catch (err) {
-                                      setError(err instanceof Error ? err.message : "Failed to open image");
-                                    }
-                                  })();
+                                  setEditor((s) => ({
+                                    ...s,
+                                    coverageItems: s.coverageItems.filter((i) => i.id !== item.id),
+                                  }));
                                 }}
-                              >
-                                View
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
                                 disabled={busy}
-                                onClick={() => {
-                                  void (async () => {
-                                    const doc = brochureDocs[0];
-                                    if (!doc) return;
-                                    const confirmed = window.confirm(`Remove warranty coverage image "${doc.fileName}"?`);
-                                    if (!confirmed) return;
-                                    setError(null);
-                                    try {
-                                      await removeBrochureMutation.mutateAsync(doc.id);
-                                    } catch (err) {
-                                      setError(err instanceof Error ? err.message : "Failed to remove image");
-                                    }
-                                  })();
-                                }}
                               >
-                                Remove
+                                <span className="text-red-500">Delete</span>
                               </Button>
                             </div>
-                          ) : null}
-
-                          {brochureDocsQuery.isLoading ? <div className="text-sm text-muted-foreground">Loading image…</div> : null}
-                          {brochureDocsQuery.isError ? <div className="text-sm text-destructive">Failed to load image.</div> : null}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="rounded-2xl border bg-background/40 p-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-sm">2</div>
-                        <div>
-                          <div className="font-semibold">Internal Notes</div>
-                          <div className="text-sm text-muted-foreground">Provider-only notes (not shown to dealerships)</div>
-                        </div>
+                          ))
+                        )}
                       </div>
-                      <textarea
-                        value={editor.internalNotes}
-                        onChange={(e) => setEditor((s) => ({ ...s, internalNotes: e.target.value }))}
-                        placeholder="Optional notes for your team…"
-                        className={textareaClassName()}
-                        disabled={busy}
-                      />
-                    </div>
+                </div>
 
-                    <div className="flex justify-between">
-                      <Button variant="outline" onClick={() => setWizardStep(1)} disabled={busy}>
-                        ← Back: Basics
-                      </Button>
-                      <Button onClick={() => { setActiveTab("ELIGIBILITY"); setWizardStep(3); }} disabled={busy}>
-                        Next: Eligibility →
-                      </Button>
+                <div className="rounded-2xl border bg-background/40 p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-sm">2</div>
+                    <div>
+                      <div className="font-semibold">Internal Notes</div>
+                      <div className="text-sm text-muted-foreground">Provider-only notes (not shown to dealerships)</div>
                     </div>
                   </div>
-                ) : null}
+                  <textarea
+                    value={editor.internalNotes}
+                    onChange={(e) => setEditor((s) => ({ ...s, internalNotes: e.target.value }))}
+                    placeholder="Optional notes for your team…"
+                    className={textareaClassName()}
+                    disabled={busy}
+                  />
+                </div>
+
+                <div className="flex justify-between">
+                  <Button variant="outline" onClick={() => { setActiveTab("OVERVIEW"); setWizardStep(1); }} disabled={busy}>
+                    ← Back: Basics
+                  </Button>
+                  <Button onClick={() => { setActiveTab("ELIGIBILITY"); setWizardStep(3); }} disabled={busy}>
+                    Next: Eligibility →
+                  </Button>
+                </div>
               </div>
             ) : null}
 
@@ -4274,8 +4299,11 @@ export function ProviderProductsPage() {
 
                     <div className="rounded-xl border p-4 bg-card">
                       <div className="text-sm font-semibold text-muted-foreground mb-2">Coverage</div>
-                      <div className="text-sm">{editor.coverageDetails || "—"}</div>
-                      {editor.exclusions && <div className="text-xs text-muted-foreground mt-2">Exclusions: {editor.exclusions}</div>}
+                      <div className="text-sm">
+                        {editor.coverageItems.length > 0
+                          ? editor.coverageItems.filter((i) => i.name.trim()).map((i) => `${i.name} (${i.status === "included" ? "Included" : i.status === "not_included" ? "Not Included" : "Term Specific"})`).join(", ")
+                          : "—"}
+                      </div>
                     </div>
 
                     <div className="rounded-xl border p-4 bg-card">
@@ -4511,7 +4539,11 @@ export function ProviderProductsPage() {
                   <div>
                     <div className="text-xs text-muted-foreground font-medium">Coverage</div>
                     <div className="text-sm mt-1 line-clamp-1">
-                      {(p.coverageDetails ?? "").trim() || "—"}
+                      {(() => {
+                        const cd = p.coverageDetails;
+                        if (!cd || !cd.items || cd.items.length === 0) return "—";
+                        return cd.items.map((i) => i.name).filter(Boolean).slice(0, 5).join(", ") + (cd.items.length > 5 ? "…" : "");
+                      })()}
                     </div>
                   </div>
                 </div>

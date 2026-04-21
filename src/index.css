@@ -50,8 +50,8 @@
     --muted: 215 55% 96%;
     --muted-foreground: 215 22% 35%;
 
-    --accent: 221 77% 45%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 45 93% 58%;
+    --accent-foreground: 222 47% 11%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
@@ -90,7 +90,7 @@
     --muted: 217 32% 17%;
     --muted-foreground: 215 20% 65%;
 
-    --accent: 221 83% 66%;
+    --accent: 45 93% 58%;
     --accent-foreground: 222 47% 11%;
 
     --destructive: 0 84% 60%;
@@ -214,6 +214,16 @@
     background: #fff !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+
+  /* Hide sidebar, top nav, and any print-hide elements */
+  aside,
+  nav,
+  header,
+  .print-hide,
+  [data-sidebar],
+  [data-dashboard-nav] {
+    display: none !important;
   }
 
   body * {

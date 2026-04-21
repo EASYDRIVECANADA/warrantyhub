@@ -20,12 +20,10 @@ const whiteLogoUrl = new URL("../../images/warrantyhubwhite.png", import.meta.ur
 
 function roleToDashboardPath(role: Role) {
   if (role === "UNASSIGNED") return "/request-access";
-  if (role === "SUPER_ADMIN") return "/platform";
-  if (role === "ADMIN") return "/company-dashboard";
-  if (role === "PROVIDER") return "/provider-dashboard";
-  if (role === "DEALER_ADMIN") return "/dealer-admin";
-  if (role === "DEALER_EMPLOYEE") return "/dealer-dashboard";
-  return "/dealer-dashboard";
+  if (role === "SUPER_ADMIN" || role === "ADMIN") return "/admin/overview";
+  if (role === "PROVIDER") return "/provider/overview";
+  if (role === "DEALER_ADMIN" || role === "DEALER_EMPLOYEE") return "/dealership/overview";
+  return "/dealership/overview";
 }
 
 export function RegisterDealershipPage() {

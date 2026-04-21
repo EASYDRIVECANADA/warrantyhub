@@ -9,6 +9,7 @@ import { getProvidersApi } from "../lib/providers/providers";
 import type { ProviderPublic } from "../lib/providers/types";
 import { getProductsApi } from "../lib/products/products";
 import type { Product } from "../lib/products/types";
+import { generateCoverageWording } from "../lib/contracts/coverageWording";
 
 const bridgeWarrantyLogoUrl = new URL("../../images/Bridge Warranty_White Background.png", import.meta.url).href;
 
@@ -233,8 +234,11 @@ export function ProviderContractPrintPage() {
         : "—";
   const deductibleLabel = money(contract.pricingDeductibleCents ?? undefined);
   const productName = (product?.name ?? "—").toString();
-  const coverageDetailsText = (product?.coverageDetails ?? "").trim();
-  const exclusionsText = (product?.exclusions ?? "").trim();
+  const coverageWording = generateCoverageWording(product?.coverageDetails ?? null);
+  const coverageDetailsText = coverageWording.fullWording || "Coverage details are provided by the Provider and may vary by plan.";
+  const exclusionsText = coverageWording.excludedComponents
+    ? `The following components are NOT covered under this warranty: ${coverageWording.excludedComponents}.`
+    : "Exclusions are set by the Provider and may include normal wear and tear, routine maintenance, cosmetic items, and damage caused by misuse or neglect.";
   const providerTerms = renderProviderTerms({
     providerTermsText: provider?.termsText,
     productName,

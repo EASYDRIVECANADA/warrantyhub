@@ -213,10 +213,30 @@ export function AdminAccessRequestsPage() {
           const dealerId = (dealerInsert.data as any)?.id as string | undefined;
           if (!dealerId) throw new Error("Failed to create dealership");
 
+          // Also create V2 dealerships row (or find existing one from migration)
+          const dealershipUpsert = await supabase
+            .from("dealerships")
+            .upsert({ name: dealerName, legacy_dealer_id: dealerId, status: "approved" }, { onConflict: "legacy_dealer_id" })
+            .select("id")
+            .maybeSingle();
+          const dealershipId = (dealershipUpsert.data as any)?.id;
+
           const membershipInsert = await supabase
             .from("dealer_members")
             .insert({ dealer_id: dealerId, user_id: profileId, role: "DEALER_ADMIN", status: "ACTIVE" });
           if (membershipInsert.error) throw new Error(toErrorMessage(membershipInsert.error));
+
+          // Also create V2 dealership_members row
+          if (dealershipId) {
+            await supabase
+              .from("dealership_members")
+              .upsert({ user_id: profileId, dealership_id: dealershipId, role: "admin" }, { onConflict: "user_id,dealership_id" });
+          }
+
+          // Insert into V2 user_roles table
+          await supabase
+            .from("user_roles")
+            .upsert({ user_id: profileId, role: "dealership_admin" }, { onConflict: "user_id,role" });
         };
 
         if (input.status === "APPROVED") {
@@ -300,6 +320,66 @@ export function AdminAccessRequestsPage() {
                 .eq("id", profileId);
 
               if (profileUpdate.error) throw new Error(toErrorMessage(profileUpdate.error));
+
+              // V2: Insert into user_roles table
+              const v2Role = effectiveAssignedRole === "SUPER_ADMIN" || effectiveAssignedRole === "ADMIN"
+                ? "super_admin"
+                : effectiveAssignedRole === "DEALER_ADMIN"
+                  ? "dealership_admin"
+                  : effectiveAssignedRole === "DEALER_EMPLOYEE"
+                    ? "dealership_employee"
+                    : effectiveAssignedRole === "PROVIDER"
+                      ? "provider"
+                      : null;
+
+              if (v2Role) {
+                await supabase
+                  .from("user_roles")
+                  .upsert({ user_id: profileId, role: v2Role }, { onConflict: "user_id,role" });
+              }
+
+              // V2: For providers, also create providers and provider_members rows
+              if (current?.requestType === "PROVIDER" && effectiveAssignedCompany) {
+                const providerName = effectiveAssignedCompany.trim();
+                let v2ProviderId: string | null = null;
+
+                // Try to find existing provider from backfill (matched by name or provider_company_id)
+                if (providerCompanyId) {
+                  const { data: existingProvider } = await supabase
+                    .from("providers")
+                    .select("id")
+                    .eq("legacy_profile_id", profileId)
+                    .maybeSingle();
+                  if (existingProvider) {
+                    v2ProviderId = (existingProvider as any).id;
+                  }
+                }
+
+                if (!v2ProviderId) {
+                  // Create provider entity
+                  const { data: newProvider, error: providerErr } = await supabase
+                    .from("providers")
+                    .insert({
+                      company_name: providerName,
+                      contact_email: (current?.email ?? "").trim(),
+                      status: "approved",
+                    })
+                    .select("id")
+                    .maybeSingle();
+                  if (!providerErr && newProvider) {
+                    v2ProviderId = (newProvider as any).id;
+                  }
+                }
+
+                if (v2ProviderId) {
+                  // Create provider membership
+                  await supabase
+                    .from("provider_members")
+                    .upsert({ user_id: profileId, provider_id: v2ProviderId, role: "admin" }, { onConflict: "user_id,provider_id" });
+                }
+              }
+
+              // V2: For dealers, also ensure dealerships/roles are linked (handled above in maybeEnsureDealerLink)
           }
         }
 

@@ -50,7 +50,6 @@ function readProducts(): Product[] {
                 ? (p as any).coverageMaxLtvPercent
                 : undefined,
           coverageDetails: p.coverageDetails,
-          exclusions: p.exclusions,
           class1VehicleTypes: typeof (p as any).class1VehicleTypes === "string" ? (p as any).class1VehicleTypes : undefined,
           class2VehicleTypes: typeof (p as any).class2VehicleTypes === "string" ? (p as any).class2VehicleTypes : undefined,
           class3VehicleTypes: typeof (p as any).class3VehicleTypes === "string" ? (p as any).class3VehicleTypes : undefined,

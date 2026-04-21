@@ -185,17 +185,36 @@ export function DealerAdminPage() {
     productsQuery.isLoading ||
     (mode !== "local" && employeesQuery.isLoading);
 
+  const today = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const displayName = user.email?.split("@")[0] ?? "Admin";
+
   return (
     <PageShell
       title=""
-      subtitle="Overview of your dealership performance"
+      subtitle=""
     >
-      <div className="relative">
-        <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/10 via-transparent to-violet-500/10 blur-2xl" />
+      <div className="space-y-6">
+        {/* Welcome Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-200">
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-1">{today}</p>
+            <h1 className="text-2xl font-bold text-slate-900">
+              Welcome back, <span className="capitalize">{displayName}</span>
+            </h1>
+            <p className="text-sm text-slate-500 mt-0.5">Here's an overview of your dealership performance.</p>
+          </div>
+          <Link
+            to="/dealer-marketplace"
+            className="inline-flex items-center gap-2 rounded-full bg-yellow-400 px-5 py-2.5 text-sm font-semibold text-black hover:bg-yellow-300 transition-colors self-start sm:self-auto"
+          >
+            <Store className="w-4 h-4" />
+            Find Products
+          </Link>
+        </div>
 
         <div className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm p-5 hover:shadow-md transition-shadow">
+            <div className="rounded-2xl border bg-white shadow-sm p-5 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between gap-3">
                 <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-600">
                   <FileText className="w-5 h-5" />
@@ -208,7 +227,7 @@ export function DealerAdminPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm p-5 hover:shadow-md transition-shadow">
+            <div className="rounded-2xl border bg-white shadow-sm p-5 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between gap-3">
                 <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-600">
                   <CheckCircle2 className="w-5 h-5" />
@@ -221,7 +240,7 @@ export function DealerAdminPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm p-5 hover:shadow-md transition-shadow">
+            <div className="rounded-2xl border bg-white shadow-sm p-5 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between gap-3">
                 <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-600">
                   <Hourglass className="w-5 h-5" />
@@ -234,7 +253,7 @@ export function DealerAdminPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm p-5 hover:shadow-md transition-shadow">
+            <div className="rounded-2xl border bg-white shadow-sm p-5 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between gap-3">
                 <div className="p-2.5 rounded-xl bg-violet-500/10 text-violet-600">
                   <BarChart3 className="w-5 h-5" />
@@ -249,7 +268,7 @@ export function DealerAdminPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm p-5 hover:shadow-md transition-shadow">
+            <div className="rounded-2xl border bg-white shadow-sm p-5 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between gap-3">
                 <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-600">
                   <TrendingDown className="w-5 h-5" />
@@ -262,7 +281,7 @@ export function DealerAdminPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm p-5 hover:shadow-md transition-shadow">
+            <div className="rounded-2xl border bg-white shadow-sm p-5 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between gap-3">
                 <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-600">
                   <Receipt className="w-5 h-5" />
@@ -275,7 +294,7 @@ export function DealerAdminPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm p-5 hover:shadow-md transition-shadow">
+            <div className="rounded-2xl border bg-white shadow-sm p-5 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between gap-3">
                 <div className="p-2.5 rounded-xl bg-slate-500/10 text-slate-600">
                   <DollarSign className="w-5 h-5" />
@@ -288,7 +307,7 @@ export function DealerAdminPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm p-5 hover:shadow-md transition-shadow">
+            <div className="rounded-2xl border bg-white shadow-sm p-5 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between gap-3">
                 <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-600">
                   <Package className="w-5 h-5" />
@@ -307,7 +326,7 @@ export function DealerAdminPage() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            <div className="lg:col-span-8 rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+            <div className="lg:col-span-8 rounded-2xl border bg-white shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-500/5 via-transparent to-transparent">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600">
@@ -377,7 +396,7 @@ export function DealerAdminPage() {
               </div>
             </div>
 
-            <div className="lg:col-span-4 rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+            <div className="lg:col-span-4 rounded-2xl border bg-white shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b bg-gradient-to-r from-violet-500/5 via-transparent to-transparent">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-violet-500/10 text-violet-600">
@@ -392,7 +411,7 @@ export function DealerAdminPage() {
               <div className="p-4 space-y-2">
                 <Link
                   to="/dealer-contracts"
-                  className="flex items-center gap-4 p-4 rounded-xl border bg-background/40 hover:bg-background/60 transition-colors group"
+                  className="flex items-center gap-4 p-4 rounded-xl border bg-slate-50 hover:bg-slate-100 transition-colors group"
                 >
                   <div className="p-2 rounded-lg bg-sky-500/10 text-sky-600 group-hover:bg-sky-500/20 transition-colors">
                     <FileText className="h-5 w-5" />
@@ -406,7 +425,7 @@ export function DealerAdminPage() {
 
                 <Link
                   to="/dealer-marketplace"
-                  className="flex items-center gap-4 p-4 rounded-xl border bg-background/40 hover:bg-background/60 transition-colors group"
+                  className="flex items-center gap-4 p-4 rounded-xl border bg-slate-50 hover:bg-slate-100 transition-colors group"
                 >
                   <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 group-hover:bg-emerald-500/20 transition-colors">
                     <Store className="h-5 w-5" />
@@ -420,7 +439,7 @@ export function DealerAdminPage() {
 
                 <Link
                   to="/dealer-team"
-                  className="flex items-center gap-4 p-4 rounded-xl border bg-background/40 hover:bg-background/60 transition-colors group"
+                  className="flex items-center gap-4 p-4 rounded-xl border bg-slate-50 hover:bg-slate-100 transition-colors group"
                 >
                   <div className="p-2 rounded-lg bg-amber-500/10 text-amber-600 group-hover:bg-amber-500/20 transition-colors">
                     <Users className="h-5 w-5" />
@@ -434,7 +453,7 @@ export function DealerAdminPage() {
 
                 <Link
                   to="/dealer-remittances"
-                  className="flex items-center gap-4 p-4 rounded-xl border bg-background/40 hover:bg-background/60 transition-colors group"
+                  className="flex items-center gap-4 p-4 rounded-xl border bg-slate-50 hover:bg-slate-100 transition-colors group"
                 >
                   <div className="p-2 rounded-lg bg-violet-500/10 text-violet-600 group-hover:bg-violet-500/20 transition-colors">
                     <DollarSign className="h-5 w-5" />
@@ -448,7 +467,7 @@ export function DealerAdminPage() {
               </div>
             </div>
 
-            <div className="lg:col-span-6 rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+            <div className="lg:col-span-6 rounded-2xl border bg-white shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b bg-gradient-to-r from-emerald-500/5 via-transparent to-transparent">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600">
@@ -491,7 +510,7 @@ export function DealerAdminPage() {
               </div>
             </div>
 
-            <div className="lg:col-span-6 rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+            <div className="lg:col-span-6 rounded-2xl border bg-white shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-500/5 via-transparent to-transparent">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600">
@@ -534,7 +553,7 @@ export function DealerAdminPage() {
               </div>
             </div>
 
-            <div className="lg:col-span-12 rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+            <div className="lg:col-span-12 rounded-2xl border bg-white shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b bg-gradient-to-r from-violet-500/5 via-transparent to-transparent">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-violet-500/10 text-violet-600">
@@ -596,3 +615,4 @@ export function DealerAdminPage() {
     </PageShell>
   );
 }
+

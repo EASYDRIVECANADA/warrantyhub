@@ -4,6 +4,18 @@ export type PricingStructure = "FLAT" | "MILEAGE" | "CLASS" | "MILEAGE_CLASS" | 
 
 export type PowertrainEligibility = "ALL" | "ICE" | "ELECTRIFIED" | "HEV" | "PHEV" | "BEV";
 
+export type CoverageStatus = "included" | "not_included" | "term_specific";
+
+export interface CoverageItem {
+  id: string;
+  name: string;
+  status: CoverageStatus;
+}
+
+export interface CoverageDetails {
+  items: CoverageItem[];
+}
+
 export type Product = {
   id: string;
   providerId: string;
@@ -14,8 +26,7 @@ export type Product = {
   programCode?: string;
   keyBenefits?: string;
   coverageMaxLtvPercent?: number | null;
-  coverageDetails?: string;
-  exclusions?: string;
+  coverageDetails?: CoverageDetails | null;
   internalNotes?: string;
   class1VehicleTypes?: string;
   class2VehicleTypes?: string;
@@ -31,6 +42,10 @@ export type Product = {
   eligibilityTrimAllowlist?: string[];
   basePriceCents?: number;
   dealerCostCents?: number;
+  isMostPopular?: boolean;
+  isTopPick?: boolean;
+  shortDescription?: string;
+  displayOrder?: number;
   published: boolean;
   createdAt: string;
   updatedAt: string;
@@ -43,8 +58,7 @@ export type CreateProductInput = {
   powertrainEligibility?: PowertrainEligibility;
   keyBenefits?: string;
   coverageMaxLtvPercent?: number | null;
-  coverageDetails?: string;
-  exclusions?: string;
+  coverageDetails?: CoverageDetails | null;
   class1VehicleTypes?: string;
   class2VehicleTypes?: string;
   class3VehicleTypes?: string;
@@ -59,4 +73,8 @@ export type CreateProductInput = {
   eligibilityTrimAllowlist?: string[];
   basePriceCents?: number;
   dealerCostCents?: number;
+  isMostPopular?: boolean;
+  isTopPick?: boolean;
+  shortDescription?: string;
+  displayOrder?: number;
 };

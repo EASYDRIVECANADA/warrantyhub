@@ -45,27 +45,58 @@ Deno.serve(async (req: Request) => {
 
     // Verify dealership membership
     const membership = await svc
-      .from("dealer_members")
-      .select("id, dealer_id, role, status")
-      .eq("dealer_id", dealerId)
+      .from("dealership_members")
+      .select("id, dealership_id, role")
       .eq("user_id", userId)
-      .eq("status", "ACTIVE")
+      .limit(1)
       .maybeSingle();
 
     if (membership.error) return json(500, { error: membership.error.message });
-    if (!membership.data) return json(403, { error: "Not authorized" });
+    if (!membership.data) {
+      // Fallback to legacy dealer_members table
+      const legacyMembership = await svc
+        .from("dealer_members")
+        .select("id, dealer_id, role, status")
+        .eq("dealer_id", dealerId)
+        .eq("user_id", userId)
+        .eq("status", "ACTIVE")
+        .maybeSingle();
+      if (legacyMembership.error) return json(500, { error: legacyMembership.error.message });
+      if (!legacyMembership.data) return json(403, { error: "Not authorized" });
+    }
 
-    // Load dealer billing state
-    const dealerRow = await svc
-      .from("dealers")
-      .select(
-        "id, stripe_customer_id, subscription_status, subscription_plan_key, subscription_current_period_end, contract_fee_cents",
-      )
-      .eq("id", dealerId)
+    // Resolve dealership_id (V2) or fallback to dealer_id (V1)
+    const dealershipId = membership.data
+      ? (membership.data as any).dealership_id
+      : dealerId;
+
+    // Load dealer billing state — try dealerships (V2) then dealers (V1)
+    let dealerRow: any = null;
+    const v2Dealer = await svc
+      .from("dealerships")
+      .select("id, name")
+      .eq("id", dealershipId)
       .maybeSingle();
-
-    if (dealerRow.error) return json(500, { error: dealerRow.error.message });
-    if (!dealerRow.data) return json(404, { error: "Dealer not found" });
+    if (v2Dealer.data) {
+      // Get billing info from the legacy dealers table via legacy_dealer_id
+      const billingRow = await svc
+        .from("dealers")
+        .select("id, stripe_customer_id, subscription_status, subscription_plan_key, subscription_current_period_end, contract_fee_cents")
+        .eq("id", dealerId)
+        .maybeSingle();
+      if (billingRow.error) return json(500, { error: billingRow.error.message });
+      if (!billingRow.data) return json(404, { error: "Dealer not found" });
+      dealerRow = { ...billingRow.data, dealership_id: dealershipId };
+    } else {
+      const legacyDealer = await svc
+        .from("dealers")
+        .select("id, stripe_customer_id, subscription_status, subscription_plan_key, subscription_current_period_end, contract_fee_cents")
+        .eq("id", dealerId)
+        .maybeSingle();
+      if (legacyDealer.error) return json(500, { error: legacyDealer.error.message });
+      if (!legacyDealer.data) return json(404, { error: "Dealer not found" });
+      dealerRow = legacyDealer.data;
+    }
 
     const status = ((dealerRow.data as any).subscription_status ?? "").toString();
     const planKey = ((dealerRow.data as any).subscription_plan_key ?? "").toString();
@@ -162,6 +193,8 @@ Deno.serve(async (req: Request) => {
       contract_number: (input.contractNumber ?? "").toString(),
       customer_name: (input.customerName ?? "").toString(),
       dealer_id: dealerId,
+      dealership_id: dealershipId ?? null,
+      provider_entity_id: (input.providerEntityId ?? null) as any,
       provider_id: (input.providerId ?? null) as any,
       product_id: (input.productId ?? null) as any,
       product_pricing_id: (input.productPricingId ?? null) as any,
@@ -171,6 +204,8 @@ Deno.serve(async (req: Request) => {
       pricing_vehicle_mileage_max_km: (input.pricingVehicleMileageMaxKm ?? null) as any,
       pricing_vehicle_class: (input.pricingVehicleClass ?? null) as any,
       pricing_deductible_cents: (input.pricingDeductibleCents ?? null) as any,
+      contract_price: typeof input.contractPrice === "number" ? input.contractPrice : null,
+      dealer_cost_dollars: typeof input.dealerCostDollars === "number" ? input.dealerCostDollars : null,
       pricing_base_price_cents: (input.pricingBasePriceCents ?? null) as any,
       pricing_dealer_cost_cents: (input.pricingDealerCostCents ?? null) as any,
       addon_snapshot: (input.addonSnapshot ?? null) as any,
@@ -187,7 +222,10 @@ Deno.serve(async (req: Request) => {
       vehicle_body_class: (input.vehicleBodyClass ?? null) as any,
       vehicle_engine: (input.vehicleEngine ?? null) as any,
       vehicle_transmission: (input.vehicleTransmission ?? null) as any,
+      customer_first_name: (input.customerFirstName ?? "").toString() || null,
+      customer_last_name: (input.customerLastName ?? "").toString() || null,
       status: "DRAFT",
+      status_new: "draft",
       updated_at: nowIso,
       contract_processing_fee_cents: planKey === "STANDARD" ? feeCents : 0,
       stripe_payment_intent_id: paymentIntentId,

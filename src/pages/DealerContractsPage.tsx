@@ -571,290 +571,254 @@ export function DealerContractsPage() {
 
   return (
     <PageShell title="">
-      <div className="relative">
-        {createFromMarketplaceMutation.isPending ? (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
-            <div className="absolute inset-0 bg-background/60 backdrop-blur-sm" />
-            <div className="relative w-full max-w-md rounded-2xl border bg-card shadow-card overflow-hidden">
-              <div className="p-6">
-                <div className="flex items-center gap-3">
-                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                  <div className="font-semibold">Creating contract…</div>
-                </div>
-                <div className="mt-2 text-sm text-muted-foreground">
-                  Processing your contract setup and confirming the contract fee. This can take a few seconds.
-                </div>
+      {createFromMarketplaceMutation.isPending ? (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-background/60 backdrop-blur-sm" />
+          <div className="relative w-full max-w-md rounded-2xl border bg-card shadow-lg overflow-hidden">
+            <div className="p-6">
+              <div className="flex items-center gap-3">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                <div className="font-semibold">Creating contract…</div>
+              </div>
+              <div className="mt-2 text-sm text-muted-foreground">
+                Processing your contract setup and confirming the contract fee. This can take a few seconds.
               </div>
             </div>
           </div>
-        ) : null}
+        </div>
+      ) : null}
 
-        <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-blue-600/8 via-transparent to-yellow-400/8 blur-2xl" />
+      <div className="space-y-5">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">Contracts</h1>
+            {headerSubtitle ? <p className="text-sm text-slate-500 mt-0.5 truncate">{headerSubtitle}</p> : null}
+          </div>
+          <Button asChild className="bg-yellow-400 text-black hover:bg-yellow-300 font-semibold gap-2">
+            <Link to="/dealer-marketplace">
+              <Plus className="h-4 w-4" />
+              Find Products
+            </Link>
+          </Button>
+        </div>
 
-        <div className="space-y-5">
-          <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
-            <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600/8 via-transparent to-yellow-400/8">
-              <div className="flex items-center justify-between gap-4 flex-wrap">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600/10 text-blue-600">
-                    <FileText className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <Button asChild className="bg-yellow-400 text-black hover:bg-yellow-300">
-                      <Link to="/dealer-marketplace">
-                        <Plus className="h-4 w-4 mr-2" />
-                        Find Products to Create Contract
-                      </Link>
-                    </Button>
-                    {headerSubtitle ? <div className="mt-1.5 text-xs text-muted-foreground truncate">{headerSubtitle}</div> : null}
-                  </div>
-                </div>
-
-                <div className="w-full sm:w-[320px]">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      value={q}
-                      onChange={(e) => setQ(e.target.value)}
-                      placeholder="Search contracts..."
-                      className="h-9 pl-9"
-                    />
-                  </div>
-                </div>
-              </div>
+        <div className="rounded-2xl border bg-card overflow-hidden shadow-sm">
+          {/* Search + actions bar */}
+          <div className="px-5 py-4 border-b flex items-center justify-between gap-4 flex-wrap">
+            <div className="relative w-full sm:w-[280px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search contracts…"
+                className="h-9 pl-9 text-sm"
+              />
             </div>
+            {selectedDraftIds.length > 0 ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="hover:text-destructive hover:bg-destructive/10 hover:border-destructive/30 gap-1.5"
+                disabled={bulkDeleteMutation.isPending || deleteMutation.isPending}
+                onClick={() => {
+                  void (async () => {
+                    const count = selectedDraftIds.length;
+                    if (!(await confirmProceed(`Delete ${count} draft contract${count === 1 ? "" : "s"}? This cannot be undone.`))) return;
+                    await bulkDeleteMutation.mutateAsync(selectedDraftIds);
+                  })();
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete ({selectedDraftIds.length})
+              </Button>
+            ) : null}
+          </div>
 
-            <div className="px-6 py-3 border-b bg-muted/10">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {(["ALL", "DRAFT", "ACTIVE", "PRINTABLE", "COMPLETED"] as QuickFilterKey[]).map((key) => (
+          {/* Filter tabs */}
+          <div className="px-5 py-2.5 border-b bg-slate-50 flex items-center gap-1.5 overflow-x-auto">
+            {([
+              { key: "ALL", label: "All" },
+              { key: "DRAFT", label: "Draft" },
+              { key: "ACTIVE", label: "Active" },
+              { key: "PRINTABLE", label: "Printable" },
+              { key: "COMPLETED", label: "Completed" },
+              ...(isDealerAdmin ? [{ key: "READY_TO_REMIT", label: "Ready to Remit" }] : []),
+            ] as { key: QuickFilterKey; label: string }[]).map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setQuickFilter(key)}
+                className={`text-sm px-3.5 py-1.5 rounded-full border font-medium whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                  quickFilter === key
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "bg-white border-slate-200 text-slate-600 hover:border-slate-400"
+                }`}
+              >
+                {label}
+                <span className={`text-xs ${quickFilter === key ? "opacity-70" : "opacity-50"}`}>
+                  {quickFilterCounts[key]}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-slate-50 text-xs text-slate-500 uppercase tracking-wider">
+                  <th className="text-left px-5 py-3 font-semibold w-10">
                     <button
-                      key={key}
                       type="button"
-                      onClick={() => setQuickFilter(key)}
-                      className={
-                        "text-sm px-3 py-1.5 rounded-lg border transition-all duration-200 flex items-center gap-2 " +
-                        (quickFilter === key
-                          ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-                          : "bg-background hover:bg-muted/50 border-transparent text-muted-foreground")
-                      }
+                      className="flex items-center"
+                      onClick={() => {
+                        const on = !allVisibleDraftSelected;
+                        setSelectedContractIds((prev) => {
+                          const next = { ...prev };
+                          for (const id of visibleDraftIds) {
+                            if (on) next[id] = true;
+                            else delete next[id];
+                          }
+                          return next;
+                        });
+                      }}
+                      disabled={visibleDraftIds.length === 0 || bulkDeleteMutation.isPending || deleteMutation.isPending}
                     >
-                      <span>{key === "ALL" ? "All" : key === "ACTIVE" ? "Active" : key === "PRINTABLE" ? "Printable" : key}</span>
-                      <span className="text-xs opacity-70">({quickFilterCounts[key]})</span>
+                      {allVisibleDraftSelected ? (
+                        <CheckSquare className="h-4 w-4 text-slate-700" />
+                      ) : (
+                        <Square className="h-4 w-4 text-slate-400" />
+                      )}
                     </button>
-                  ))}
-                  {isDealerAdmin ? (
-                    <button
-                      type="button"
-                      onClick={() => setQuickFilter("READY_TO_REMIT")}
-                      className={
-                        "text-sm px-3 py-1.5 rounded-lg border transition-all duration-200 flex items-center gap-2 " +
-                        (quickFilter === "READY_TO_REMIT"
-                          ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-                          : "bg-background hover:bg-muted/50 border-transparent text-muted-foreground")
-                      }
-                    >
-                      <span>Ready to remit</span>
-                      <span className="text-xs opacity-70">({quickFilterCounts.READY_TO_REMIT})</span>
-                    </button>
-                  ) : null}
-                </div>
-
-                {selectedDraftIds.length > 0 ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="hover:text-destructive hover:bg-destructive/10 hover:border-destructive/30"
-                    disabled={bulkDeleteMutation.isPending || deleteMutation.isPending}
-                    onClick={() => {
-                      void (async () => {
-                        const count = selectedDraftIds.length;
-                        if (!(await confirmProceed(`Delete ${count} draft contract${count === 1 ? "" : "s"}? This cannot be undone.`))) return;
-                        await bulkDeleteMutation.mutateAsync(selectedDraftIds);
-                      })();
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    Delete ({selectedDraftIds.length})
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/20 text-xs text-muted-foreground">
-                    <th className="text-left px-6 py-3 font-medium whitespace-nowrap">
+                  </th>
+                  <th className="text-left px-5 py-3 font-semibold whitespace-nowrap">Contract #</th>
+                  <th className="text-left px-5 py-3 font-semibold">Customer</th>
+                  <th className="text-left px-5 py-3 font-semibold">Product</th>
+                  <th className="text-left px-5 py-3 font-semibold">Provider</th>
+                  <th className="text-left px-5 py-3 font-semibold">Status</th>
+                  <th className="text-left px-5 py-3 font-semibold whitespace-nowrap">Created</th>
+                  <th className="text-right px-5 py-3 font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filtered.map((c) => (
+                  <tr key={c.id} className="hover:bg-slate-50/60 transition-colors">
+                    <td className="px-5 py-3.5">
                       <button
                         type="button"
-                        className="flex items-center"
                         onClick={() => {
-                          const on = !allVisibleDraftSelected;
+                          const on = !selectedContractIds[c.id];
+                          const id = (c.id ?? "").trim();
+                          if (!id) return;
                           setSelectedContractIds((prev) => {
                             const next = { ...prev };
-                            for (const id of visibleDraftIds) {
-                              if (on) next[id] = true;
-                              else delete next[id];
-                            }
+                            if (on) next[id] = true;
+                            else delete next[id];
                             return next;
                           });
                         }}
-                        disabled={visibleDraftIds.length === 0 || bulkDeleteMutation.isPending || deleteMutation.isPending}
+                        disabled={c.status !== "DRAFT" || bulkDeleteMutation.isPending || deleteMutation.isPending}
                       >
-                        {allVisibleDraftSelected ? (
-                          <CheckSquare className="h-5 w-5 text-blue-600" />
+                        {selectedContractIds[c.id] ? (
+                          <CheckSquare className="h-4 w-4 text-slate-700" />
                         ) : (
-                          <Square className="h-5 w-5" />
+                          <Square className={`h-4 w-4 ${c.status === "DRAFT" ? "text-slate-400" : "text-transparent"}`} />
                         )}
                       </button>
-                    </th>
-                    <th className="text-left px-6 py-3 font-medium whitespace-nowrap">Contract #</th>
-                    <th className="text-left px-6 py-3 font-medium">Customer</th>
-                    <th className="text-left px-6 py-3 font-medium">Product</th>
-                    <th className="text-left px-6 py-3 font-medium">Provider</th>
-                    <th className="text-left px-6 py-3 font-medium">Status</th>
-                    <th className="text-left px-6 py-3 font-medium whitespace-nowrap">Created</th>
-                    <th className="text-right px-6 py-3 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {filtered.map((c) => (
-                    <tr key={c.id} className="hover:bg-muted/10 transition-colors">
-                      <td className="px-6 py-3 whitespace-nowrap">
-                        <button
-                          type="button"
-                          className="flex items-center"
+                    </td>
+                    <td className="px-5 py-3.5 whitespace-nowrap">
+                      <div className="font-semibold text-slate-900 text-sm">{c.contractNumber}</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">{c.warrantyId}</div>
+                    </td>
+                    <td className="px-5 py-3.5 text-slate-700 font-medium">{c.customerName || "—"}</td>
+                    <td className="px-5 py-3.5 text-slate-500 max-w-[160px] truncate">
+                      {(() => {
+                        const pid = (c.productId ?? "").trim();
+                        if (!pid) return "—";
+                        return productNameById.get(pid) ?? pid;
+                      })()}
+                    </td>
+                    <td className="px-5 py-3.5 text-slate-500">{providerDisplay(c.providerId)}</td>
+                    <td className="px-5 py-3.5">
+                      <span
+                        className={"inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full border " + statusPillClass(c.status)}
+                        title={statusTooltip(c.status)}
+                      >
+                        {uiStatusLabel(c.status)}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 text-xs text-slate-400 whitespace-nowrap">
+                      {new Date(c.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-5 py-3.5 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {c.status !== "DRAFT" ? (
+                          <>
+                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" asChild>
+                              <Link to={`/dealer-contracts/${c.id}/print/dealer`}>Dealer</Link>
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" asChild>
+                              <Link to={`/dealer-contracts/${c.id}/print/customer`}>Customer</Link>
+                            </Button>
+                          </>
+                        ) : null}
+                        <Button size="sm" variant="outline" className="h-7 px-3 text-xs font-medium" asChild>
+                          <Link to={`/dealer-contracts/${c.id}`}>Edit</Link>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 w-7 p-0 hover:text-destructive hover:bg-destructive/10 hover:border-destructive/30"
                           onClick={() => {
-                            const on = !selectedContractIds[c.id];
-                            const id = (c.id ?? "").trim();
-                            if (!id) return;
-                            setSelectedContractIds((prev) => {
-                              const next = { ...prev };
-                              if (on) next[id] = true;
-                              else delete next[id];
-                              return next;
-                            });
+                            void (async () => {
+                              if (c.status !== "DRAFT") return;
+                              if (!(await confirmProceed(`Delete contract ${c.contractNumber}? This cannot be undone.`))) return;
+                              await deleteMutation.mutateAsync(c.id);
+                            })();
                           }}
-                          disabled={c.status !== "DRAFT" || bulkDeleteMutation.isPending || deleteMutation.isPending}
+                          disabled={deleteMutation.isPending || bulkDeleteMutation.isPending || c.status !== "DRAFT"}
+                          title={c.status !== "DRAFT" ? "Only Draft contracts can be deleted." : "Delete"}
+                          aria-label="Delete"
                         >
-                          {selectedContractIds[c.id] ? (
-                            <CheckSquare className="h-5 w-5 text-blue-600" />
-                          ) : (
-                            <Square className={`h-5 w-5 ${c.status === "DRAFT" ? "text-muted-foreground" : "text-transparent"}`} />
-                          )}
-                        </button>
-                      </td>
-                      <td className="px-6 py-3 whitespace-nowrap">
-                        <div className="font-medium text-foreground">{c.contractNumber}</div>
-                        <div className="text-[11px] text-muted-foreground">{c.warrantyId}</div>
-                      </td>
-                      <td className="px-6 py-3 text-foreground">{c.customerName || "—"}</td>
-                      <td className="px-6 py-3 text-muted-foreground">
-                        {(() => {
-                          const pid = (c.productId ?? "").trim();
-                          if (!pid) return "—";
-                          return productNameById.get(pid) ?? pid;
-                        })()}
-                      </td>
-                      <td className="px-6 py-3 text-muted-foreground">{providerDisplay(c.providerId)}</td>
-                      <td className="px-6 py-3">
-                        <span
-                          className={"inline-flex items-center text-xs px-2 py-0.5 rounded-full border " + statusPillClass(c.status)}
-                          title={statusTooltip(c.status)}
-                        >
-                          {uiStatusLabel(c.status)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                        {new Date(c.createdAt).toLocaleString()}
-                      </td>
-                      <td className="px-6 py-3 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {c.status === "DRAFT" ? (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 px-2 text-xs gap-1"
-                                disabled
-                                title="Only Active/Completed contracts can be printed."
-                              >
-                                Dealer Copy
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 px-2 text-xs gap-1"
-                                disabled
-                                title="Only Active/Completed contracts can be printed."
-                              >
-                                Customer Copy
-                              </Button>
-                            </>
-                          ) : (
-                            <>
-                              <Button size="sm" variant="outline" className="h-8 px-2 text-xs gap-1" asChild>
-                                <Link to={`/dealer-contracts/${c.id}/print/dealer`}>Dealer Copy</Link>
-                              </Button>
-                              <Button size="sm" variant="outline" className="h-8 px-2 text-xs gap-1" asChild>
-                                <Link to={`/dealer-contracts/${c.id}/print/customer`}>Customer Copy</Link>
-                              </Button>
-                            </>
-                          )}
-                          <Button size="sm" variant="outline" asChild>
-                            <Link to={`/dealer-contracts/${c.id}`}>Edit</Link>
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="hover:text-destructive hover:bg-destructive/10 hover:border-destructive/30"
-                            onClick={() => {
-                              void (async () => {
-                                if (c.status !== "DRAFT") return;
-                                if (!(await confirmProceed(`Delete contract ${c.contractNumber}? This cannot be undone.`))) return;
-                                await deleteMutation.mutateAsync(c.id);
-                              })();
-                            }}
-                            disabled={deleteMutation.isPending || bulkDeleteMutation.isPending || c.status !== "DRAFT"}
-                            title={c.status !== "DRAFT" ? "Only Draft contracts can be deleted." : "Delete"}
-                            aria-label="Delete"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
 
-                  {listQuery.isLoading ? (
-                    <tr>
-                      <td className="px-6 py-10 text-sm text-muted-foreground text-center" colSpan={8}>
-                        Loading…
-                      </td>
-                    </tr>
-                  ) : null}
+                {listQuery.isLoading ? (
+                  <tr>
+                    <td className="px-5 py-12 text-sm text-slate-400 text-center" colSpan={8}>
+                      <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-slate-300" />
+                      Loading contracts…
+                    </td>
+                  </tr>
+                ) : null}
 
-                  {!listQuery.isLoading && filtered.length === 0 ? (
-                    <tr>
-                      <td className="px-6 py-12 text-sm text-muted-foreground text-center" colSpan={8}>
-                        <FileText className="h-10 w-10 mx-auto mb-3 opacity-40" />
-                        <div className="font-medium">No contracts found</div>
-                        <div className="text-xs mt-1">Create a contract by finding products in the marketplace.</div>
-                      </td>
-                    </tr>
-                  ) : null}
+                {!listQuery.isLoading && filtered.length === 0 ? (
+                  <tr>
+                    <td className="px-5 py-14 text-sm text-center" colSpan={8}>
+                      <FileText className="h-10 w-10 mx-auto mb-3 text-slate-200" />
+                      <div className="font-semibold text-slate-500">No contracts found</div>
+                      <div className="text-xs text-slate-400 mt-1">Find products in the marketplace to create a contract.</div>
+                      <Button asChild className="mt-4 bg-yellow-400 text-black hover:bg-yellow-300 gap-2 text-xs h-8" size="sm">
+                        <Link to="/dealer-marketplace"><Plus className="h-3.5 w-3.5" />Find Products</Link>
+                      </Button>
+                    </td>
+                  </tr>
+                ) : null}
 
-                  {listQuery.isError ? (
-                    <tr>
-                      <td className="px-6 py-10 text-sm text-destructive text-center" colSpan={8}>
-                        Failed to load contracts.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
+                {listQuery.isError ? (
+                  <tr>
+                    <td className="px-5 py-10 text-sm text-destructive text-center" colSpan={8}>
+                      Failed to load contracts.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>

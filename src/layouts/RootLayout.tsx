@@ -107,10 +107,8 @@ export function RootLayout() {
       : role === "ADMIN"
         ? "/company-dashboard"
         : role === "PROVIDER"
-          ? "/provider-dashboard"
-          : role === "DEALER_ADMIN"
-            ? "/dealer-admin"
-            : "/dealer-dashboard";
+          ? "/provider/overview"
+          : "/dealership/overview";
   };
 
   const isDealerAdminSidebarCollapsed = false;
@@ -186,6 +184,42 @@ export function RootLayout() {
 
     navigate(dashboardPathForRole(user.role), { replace: true });
   }, [isLoading, location.pathname, navigate, user]);
+
+  // Redirect provider users from old /provider-* routes to new /provider/* routes
+  const providerRedirectMap: Record<string, string> = {
+    "/provider-dashboard": "/provider/overview",
+    "/provider-products": "/provider/products",
+    "/provider-terms": "/provider/settings",
+    "/provider-contracts": "/provider/contracts",
+    "/provider-remittances": "/provider/remittances",
+    "/provider-documents": "/provider/settings",
+  };
+
+  useEffect(() => {
+    if (!user || user.role !== "PROVIDER") return;
+    const target = providerRedirectMap[location.pathname];
+    if (target) navigate(target, { replace: true });
+  }, [user, location.pathname, navigate]);
+
+  // Redirect dealer users from old /dealer-* routes to new /dealership/* routes
+  const dealerRedirectMap: Record<string, string> = {
+    "/dealer-admin": "/dealership/overview",
+    "/dealer-dashboard": "/dealership/overview",
+    "/dealer-marketplace": "/dealership/find-products",
+    "/dealer-contracts": "/dealership/contracts",
+    "/dealer-remittances": "/dealership/remittances",
+    "/dealer-reporting": "/dealership/reporting",
+    "/dealer-configure": "/dealership/settings/configuration",
+    "/dealer-employees": "/dealership/settings/team",
+    "/dealer-team": "/dealership/settings/team",
+    "/dealer-contracts-admin": "/dealership/contracts",
+  };
+
+  useEffect(() => {
+    if (!user || (user.role !== "DEALER_ADMIN" && user.role !== "DEALER_EMPLOYEE")) return;
+    const target = dealerRedirectMap[location.pathname];
+    if (target) navigate(target, { replace: true });
+  }, [user, location.pathname, navigate]);
 
   if (!isLoading && user?.role === "UNASSIGNED") {
     const path = location.pathname;
@@ -312,33 +346,30 @@ export function RootLayout() {
             className="hidden lg:grid min-h-screen"
             style={{ gridTemplateColumns: isDealerAdminSidebarCollapsed ? "88px minmax(0, 1fr)" : "260px minmax(0, 1fr)" }}
           >
-            <aside className="relative isolate z-20 flex flex-col border-r text-white overflow-hidden">
-              <div className="pointer-events-none absolute inset-0 hero-gradient" />
-              <div className="pointer-events-none absolute inset-0 bg-white/10" />
-              <div
-                className="pointer-events-none absolute inset-0 opacity-12"
-                style={{
-                  backgroundImage: "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.35) 1px, transparent 0)",
-                  backgroundSize: "44px 44px",
-                }}
-              />
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/0 via-white/0 to-black/8" />
-
+            <aside className="relative isolate z-20 flex flex-col border-r border-slate-800 bg-slate-900 text-white overflow-hidden">
                 <div className="relative z-10 flex flex-col flex-1">
-                <div className={`h-14 px-4 flex items-center border-b border-white/15 ${isDealerAdminSidebarCollapsed ? "justify-center" : "justify-start"}`}>
-                  <Link to="/dealer-admin" className={`flex items-center gap-2 ${isDealerAdminSidebarCollapsed ? "justify-center" : ""}`}>
-                    <img src="/images/warrantyhubwhite.png" alt={BRAND.name} className="h-9 w-auto object-contain" />
+                <div className={`px-4 py-4 flex flex-col border-b border-slate-800 ${isDealerAdminSidebarCollapsed ? "items-center" : "items-start"}`}>
+                  <Link to="/dealer-admin" className={`flex items-center gap-2.5 ${isDealerAdminSidebarCollapsed ? "justify-center" : ""}`}>
+                    <img src="/images/warrantyhubwhite.png" alt={BRAND.name} className="h-8 w-auto object-contain" />
                     {!isDealerAdminSidebarCollapsed ? (
-                      <div className="leading-tight">
-                        <div className="font-semibold text-sm">{BRAND.name}</div>
-                        <div className="text-[11px] text-white/80">Dealer Admin {dealerConfidentialityMode ? "| Confidentiality Pricing" : ""}</div>
-                      </div>
+                      <div className="font-bold text-base tracking-tight">{BRAND.name}</div>
                     ) : null}
                   </Link>
+                  {!isDealerAdminSidebarCollapsed ? (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Dealer Admin</span>
+                      {dealerConfidentialityMode ? (
+                        <>
+                          <span className="text-[10px] text-slate-600">|</span>
+                          <span className="text-[10px] font-semibold uppercase tracking-widest text-yellow-400/80">Confidentiality Pricing</span>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
 
-                <div className={`px-2 py-3 flex-1 ${isDealerAdminSidebarCollapsed ? "" : ""}`}>
-                  <div className="space-y-1">
+                <div className={`px-3 py-4 flex-1 ${isDealerAdminSidebarCollapsed ? "" : ""}`}>
+                  <div className="space-y-0.5">
                     {dealerAdminNavItems.map((item) => (
                       <Link
                         key={item.to}
@@ -351,46 +382,42 @@ export function RootLayout() {
                           }
                         }}
                         className={cn(
-                          buttonVariants({ variant: "ghost", size: "sm" }),
-                          `w-full ${isDealerAdminSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium`,
+                          "flex items-center gap-3 rounded-lg px-3 h-10 text-[13px] font-medium transition-colors w-full",
+                          isDealerAdminSidebarCollapsed ? "justify-center px-0" : "justify-start",
                           item.active
-                            ? "bg-white/15 text-white hover:bg-white/20"
-                            : "text-white/85 hover:text-white hover:bg-white/10",
+                            ? "bg-white text-slate-900"
+                            : "text-slate-400 hover:text-white hover:bg-slate-800",
                         )}
                       >
-                        <span className="flex items-center gap-2" title={isDealerAdminSidebarCollapsed ? item.label : undefined}>
-                          <item.icon className="h-4 w-4" />
-                          {!isDealerAdminSidebarCollapsed ? <span>{item.label}</span> : null}
-                        </span>
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        {!isDealerAdminSidebarCollapsed ? <span>{item.label}</span> : null}
                       </Link>
                     ))}
                   </div>
 
-                  <div className="pt-3 mt-3 border-t border-white/15" />
-                  <div className="space-y-1">
+                  <div className="my-4 border-t border-slate-800" />
+                  <div className="space-y-0.5">
                     <button
                       type="button"
                       onClick={() => setIsDealerAdminSettingsOpen((v) => !v)}
                       className={cn(
-                        buttonVariants({ variant: "ghost", size: "sm" }),
-                        `w-full ${isDealerAdminSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium`,
+                        "flex items-center gap-3 rounded-lg px-3 h-10 text-[13px] font-medium transition-colors w-full",
+                        isDealerAdminSidebarCollapsed ? "justify-center px-0" : "justify-start",
                         dealerAdminSettingsActive
-                          ? "bg-white/15 text-white hover:bg-white/20"
-                          : "text-white/85 hover:text-white hover:bg-white/10",
+                          ? "bg-slate-800 text-white"
+                          : "text-slate-400 hover:text-white hover:bg-slate-800",
                       )}
                       aria-expanded={isDealerAdminSettingsOpen}
                     >
-                      <span className="flex items-center gap-2" title={isDealerAdminSidebarCollapsed ? "Settings" : undefined}>
-                        <Settings className="h-4 w-4" />
-                        {!isDealerAdminSidebarCollapsed ? <span>Settings</span> : null}
-                      </span>
+                      <Settings className="h-4 w-4 shrink-0" />
+                      {!isDealerAdminSidebarCollapsed ? <span>Settings</span> : null}
                       {!isDealerAdminSidebarCollapsed ? (
-                        <ChevronDown className={cn("h-4 w-4 ml-auto transition-transform", isDealerAdminSettingsOpen ? "rotate-180" : "")} />
+                        <ChevronDown className={cn("h-3.5 w-3.5 ml-auto transition-transform text-slate-500", isDealerAdminSettingsOpen ? "rotate-180" : "")} />
                       ) : null}
                     </button>
 
                     {isDealerAdminSidebarCollapsed ? null : isDealerAdminSettingsOpen ? (
-                      <div className="pl-3 space-y-1">
+                      <div className="pl-3 space-y-0.5 mt-0.5">
                         {dealerAdminSettingsItems.map((item) => (
                           <Link
                             key={item.to + item.label}
@@ -403,24 +430,21 @@ export function RootLayout() {
                               }
                             }}
                             className={cn(
-                              buttonVariants({ variant: "ghost", size: "sm" }),
-                              "w-full justify-start h-9 text-[13px] font-medium",
+                              "flex items-center gap-3 rounded-lg px-3 h-9 text-[13px] font-medium transition-colors w-full",
                               item.active
-                                ? "bg-white/15 text-white hover:bg-white/20"
-                                : "text-white/85 hover:text-white hover:bg-white/10",
+                                ? "bg-slate-700 text-white"
+                                : "text-slate-400 hover:text-white hover:bg-slate-800",
                             )}
                           >
-                            <span className="flex items-center gap-2">
-                              <item.icon className="h-4 w-4" />
-                              <span>{item.label}</span>
-                            </span>
+                            <item.icon className="h-4 w-4 shrink-0" />
+                            <span>{item.label}</span>
                           </Link>
                         ))}
                       </div>
                     ) : null}
                   </div>
 
-                  <div className="space-y-1">
+                  <div className="space-y-0.5">
                     {dealerAdminSecondaryItems.map((item) => (
                       <Link
                         key={item.to}
@@ -433,27 +457,26 @@ export function RootLayout() {
                           }
                         }}
                         className={cn(
-                          buttonVariants({ variant: "ghost", size: "sm" }),
-                          `w-full ${isDealerAdminSidebarCollapsed ? "justify-center px-0" : "justify-start"} h-9 text-[13px] font-medium`,
+                          "flex items-center gap-3 rounded-lg px-3 h-10 text-[13px] font-medium transition-colors w-full",
+                          isDealerAdminSidebarCollapsed ? "justify-center px-0" : "justify-start",
                           item.active
-                            ? "bg-white/15 text-white hover:bg-white/20"
-                            : "text-white/85 hover:text-white hover:bg-white/10",
+                            ? "bg-white text-slate-900"
+                            : "text-slate-400 hover:text-white hover:bg-slate-800",
                         )}
                       >
-                        <span className="flex items-center gap-2" title={isDealerAdminSidebarCollapsed ? item.label : undefined}>
-                          <item.icon className="h-4 w-4" />
-                          {!isDealerAdminSidebarCollapsed ? <span>{item.label}</span> : null}
-                        </span>
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        {!isDealerAdminSidebarCollapsed ? <span>{item.label}</span> : null}
                       </Link>
                     ))}
+                  </div>
 
-                    <Button
-                      variant={isDealerAdminSidebarCollapsed ? "ghost" : "default"}
-                      size={isDealerAdminSidebarCollapsed ? "icon" : "sm"}
+                  <div className="mt-auto pt-4 border-t border-slate-800">
+                    <button
+                      type="button"
                       className={cn(
-                        isDealerAdminSidebarCollapsed
-                          ? "mt-2 text-white/85 hover:text-white hover:bg-red-500/20"
-                          : "mt-2 bg-red-500/20 text-white hover:bg-red-500/25 hover:text-white",
+                        "flex items-center gap-3 rounded-lg px-3 h-10 text-[13px] font-medium transition-colors w-full",
+                        isDealerAdminSidebarCollapsed ? "justify-center" : "justify-start",
+                        "text-slate-400 hover:text-red-400 hover:bg-red-500/10",
                       )}
                       title={isDealerAdminSidebarCollapsed ? "Sign Out" : undefined}
                       onClick={() => {
@@ -464,9 +487,9 @@ export function RootLayout() {
                         })();
                       }}
                     >
-                      <LogOut className={isDealerAdminSidebarCollapsed ? "h-4 w-4" : "h-4 w-4"} />
+                      <LogOut className="h-4 w-4 shrink-0" />
                       {isDealerAdminSidebarCollapsed ? null : <span>Sign Out</span>}
-                    </Button>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -514,31 +537,23 @@ export function RootLayout() {
               <div className="fixed inset-0 z-50">
                 <button
                   type="button"
-                  className="absolute inset-0 bg-black/40"
+                  className="absolute inset-0 bg-black/60"
                   onClick={() => setIsDealerAdminMobileNavOpen(false)}
                 />
-                <div className="absolute left-0 top-0 bottom-0 w-[280px] max-w-[85vw] border-r shadow-xl flex flex-col text-white overflow-hidden">
-                  <div className="pointer-events-none absolute inset-0 hero-gradient" />
-                  <div className="pointer-events-none absolute inset-0 bg-white/10" />
-                  <div
-                    className="pointer-events-none absolute inset-0 opacity-12"
-                    style={{
-                      backgroundImage: "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.35) 1px, transparent 0)",
-                      backgroundSize: "44px 44px",
-                    }}
-                  />
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/0 via-white/0 to-black/8" />
-
+                <div className="absolute left-0 top-0 bottom-0 w-[280px] max-w-[85vw] bg-slate-900 border-r border-slate-800 shadow-2xl flex flex-col text-white overflow-hidden">
                   <div className="relative z-10 flex flex-col flex-1">
-                  <div className="h-14 px-4 border-b border-white/15 flex items-center justify-between">
-                    <div className="font-semibold text-sm">Menu</div>
-                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setIsDealerAdminMobileNavOpen(false)}>
-                      <X className="h-5 w-5" />
-                    </Button>
+                  <div className="px-4 py-4 border-b border-slate-800 flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-sm">{BRAND.name}</div>
+                      <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mt-0.5">Dealer Admin</div>
+                    </div>
+                    <button type="button" onClick={() => setIsDealerAdminMobileNavOpen(false)} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
+                      <X className="h-4 w-4" />
+                    </button>
                   </div>
 
-                  <div className="p-3 flex-1">
-                    <div className="space-y-1">
+                  <div className="p-3 flex-1 flex flex-col">
+                    <div className="space-y-0.5">
                       {dealerAdminNavItems.map((item) => (
                         <Link
                           key={item.to}
@@ -551,44 +566,38 @@ export function RootLayout() {
                             }
                           }}
                           className={cn(
-                            buttonVariants({ variant: "ghost", size: "sm" }),
-                            "w-full justify-start h-9 text-[13px] font-medium",
+                            "flex items-center gap-3 rounded-lg px-3 h-10 text-[13px] font-medium transition-colors w-full",
                             item.active
-                              ? "bg-white/15 text-white hover:bg-white/20"
-                              : "text-white/85 hover:text-white hover:bg-white/10",
+                              ? "bg-white text-slate-900"
+                              : "text-slate-400 hover:text-white hover:bg-slate-800",
                           )}
                         >
-                          <span className="flex items-center gap-2">
-                            <item.icon className="h-4 w-4" />
-                            <span>{item.label}</span>
-                          </span>
+                          <item.icon className="h-4 w-4 shrink-0" />
+                          <span>{item.label}</span>
                         </Link>
                       ))}
                     </div>
 
-                    <div className="pt-3 mt-3 border-t border-white/15" />
-                    <div className="space-y-1">
+                    <div className="my-3 border-t border-slate-800" />
+                    <div className="space-y-0.5">
                       <button
                         type="button"
                         onClick={() => setIsDealerAdminSettingsOpen((v) => !v)}
                         className={cn(
-                          buttonVariants({ variant: "ghost", size: "sm" }),
-                          "w-full justify-start h-9 text-[13px] font-medium",
+                          "flex items-center gap-3 rounded-lg px-3 h-10 text-[13px] font-medium transition-colors w-full",
                           dealerAdminSettingsActive
-                            ? "bg-white/15 text-white hover:bg-white/20"
-                            : "text-white/85 hover:text-white hover:bg-white/10",
+                            ? "bg-slate-800 text-white"
+                            : "text-slate-400 hover:text-white hover:bg-slate-800",
                         )}
                         aria-expanded={isDealerAdminSettingsOpen}
                       >
-                        <span className="flex items-center gap-2">
-                          <Settings className="h-4 w-4" />
-                          <span>Settings</span>
-                        </span>
-                        <ChevronDown className={cn("h-4 w-4 ml-auto transition-transform", isDealerAdminSettingsOpen ? "rotate-180" : "")} />
+                        <Settings className="h-4 w-4 shrink-0" />
+                        <span>Settings</span>
+                        <ChevronDown className={cn("h-3.5 w-3.5 ml-auto transition-transform text-slate-500", isDealerAdminSettingsOpen ? "rotate-180" : "")} />
                       </button>
 
                       {isDealerAdminSettingsOpen ? (
-                        <div className="pl-3 space-y-1">
+                        <div className="pl-3 space-y-0.5 mt-0.5">
                           {dealerAdminSettingsItems.map((item) => (
                             <Link
                               key={item.to + item.label}
@@ -601,25 +610,21 @@ export function RootLayout() {
                                 }
                               }}
                               className={cn(
-                                buttonVariants({ variant: "ghost", size: "sm" }),
-                                "w-full justify-start h-9 text-[13px] font-medium",
+                                "flex items-center gap-3 rounded-lg px-3 h-9 text-[13px] font-medium transition-colors w-full",
                                 item.active
-                                  ? "bg-white/15 text-white hover:bg-white/20"
-                                  : "text-white/85 hover:text-white hover:bg-white/10",
+                                  ? "bg-slate-700 text-white"
+                                  : "text-slate-400 hover:text-white hover:bg-slate-800",
                               )}
                             >
-                              <span className="flex items-center gap-2">
-                                <item.icon className="h-4 w-4" />
-                                <span>{item.label}</span>
-                              </span>
+                              <item.icon className="h-4 w-4 shrink-0" />
+                              <span>{item.label}</span>
                             </Link>
                           ))}
                         </div>
                       ) : null}
                     </div>
 
-                    <div className="pt-3 mt-3 border-t border-white/15" />
-                    <div className="space-y-1">
+                    <div className="space-y-0.5">
                       {dealerAdminSecondaryItems.map((item) => (
                         <Link
                           key={item.to}
@@ -632,34 +637,33 @@ export function RootLayout() {
                             }
                           }}
                           className={cn(
-                            buttonVariants({ variant: "ghost", size: "sm" }),
-                            "w-full justify-start h-9 text-[13px] font-medium",
+                            "flex items-center gap-3 rounded-lg px-3 h-10 text-[13px] font-medium transition-colors w-full",
                             item.active
-                              ? "bg-blue-600/15 text-foreground hover:bg-blue-600/20"
-                              : "text-muted-foreground hover:text-foreground hover:bg-blue-600/10",
+                              ? "bg-white text-slate-900"
+                              : "text-slate-400 hover:text-white hover:bg-slate-800",
                           )}
                         >
-                          <span className="flex items-center gap-2">
-                            <item.icon className="h-4 w-4" />
-                            <span>{item.label}</span>
-                          </span>
+                          <item.icon className="h-4 w-4 shrink-0" />
+                          <span>{item.label}</span>
                         </Link>
                       ))}
 
-                      <Button
-                        variant="ghost"
-                        className="mt-2 w-full justify-start h-9 text-[13px] font-medium text-white/85 hover:text-white hover:bg-red-500/20"
-                        onClick={() => {
-                          (async () => {
-                            if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
-                            await signOut();
-                            window.location.assign("/find-insurance");
-                          })();
-                        }}
-                      >
-                        <LogOut className="h-4 w-4" />
-                        <span>Sign Out</span>
-                      </Button>
+                      <div className="pt-3 mt-2 border-t border-slate-800">
+                        <button
+                          type="button"
+                          className="flex items-center gap-3 rounded-lg px-3 h-10 text-[13px] font-medium transition-colors w-full text-slate-400 hover:text-red-400 hover:bg-red-500/10"
+                          onClick={() => {
+                            (async () => {
+                              if (!(await confirmProceed(`Sign out of ${BRAND.name}?`, "Sign Out"))) return;
+                              await signOut();
+                              window.location.assign("/find-insurance");
+                            })();
+                          }}
+                        >
+                          <LogOut className="h-4 w-4 shrink-0" />
+                          <span>Sign Out</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                   </div>
