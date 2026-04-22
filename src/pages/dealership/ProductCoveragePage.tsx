@@ -50,16 +50,6 @@ interface ProductData {
   status?: string;
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  VSC: "Vehicle Service Contract",
-  GAP: "GAP Insurance",
-  "Tire & Rim": "Tire & Rim Protection",
-  PPF: "Paint Protection Film",
-  "Ceramic Coating": "Ceramic Coating",
-  Undercoating: "Undercoating",
-  "Key Replacement": "Key Replacement",
-  "Dent Repair": "Dent Repair",
-};
 
 const POWERTRAIN_KEYWORDS = ["engine", "transmission", "transfer case", "differential", "turbo", "supercharger", "drive axle"];
 
