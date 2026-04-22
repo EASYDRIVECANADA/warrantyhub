@@ -29,7 +29,7 @@ export default function BrochureHeader() {
           <img
             src="/images/Bridge Warranty_Transparent.png"
             alt="Bridge Warranty"
-            className="h-10 w-auto object-contain"
+            className="h-14 w-auto object-contain"
           />
           <p className="text-muted-foreground text-[10px] font-medium tracking-widest uppercase">Coverage Brochure</p>
         </Link>

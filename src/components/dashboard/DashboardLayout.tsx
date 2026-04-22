@@ -85,7 +85,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, t
               <img
                 src="/images/Bridge Warranty_Transparent.png"
                 alt="Bridge Warranty"
-                className="h-10 w-auto object-contain"
+                className="h-14 w-auto object-contain"
               />
             </div>
             <p className="text-xs text-muted-foreground mt-2 tracking-wide uppercase">
