@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo } from "react";
 import DashboardLayout, { dealershipNavItems } from "../../../components/dashboard/DashboardLayout";
 import { Card, CardContent } from "../../../components/ui/card";
 import { Input } from "../../../components/ui/input";
@@ -6,26 +6,22 @@ import { Button } from "../../../components/ui/button";
 import { Switch } from "../../../components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
 import { Badge } from "../../../components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "../../../components/ui/tabs";
 import { supabase } from "../../../integrations/supabase/client";
 import { useDealership } from "../../../hooks/useDealership";
 import { useToast } from "../../../hooks/use-toast";
-import { Settings2, DollarSign, Pencil, Check, X, ChevronRight, Search, Package } from "lucide-react";
+import {
+  Settings2, DollarSign, Pencil, Check, X, ChevronRight, ChevronLeft,
+  Search, Package, Zap, Building2, Shield,
+} from "lucide-react";
 import { cn } from "../../../lib/utils";
 
-interface FlatTier {
-  termLabel: string;
-  termMonths: number;
-  km: string;
-  dealerCost: number;
-  suggestedRetail: number;
-}
+// ─────────────────────── Types ───────────────────────
 
 interface Product {
   id: string;
   name: string;
   type: string;
-  tier?: string;
-  group?: string;
   pricing: any;
   coverage_details: any;
   eligibility_rules: any;
@@ -38,74 +34,204 @@ interface PricingConfig {
   confidentiality_enabled: boolean;
 }
 
-const fmt = (v: number) => `$${v.toLocaleString("en-CA", { minimumFractionDigits: 2 })}`;
+interface StructuredRow {
+  label: string;
+  values: (number | string)[];
+  suggestedValues?: number[];
+}
 
-function extractFlatTiers(pricing: any): FlatTier[] {
-  if (!pricing) return [];
+interface StructuredBand {
+  label: string;
+  values: (number | string)[];
+  suggestedValues?: number[];
+}
 
-  // V2 format: pricing.rows[]
-  if (Array.isArray(pricing.rows) && pricing.rows.length > 0) {
-    return pricing.rows.map((r: any, i: number) => ({
-      termLabel: r.label || `Term ${i + 1}`,
-      termMonths: 0,
-      km: r.vehicleClass || "",
-      dealerCost: Number(r.dealerCost ?? r.dealer_cost ?? 0),
-      suggestedRetail: Number(r.suggestedRetail ?? r.suggested_retail ?? 0),
-    }));
+interface StructuredTier {
+  label: string;
+  perClaimAmount?: number;
+  deductible?: number;
+  terms: { label: string; months: number; km: string }[];
+  mileageBands?: StructuredBand[];
+  rows: StructuredRow[];
+  baseInRows: boolean;
+}
+
+interface Structured {
+  tiers: StructuredTier[];
+}
+
+const fmt = (v: number) => `$${v.toLocaleString("en-CA", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+
+// ─────────────────────── V2 parsing ───────────────────────
+
+function parseTermMonths(label: string): number {
+  const m = label.match(/^(\d+)\s*(Months?|Mo)/i);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+function parseTermKm(label: string): string {
+  const parts = label.split(" / ");
+  return parts[1]?.trim() ?? "";
+}
+
+/** Parse vehicleClass into a (tierKey, bandKey) pair.
+ *  - "0–60,000 km · $5,000/claim"   → tierKey="$5,000 / claim", bandKey="0–60,000 km"
+ *  - "Essential - Class 1"          → tierKey="Essential", bandKey="Class 1"
+ *  - "Bronze - $750 Per Claim"      → tierKey="Bronze - $750 Per Claim", bandKey=null
+ */
+function parseVC(vc: string): { tierKey: string; bandKey: string | null } {
+  // Diamond Plus style: mileageBand · perClaim
+  if (vc.includes("·")) {
+    const parts = vc.split("·").map((s) => s.trim());
+    const tierKey = parts[1].replace("/claim", " / claim");
+    return { tierKey, bandKey: parts[0] };
+  }
+  // Tire & Rim style: Level - Class N
+  const classMatch = vc.match(/^(.+?)\s*-\s*(Class \d+)$/);
+  if (classMatch) {
+    return { tierKey: classMatch[1].trim(), bandKey: classMatch[2].trim() };
+  }
+  return { tierKey: vc, bandKey: null };
+}
+
+function extractStructuredFromV2(rows: any[]): Structured {
+  if (!Array.isArray(rows) || rows.length === 0) return { tiers: [] };
+
+  const tierOrder: string[] = [];
+  const perClaimMap: Map<string, number | undefined> = new Map();
+  const bandOrder: Map<string, string[]> = new Map();
+  const termOrder: Map<string, string[]> = new Map();
+  type Cell = { cost: number; retail: number };
+  const cells: Map<string, Map<string, Map<string, Cell>>> = new Map();
+
+  for (const row of rows) {
+    const vc = (row.vehicleClass || "Standard").toString().trim();
+    const termLabel = (row.label || "").toString().trim();
+    const { tierKey, bandKey } = parseVC(vc);
+    const bk = bandKey ?? "-";
+
+    if (!tierOrder.includes(tierKey)) {
+      tierOrder.push(tierKey);
+      const m = tierKey.match(/\$([0-9,]+)/);
+      perClaimMap.set(tierKey, m ? parseInt(m[1].replace(/,/g, ""), 10) : undefined);
+      cells.set(tierKey, new Map());
+      bandOrder.set(tierKey, []);
+      termOrder.set(tierKey, []);
+    }
+
+    const bands = bandOrder.get(tierKey)!;
+    if (!bands.includes(bk)) bands.push(bk);
+
+    const terms = termOrder.get(tierKey)!;
+    if (!terms.includes(termLabel)) terms.push(termLabel);
+
+    const tierCells = cells.get(tierKey)!;
+    if (!tierCells.has(bk)) tierCells.set(bk, new Map());
+    tierCells.get(bk)!.set(termLabel, {
+      cost: Number(row.dealerCost ?? row.dealer_cost ?? 0),
+      retail: Number(row.suggestedRetail ?? row.suggested_retail ?? 0),
+    });
   }
 
+  const tiers: StructuredTier[] = tierOrder.map((tierKey) => {
+    const bands = bandOrder.get(tierKey)!;
+    const terms = termOrder.get(tierKey)!.map((label) => ({
+      label,
+      months: parseTermMonths(label),
+      km: parseTermKm(label),
+    }));
+    const tierCells = cells.get(tierKey)!;
+    const hasBands = bands.length > 1 || (bands.length === 1 && bands[0] !== "-");
+
+    if (hasBands) {
+      const mileageBands: StructuredBand[] = bands.map((bk) => {
+        const bandCells = tierCells.get(bk) ?? new Map();
+        return {
+          label: bk,
+          values: terms.map((t) => bandCells.get(t.label)?.cost ?? 0),
+          suggestedValues: terms.map((t) => bandCells.get(t.label)?.retail ?? 0),
+        };
+      });
+      return {
+        label: tierKey,
+        perClaimAmount: perClaimMap.get(tierKey),
+        terms,
+        mileageBands,
+        rows: [],
+        baseInRows: false,
+      };
+    } else {
+      const bandCells = tierCells.get("-") ?? new Map();
+      return {
+        label: tierKey,
+        perClaimAmount: perClaimMap.get(tierKey),
+        terms,
+        mileageBands: undefined,
+        rows: [{
+          label: "Base Price",
+          values: terms.map((t) => bandCells.get(t.label)?.cost ?? 0),
+          suggestedValues: terms.map((t) => bandCells.get(t.label)?.retail ?? 0),
+        }],
+        baseInRows: true,
+      };
+    }
+  });
+
+  return { tiers };
+}
+
+function extractStructuredFromV1(pricing: any): Structured {
   const pricingTiers = pricing.pricingTiers || [];
-  const tiers: FlatTier[] = [];
+  const tiers: StructuredTier[] = [];
 
   for (const pt of pricingTiers) {
     const terms = pt.terms || [];
-    const rows = pt.rows || [];
-    const baseRow = rows.find((r: any) => r.label === "Base Price");
-    if (!baseRow || !terms.length) continue;
+    const allRows = pt.rows || [];
+    const mileageBands = pt.mileageBands;
+    const baseRowIdx = allRows.findIndex((r: any) => r?.label === "Base Price");
+    const baseInRows = baseRowIdx >= 0 && (!mileageBands || mileageBands.length === 0);
 
-    for (let i = 0; i < terms.length; i++) {
-      const term = terms[i];
-      const cost = typeof baseRow.values[i] === "number" ? baseRow.values[i] : parseFloat(baseRow.values[i]) || 0;
-      tiers.push({
-        termLabel: term.label,
-        termMonths: term.months,
-        km: term.km || "Unlimited",
-        dealerCost: cost,
-        suggestedRetail: Math.round(cost * 1.4),
-      });
-    }
+    const rows: StructuredRow[] = allRows.map((r: any) => ({
+      label: r.label,
+      values: r.values || [],
+    }));
+
+    const label = pt.perClaimAmount
+      ? `$${pt.perClaimAmount.toLocaleString()} / claim`
+      : pt.label || `Tier ${tiers.length + 1}`;
+
+    tiers.push({
+      label,
+      perClaimAmount: pt.perClaimAmount,
+      deductible: pt.deductible,
+      terms,
+      mileageBands: mileageBands && mileageBands.length ? mileageBands : undefined,
+      rows,
+      baseInRows,
+    });
   }
 
-  // Legacy flat format
-  if (tiers.length === 0 && pricing.tiers) {
-    for (const t of pricing.tiers) {
-      tiers.push({
-        termLabel: t.term || "",
-        termMonths: 0,
-        km: t.mileage_bracket || "",
-        dealerCost: t.dealer_cost || 0,
-        suggestedRetail: t.suggested_retail || 0,
-      });
-    }
+  return { tiers };
+}
+
+function extractStructured(pricing: any): Structured {
+  if (!pricing) return { tiers: [] };
+  if (Array.isArray(pricing.rows) && pricing.rows.length > 0) {
+    return extractStructuredFromV2(pricing.rows);
   }
-
-  return tiers;
-}
-
-function tierKey(tier: FlatTier, index: number) {
-  return `${tier.termLabel}|${tier.km}|${index}`;
-}
-
-function displayName(product: Product): string {
-  const cd = product.coverage_details || {};
-  const tier = cd.tier || product.tier;
-  const group = cd.group || product.group;
-  if (group && tier) {
-    const groupLabel = group.charAt(0).toUpperCase() + group.slice(1);
-    return `${groupLabel} Plan — ${tier}`;
+  if (Array.isArray(pricing.pricingTiers) && pricing.pricingTiers.length > 0) {
+    return extractStructuredFromV1(pricing);
   }
-  return product.name;
+  return { tiers: [] };
 }
+
+// ─────────────────────── Cell keys ───────────────────────
+
+function cellKey(tierIdx: number, bandIdx: number | null, rowIdx: number, termIdx: number) {
+  return `t${tierIdx}|m${bandIdx == null ? "-" : bandIdx}|r${rowIdx}|term${termIdx}`;
+}
+
+// ─────────────────────── Helpers ───────────────────────
 
 const typeLabel = (type: string) => {
   const map: Record<string, string> = {
@@ -118,25 +244,40 @@ const typeLabel = (type: string) => {
   return map[type] || type;
 };
 
+const isNumericCost = (v: any): v is number => typeof v === "number" && !isNaN(v) && v > 0;
+const isIncluded = (v: any) => typeof v === "string" && v.trim().toLowerCase() === "included";
+const isNA = (v: any) => v == null || (typeof v === "string" && ["n/a", "—", ""].includes(v.trim().toLowerCase()));
+
+// ─────────────────────── Component ───────────────────────
+
 export default function ConfigurationPage() {
   const { dealershipId, memberRole, loading: dLoading } = useDealership();
   const { toast } = useToast();
+
   const [products, setProducts] = useState<Product[]>([]);
   const [providers, setProviders] = useState<Record<string, string>>({});
   const [pricingConfigs, setPricingConfigs] = useState<Record<string, PricingConfig>>({});
   const [confidentialityEnabled, setConfidentialityEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
+
+  // Navigation
+  const [view, setView] = useState<"providers" | "plans">("providers");
+  const [activeProviderId, setActiveProviderId] = useState<string | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [providerFilter, setProviderFilter] = useState("all");
-  const [editingTiers, setEditingTiers] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState<Record<string, boolean>>({});
-  const [editAllMode, setEditAllMode] = useState(false);
+
+  // Pricing matrix state
+  const [activeTier, setActiveTier] = useState(0);
+  const [activeBand, setActiveBand] = useState(0);
+  const [editingCell, setEditingCell] = useState<string | null>(null);
+  const [draftValue, setDraftValue] = useState("");
+  const [bulkPercent, setBulkPercent] = useState("40");
+  const [savingKey, setSavingKey] = useState<string | null>(null);
 
   const isAdmin = memberRole === "admin";
 
   useEffect(() => {
-    const fetchData = async () => {
+    (async () => {
       const { data: prods } = await supabase
         .from("products")
         .select("id, name, product_type, pricing_json, coverage_details_json, coverage_details, eligibility_rules, provider_id, provider_entity_id, published")
@@ -145,49 +286,32 @@ export default function ConfigurationPage() {
 
       const prodList = (prods || []).map((p: any) => {
         const cd = p.coverage_details_json ?? p.coverage_details;
-        const pricing = p.pricing_json ?? p.pricing;
+        const pricing = p.pricing_json;
         const er = p.eligibility_rules;
-        const cdParsed = (() => {
-          if (!cd) return {};
-          if (typeof cd === "object") return cd;
-          try { return JSON.parse(cd); } catch { return {}; }
-        })();
-        const pricingParsed = (() => {
-          if (!pricing) return {};
-          if (typeof pricing === "object") return pricing;
-          try { return JSON.parse(pricing); } catch { return {}; }
-        })();
-        const erParsed = (() => {
-          if (!er) return {};
-          if (typeof er === "object") return er;
-          try { return JSON.parse(er); } catch { return {}; }
-        })();
+        const parse = (val: any) => {
+          if (!val) return {};
+          if (typeof val === "object") return val;
+          try { return JSON.parse(val); } catch { return {}; }
+        };
         return {
           ...p,
           type: p.product_type || "",
-          pricing: pricingParsed,
-          coverage_details: cdParsed,
-          eligibility_rules: erParsed,
+          pricing: parse(pricing),
+          coverage_details: parse(cd),
+          eligibility_rules: parse(er),
           provider_id: p.provider_entity_id ?? p.provider_id,
-          tier: cdParsed?.tier,
-          group: cdParsed?.group,
-        };
-      }) as Product[];
+        } as Product;
+      });
 
       setProducts(prodList);
 
-      const providerIds = [...new Set(prodList.map((p) => p.provider_id))];
+      const providerIds = [...new Set(prodList.map((p) => p.provider_id).filter(Boolean))];
       if (providerIds.length) {
-        const { data: provs } = await supabase
-          .from("providers")
-          .select("id, company_name")
-          .in("id", providerIds);
+        const { data: provs } = await supabase.from("providers").select("id, company_name").in("id", providerIds);
         const map: Record<string, string> = {};
         (provs || []).forEach((p: any) => { map[p.id] = p.company_name; });
         setProviders(map);
       }
-
-      if (prodList.length > 0) setSelectedProduct(prodList[0].id);
 
       if (dealershipId) {
         const { data: configs } = await supabase
@@ -204,20 +328,140 @@ export default function ConfigurationPage() {
       }
 
       setLoading(false);
-    };
-    fetchData();
+    })();
   }, [dealershipId]);
 
-  const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
-      const matchesSearch = !search || displayName(p).toLowerCase().includes(search.toLowerCase());
-      const matchesProvider = providerFilter === "all" || p.provider_id === providerFilter;
-      return matchesSearch && matchesProvider;
-    });
-  }, [products, search, providerFilter]);
+  // Reset matrix state when product changes
+  useEffect(() => {
+    setActiveTier(0);
+    setActiveBand(0);
+    setEditingCell(null);
+  }, [selectedProductId]);
 
-  const selectedProductData = products.find((p) => p.id === selectedProduct);
-  const tiers: FlatTier[] = selectedProductData ? extractFlatTiers(selectedProductData.pricing) : [];
+  // ── Provider groups ──
+  const providerGroups = useMemo(() => {
+    const groups: Record<string, Product[]> = {};
+    products.forEach((p) => {
+      if (!groups[p.provider_id]) groups[p.provider_id] = [];
+      groups[p.provider_id].push(p);
+    });
+    return groups;
+  }, [products]);
+
+  const providerList = useMemo(() =>
+    Object.entries(providerGroups)
+      .map(([id, plans]) => ({ id, name: providers[id] || "Unknown", plans }))
+      .filter((g) => view !== "providers" || !search || g.name.toLowerCase().includes(search.toLowerCase()))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [providerGroups, providers, search, view]);
+
+  const plansForProvider = useMemo(() => {
+    if (!activeProviderId) return [];
+    return (providerGroups[activeProviderId] || [])
+      .filter((p) => !search || p.name.toLowerCase().includes(search.toLowerCase()))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [providerGroups, activeProviderId, search]);
+
+  // ── Selected product & structured pricing ──
+  const selectedProduct = products.find((p) => p.id === selectedProductId);
+  const structured = useMemo(() => selectedProduct ? extractStructured(selectedProduct.pricing) : { tiers: [] }, [selectedProduct]);
+  const currentTier: StructuredTier | undefined = structured.tiers[activeTier];
+  const hasBands = !!currentTier?.mileageBands?.length;
+
+  // Retail map for the currently-active product
+  const retailMap: Record<string, number> = useMemo(() => {
+    if (!selectedProductId) return {};
+    return (pricingConfigs[selectedProductId]?.retail_price || {}) as Record<string, number>;
+  }, [pricingConfigs, selectedProductId]);
+
+  const storageKey = (bandIdx: number | null, rowIdx: number, termIdx: number) =>
+    cellKey(activeTier, bandIdx, rowIdx, termIdx);
+
+  // ── Persist retail prices ──
+  const persistRetail = async (productId: string, newRetail: Record<string, number>) => {
+    if (!dealershipId) return;
+    const existing = pricingConfigs[productId];
+    if (existing) {
+      await supabase
+        .from("dealership_product_pricing")
+        .update({ retail_price: newRetail, confidentiality_enabled: confidentialityEnabled })
+        .eq("dealership_id", dealershipId)
+        .eq("product_id", productId);
+    } else {
+      await supabase.from("dealership_product_pricing").insert({
+        dealership_id: dealershipId,
+        product_id: productId,
+        retail_price: newRetail,
+        confidentiality_enabled: confidentialityEnabled,
+      });
+    }
+    setPricingConfigs((prev) => ({
+      ...prev,
+      [productId]: { product_id: productId, retail_price: newRetail, confidentiality_enabled: confidentialityEnabled },
+    }));
+  };
+
+  const saveCell = async (key: string, value: number) => {
+    if (!selectedProductId) return;
+    setSavingKey(key);
+    const newRetail = { ...retailMap, [key]: value };
+    await persistRetail(selectedProductId, newRetail);
+    setSavingKey(null);
+    setEditingCell(null);
+    toast({ title: "Price saved" });
+  };
+
+  const clearCell = async (key: string) => {
+    if (!selectedProductId) return;
+    setSavingKey(key);
+    const newRetail = { ...retailMap };
+    delete newRetail[key];
+    await persistRetail(selectedProductId, newRetail);
+    setSavingKey(null);
+    setEditingCell(null);
+    toast({ title: "Custom price cleared" });
+  };
+
+  const applyBulkMarkup = async () => {
+    if (!currentTier || !selectedProductId) return;
+    const pct = parseFloat(bulkPercent);
+    if (isNaN(pct) || pct < 0) {
+      toast({ title: "Invalid markup", description: "Enter a positive number.", variant: "destructive" });
+      return;
+    }
+    const factor = 1 + pct / 100;
+    const newRetail = { ...retailMap };
+    let count = 0;
+
+    const fill = (cost: any, suggested: any, key: string) => {
+      if (!isNumericCost(cost)) return;
+      if (newRetail[key] != null) return; // skip already-set cells
+      newRetail[key] = suggested != null && suggested > 0 ? suggested : Math.round(cost * factor);
+      count++;
+    };
+
+    if (hasBands && currentTier.mileageBands) {
+      currentTier.mileageBands.forEach((band, bIdx) => {
+        currentTier.terms.forEach((_t, tIdx) => {
+          fill(band.values[tIdx], band.suggestedValues?.[tIdx], storageKey(bIdx, -1, tIdx));
+        });
+      });
+      currentTier.rows.forEach((row, rIdx) => {
+        currentTier.terms.forEach((_t, tIdx) => {
+          fill(row.values[tIdx], row.suggestedValues?.[tIdx], storageKey(null, rIdx, tIdx));
+        });
+      });
+    } else {
+      currentTier.rows.forEach((row, rIdx) => {
+        currentTier.terms.forEach((_t, tIdx) => {
+          fill(row.values[tIdx], row.suggestedValues?.[tIdx], storageKey(null, rIdx, tIdx));
+        });
+      });
+    }
+
+    await persistRetail(selectedProductId, newRetail);
+    toast({ title: "Bulk markup applied", description: `Filled ${count} empty cell${count !== 1 ? "s" : ""} with suggested retail.` });
+  };
 
   const handleToggleConfidentiality = async (enabled: boolean) => {
     setConfidentialityEnabled(enabled);
@@ -231,109 +475,109 @@ export default function ConfigurationPage() {
       }
     }
     toast({
-      title: enabled ? "Confidentiality Pricing Enabled" : "Confidentiality Pricing Disabled",
-      description: enabled ? "Retail pricing is now active for customers." : "Showing dealer internal cost.",
+      title: enabled ? "Customer-facing retail enabled" : "Customer-facing retail disabled",
     });
   };
 
-  const getRetailPrice = (productId: string, tier: FlatTier, index: number): number | null => {
-    const config = pricingConfigs[productId];
-    if (!config?.retail_price) return null;
-    const key = tierKey(tier, index);
-    return (config.retail_price as Record<string, number>)[key] ?? null;
+  // ── Matrix rows for current tier/band ──
+  type MatrixRow = {
+    label: string; isBase: boolean; rowIdx: number; bandIdx: number | null;
+    values: (number | string)[]; suggestedValues?: number[];
   };
 
-  const getMarkup = (cost: number, retail: number | null): string => {
-    if (!retail || retail <= 0 || cost <= 0) return "—";
-    const pct = ((retail - cost) / cost) * 100;
-    return `${pct.toFixed(1)}%`;
-  };
-
-  const handleSaveTierPrice = async (productId: string, tier: FlatTier, index: number) => {
-    if (!dealershipId) return;
-    const key = tierKey(tier, index);
-    const priceStr = editingTiers[key];
-    if (!priceStr) return;
-
-    setSaving((prev) => ({ ...prev, [key]: true }));
-    const price = parseFloat(priceStr);
-    const existing = pricingConfigs[productId];
-    const newRetailPrice = { ...(existing?.retail_price || {}), [key]: price };
-
-    if (existing) {
-      await supabase
-        .from("dealership_product_pricing")
-        .update({ retail_price: newRetailPrice, confidentiality_enabled: confidentialityEnabled })
-        .eq("dealership_id", dealershipId)
-        .eq("product_id", productId);
+  const matrixRows: MatrixRow[] = [];
+  if (currentTier) {
+    if (hasBands && currentTier.mileageBands) {
+      const band = currentTier.mileageBands[activeBand];
+      if (band) {
+        matrixRows.push({ label: "Base Price", isBase: true, rowIdx: -1, bandIdx: activeBand, values: band.values, suggestedValues: band.suggestedValues });
+      }
+      currentTier.rows.forEach((r, idx) => {
+        matrixRows.push({ label: r.label, isBase: false, rowIdx: idx, bandIdx: null, values: r.values, suggestedValues: r.suggestedValues });
+      });
     } else {
-      await supabase.from("dealership_product_pricing").insert({
-        dealership_id: dealershipId,
-        product_id: productId,
-        retail_price: newRetailPrice,
-        confidentiality_enabled: confidentialityEnabled,
+      currentTier.rows.forEach((r, idx) => {
+        matrixRows.push({ label: r.label, isBase: r.label === "Base Price", rowIdx: idx, bandIdx: null, values: r.values, suggestedValues: r.suggestedValues });
       });
     }
+  }
 
-    setPricingConfigs((prev) => ({
-      ...prev,
-      [productId]: { product_id: productId, retail_price: newRetailPrice, confidentiality_enabled: confidentialityEnabled },
-    }));
-    setEditingTiers((prev) => { const n = { ...prev }; delete n[key]; return n; });
-    setSaving((prev) => ({ ...prev, [key]: false }));
-    toast({ title: "Price Saved" });
-  };
+  // ── Cell renderer ──
+  const renderCell = (mr: MatrixRow, termIdx: number) => {
+    const raw = mr.values[termIdx];
+    const key = cellKey(activeTier, mr.bandIdx, mr.rowIdx, termIdx);
+    const customRetail = retailMap[key];
 
-  const handleEditAll = useCallback(() => {
-    if (!selectedProductData) return;
-    const newEditing: Record<string, string> = {};
-    tiers.forEach((tier, i) => {
-      const key = tierKey(tier, i);
-      const customRetail = getRetailPrice(selectedProductData.id, tier, i);
-      newEditing[key] = customRetail?.toString() || tier.suggestedRetail.toString();
-    });
-    setEditingTiers(newEditing);
-    setEditAllMode(true);
-  }, [selectedProductData, tiers, pricingConfigs]);
-
-  const handleSaveAll = async () => {
-    if (!selectedProductData || !dealershipId) return;
-    setSaving((prev) => ({ ...prev, __all: true }));
-
-    const existing = pricingConfigs[selectedProductData.id];
-    const newRetailPrice = { ...(existing?.retail_price || {}) };
-
-    tiers.forEach((tier, i) => {
-      const key = tierKey(tier, i);
-      if (editingTiers[key]) newRetailPrice[key] = parseFloat(editingTiers[key]);
-    });
-
-    if (existing) {
-      await supabase
-        .from("dealership_product_pricing")
-        .update({ retail_price: newRetailPrice, confidentiality_enabled: confidentialityEnabled })
-        .eq("dealership_id", dealershipId)
-        .eq("product_id", selectedProductData.id);
-    } else {
-      await supabase.from("dealership_product_pricing").insert({
-        dealership_id: dealershipId,
-        product_id: selectedProductData.id,
-        retail_price: newRetailPrice,
-        confidentiality_enabled: confidentialityEnabled,
-      });
+    if (isNA(raw)) return <span className="text-muted-foreground/40 text-sm">—</span>;
+    if (isIncluded(raw)) {
+      return (
+        <Badge className="bg-green-100 text-green-700 hover:bg-green-100 text-[10px]">Included</Badge>
+      );
     }
+    if (!isNumericCost(raw)) return <span className="text-sm">{String(raw)}</span>;
 
-    setPricingConfigs((prev) => ({
-      ...prev,
-      [selectedProductData.id]: { product_id: selectedProductData.id, retail_price: newRetailPrice, confidentiality_enabled: confidentialityEnabled },
-    }));
-    setEditingTiers({});
-    setEditAllMode(false);
-    setSaving((prev) => ({ ...prev, __all: false }));
-    toast({ title: "All Prices Saved", description: `Updated ${tiers.length} pricing tiers.` });
+    const cost = raw as number;
+    const defaultSuggested = mr.suggestedValues?.[termIdx];
+    const suggested = customRetail ?? (defaultSuggested != null && defaultSuggested > 0 ? defaultSuggested : Math.round(cost * 1.4));
+    const hasCustom = customRetail != null;
+    const markupPct = cost > 0 ? ((suggested - cost) / cost) * 100 : 0;
+    const isEditing = editingCell === key;
+
+    return (
+      <div className="flex flex-col gap-1 min-w-[130px]">
+        <span className="text-[11px] text-muted-foreground">Cost {fmt(cost)}</span>
+        {isEditing ? (
+          <div className="flex items-center gap-1">
+            <div className="relative">
+              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+              <Input
+                type="number"
+                className="w-24 h-7 pl-5 text-xs"
+                value={draftValue}
+                autoFocus
+                onChange={(e) => setDraftValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { const n = parseFloat(draftValue); if (!isNaN(n)) saveCell(key, n); }
+                  else if (e.key === "Escape") setEditingCell(null);
+                }}
+              />
+            </div>
+            <Button size="icon" variant="ghost" className="h-6 w-6" disabled={savingKey === key}
+              onClick={() => { const n = parseFloat(draftValue); if (!isNaN(n)) saveCell(key, n); }}>
+              <Check className="w-3.5 h-3.5 text-green-600" />
+            </Button>
+            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setEditingCell(null)}>
+              <X className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className={cn("text-sm font-semibold", hasCustom ? "text-primary" : "text-muted-foreground/60 italic")}>
+              {fmt(suggested)}
+            </span>
+            <Badge
+              variant={hasCustom ? "default" : "secondary"}
+              className={cn("text-[9px] px-1 py-0 h-4", hasCustom && "bg-green-100 text-green-700 hover:bg-green-100")}
+            >
+              {markupPct >= 0 ? "+" : ""}{markupPct.toFixed(0)}%
+            </Badge>
+            {isAdmin && (
+              <Button size="icon" variant="ghost" className="h-6 w-6 opacity-50 hover:opacity-100"
+                onClick={() => { setEditingCell(key); setDraftValue(suggested.toString()); }}>
+                <Pencil className="w-3 h-3" />
+              </Button>
+            )}
+            {isAdmin && hasCustom && (
+              <Button size="icon" variant="ghost" className="h-6 w-6 opacity-30 hover:opacity-100"
+                onClick={() => clearCell(key)} title="Clear custom price">
+                <X className="w-3 h-3" />
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+    );
   };
-
-  const handleCancelAll = () => { setEditingTiers({}); setEditAllMode(false); };
 
   if (dLoading || loading) {
     return (
@@ -347,9 +591,9 @@ export default function ConfigurationPage() {
 
   return (
     <DashboardLayout navItems={dealershipNavItems} title="Configuration">
-      <div className="space-y-6 max-w-[1400px] mx-auto">
+      <div className="space-y-5 max-w-[1600px] mx-auto">
 
-        {/* Header card */}
+        {/* Header */}
         <Card className="bg-gradient-to-r from-primary/10 to-primary/5 border-primary/20">
           <CardContent className="py-5 px-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -359,9 +603,7 @@ export default function ConfigurationPage() {
                 </div>
                 <div>
                   <h2 className="text-lg font-bold">Dealer Pricing Configuration</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Set your retail prices for each product. Customers will see these prices on quotes.
-                  </p>
+                  <p className="text-sm text-muted-foreground">Mark up dealer cost to your retail price for every base term and add-on.</p>
                 </div>
               </div>
               {isAdmin && (
@@ -374,224 +616,340 @@ export default function ConfigurationPage() {
           </CardContent>
         </Card>
 
-        {/* Search & Filter */}
-        <div className="flex flex-col sm:flex-row gap-3">
+        {/* Search + provider switcher */}
+        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search products..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+            <Input
+              placeholder={view === "providers" ? "Search providers..." : `Search plans in ${providers[activeProviderId || ""] || ""}...`}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
           </div>
-          <Select value={providerFilter} onValueChange={setProviderFilter}>
-            <SelectTrigger className="w-full sm:w-[200px]">
-              <SelectValue placeholder="All Providers" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Providers</SelectItem>
-              {Object.entries(providers).map(([id, name]) => (
-                <SelectItem key={id} value={id}>{name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {view === "plans" && (
+            <Select value={activeProviderId || ""} onValueChange={(v) => { setActiveProviderId(v); setSelectedProductId(null); setSearch(""); }}>
+              <SelectTrigger className="w-full sm:w-[240px]">
+                <SelectValue placeholder="Switch provider" />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(providers).map(([id, name]) => (
+                  <SelectItem key={id} value={id}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
-        {/* Two-panel layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
+        {/* Breadcrumb */}
+        <nav className="flex items-center gap-1.5 text-sm flex-wrap">
+          <button
+            onClick={() => { setView("providers"); setActiveProviderId(null); setSelectedProductId(null); setSearch(""); }}
+            className={cn("px-2 py-1 rounded-md hover:bg-muted transition-colors", view === "providers" ? "font-semibold" : "text-muted-foreground")}
+          >
+            Providers
+          </button>
+          {view === "plans" && activeProviderId && (
+            <>
+              <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" />
+              <button
+                onClick={() => setSelectedProductId(null)}
+                className={cn("px-2 py-1 rounded-md hover:bg-muted transition-colors", !selectedProductId ? "font-semibold" : "text-muted-foreground")}
+              >
+                {providers[activeProviderId] || "Provider"}
+              </button>
+            </>
+          )}
+          {selectedProduct && (
+            <>
+              <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" />
+              <span className="px-2 py-1 font-semibold">{selectedProduct.name}</span>
+            </>
+          )}
+        </nav>
 
-          {/* Left: Product list */}
+        <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6">
+
+          {/* ── Left panel ── */}
           <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">
-              Products ({filteredProducts.length})
-            </p>
-            <div className="space-y-1 max-h-[calc(100vh-320px)] overflow-y-auto pr-1">
-              {filteredProducts.map((p) => {
-                const flatTiers = extractFlatTiers(p.pricing);
-                const minPrice = flatTiers.length > 0 ? Math.min(...flatTiers.map((t) => t.dealerCost)) : 0;
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => { setSelectedProduct(p.id); setEditingTiers({}); setEditAllMode(false); }}
-                    className={cn(
-                      "w-full text-left rounded-xl px-4 py-3 transition-all duration-150 hover:bg-muted/60",
-                      selectedProduct === p.id
-                        ? "bg-primary/10 border border-primary/30 shadow-sm"
-                        : "bg-card border border-transparent"
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-sm truncate">{displayName(p)}</p>
-                        <p className="text-xs text-muted-foreground truncate">{typeLabel(p.type)}</p>
-                      </div>
-                      <ChevronRight className={cn("w-4 h-4 shrink-0 transition-colors", selectedProduct === p.id ? "text-primary" : "text-muted-foreground/40")} />
+            {view === "providers" ? (
+              <>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">
+                  Providers ({providerList.length})
+                </p>
+                <div className="space-y-1.5 max-h-[calc(100vh-360px)] overflow-y-auto pr-1">
+                  {providerList.map((g) => {
+                    const typeCounts: Record<string, number> = {};
+                    g.plans.forEach((p) => {
+                      const lbl = typeLabel(p.type);
+                      typeCounts[lbl] = (typeCounts[lbl] || 0) + 1;
+                    });
+                    return (
+                      <button
+                        key={g.id}
+                        onClick={() => { setActiveProviderId(g.id); setView("plans"); setSelectedProductId(null); setSearch(""); }}
+                        className="w-full text-left rounded-xl px-4 py-3.5 transition-all hover:bg-muted/60 bg-card border border-transparent hover:border-primary/20 hover:shadow-sm"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                            <Building2 className="w-5 h-5 text-primary" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-sm truncate">{g.name}</p>
+                            <p className="text-xs text-muted-foreground">{g.plans.length} plan{g.plans.length !== 1 ? "s" : ""}</p>
+                          </div>
+                          <ChevronRight className="w-4 h-4 shrink-0 text-muted-foreground/40" />
+                        </div>
+                        <div className="flex flex-wrap gap-1 mt-2 ml-13">
+                          {Object.entries(typeCounts).map(([lbl, count]) => (
+                            <Badge key={lbl} variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">{count} {lbl}</Badge>
+                          ))}
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {providerList.length === 0 && (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <Building2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                      <p className="text-sm">No providers found.</p>
                     </div>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{providers[p.provider_id] || "Unknown"}</Badge>
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">{flatTiers.length} tiers</Badge>
-                      {minPrice > 0 && <span className="text-[10px] text-muted-foreground">from {fmt(minPrice)}</span>}
-                    </div>
-                  </button>
-                );
-              })}
-              {filteredProducts.length === 0 && (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Package className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                  <p className="text-sm">No products found.</p>
+                  )}
                 </div>
-              )}
-            </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-between px-1">
+                  <button
+                    onClick={() => { setView("providers"); setSearch(""); }}
+                    className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    All Providers
+                  </button>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {plansForProvider.length} plan{plansForProvider.length !== 1 ? "s" : ""}
+                  </p>
+                </div>
+                <div className="space-y-1 max-h-[calc(100vh-360px)] overflow-y-auto pr-1">
+                  {plansForProvider.map((p) => {
+                    const s = extractStructured(p.pricing);
+                    const isSelected = selectedProductId === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => setSelectedProductId(p.id)}
+                        className={cn(
+                          "w-full text-left rounded-xl px-4 py-3 transition-all hover:bg-muted/60",
+                          isSelected ? "bg-primary/10 border border-primary/30 shadow-sm" : "bg-card border border-transparent"
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0 flex items-center gap-2">
+                            <Shield className={cn("w-4 h-4 shrink-0", isSelected ? "text-primary" : "text-muted-foreground/60")} />
+                            <div className="min-w-0">
+                              <p className="font-semibold text-sm truncate">{p.name}</p>
+                              <p className="text-xs text-muted-foreground truncate">{typeLabel(p.type)}</p>
+                            </div>
+                          </div>
+                          <ChevronRight className={cn("w-4 h-4 shrink-0", isSelected ? "text-primary" : "text-muted-foreground/40")} />
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 mt-1.5 pl-6">
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                            {s.tiers.length} tier{s.tiers.length !== 1 ? "s" : ""}
+                          </Badge>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {plansForProvider.length === 0 && (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <Package className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                      <p className="text-sm">No plans found.</p>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
-          {/* Right: Pricing detail */}
-          <div className="space-y-5">
-            {!selectedProductData ? (
+          {/* ── Right panel ── */}
+          <div className="space-y-5 min-w-0">
+            {!selectedProduct ? (
               <Card className="border-dashed">
                 <CardContent className="py-16 text-center">
                   <Package className="w-12 h-12 mx-auto mb-3 text-muted-foreground/30" />
-                  <p className="text-muted-foreground font-medium">Select a product to configure pricing</p>
+                  <p className="text-muted-foreground font-medium">
+                    {view === "providers" ? "Select a provider, then a plan to configure pricing" : "Select a plan to configure pricing"}
+                  </p>
                 </CardContent>
               </Card>
             ) : (
               <>
-                {/* Product header */}
+                {/* Plan header */}
                 <Card>
                   <CardContent className="py-5 px-6">
-                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                      <div className="flex items-start gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                          <DollarSign className="w-6 h-6 text-primary" />
-                        </div>
-                        <div>
-                          <h3 className="text-xl font-bold">{displayName(selectedProductData)}</h3>
-                          <p className="text-sm text-muted-foreground mt-0.5">
-                            {typeLabel(selectedProductData.type)} · {providers[selectedProductData.provider_id] || "Unknown Provider"}
-                          </p>
-                          {selectedProductData.tier && (
-                            <Badge variant="outline" className="mt-1.5">Tier: {selectedProductData.tier}</Badge>
-                          )}
-                          {selectedProductData.eligibility_rules?.eligibility && (
-                            <Badge variant="outline" className="mt-1.5 ml-1.5 font-normal">
-                              {selectedProductData.eligibility_rules.eligibility}
-                            </Badge>
-                          )}
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                        <DollarSign className="w-6 h-6 text-primary" />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="text-xl font-bold">{selectedProduct.name}</h3>
+                        <p className="text-sm text-muted-foreground mt-0.5">
+                          {typeLabel(selectedProduct.type)} • {providers[selectedProduct.provider_id] || "Unknown Provider"}
+                        </p>
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          {(() => {
+                            const er = selectedProduct.eligibility_rules || {};
+                            const parts: string[] = [];
+                            if (er.maxAge) parts.push(`${er.maxAge} Years or Newer`);
+                            if (er.maxMileage) parts.push(`up to ${Number(er.maxMileage).toLocaleString()} km`);
+                            return parts.length > 0 ? (
+                              <Badge variant="outline" className="font-normal">{parts.join(" and ")}</Badge>
+                            ) : null;
+                          })()}
+                          <Badge variant="outline" className="font-normal">
+                            {structured.tiers.length} tier{structured.tiers.length !== 1 ? "s" : ""}
+                          </Badge>
                         </div>
                       </div>
-                      {isAdmin && tiers.length > 0 && (
-                        <div className="flex items-center gap-2 shrink-0">
-                          {editAllMode ? (
-                            <>
-                              <Button size="sm" variant="ghost" onClick={handleCancelAll}>
-                                <X className="w-4 h-4 mr-1" /> Cancel
-                              </Button>
-                              <Button size="sm" onClick={handleSaveAll} disabled={saving.__all}>
-                                <Check className="w-4 h-4 mr-1" /> Save All
-                              </Button>
-                            </>
-                          ) : (
-                            <Button size="sm" variant="outline" onClick={handleEditAll}>
-                              <Pencil className="w-4 h-4 mr-1" /> Edit All Prices
-                            </Button>
-                          )}
-                        </div>
-                      )}
                     </div>
                   </CardContent>
                 </Card>
 
-                {/* Pricing tiers */}
-                <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                  Pricing Tiers ({tiers.length})
-                </p>
-
-                {tiers.length === 0 ? (
+                {/* Pricing matrix */}
+                {structured.tiers.length === 0 ? (
                   <Card className="border-dashed">
-                    <CardContent className="py-12 text-center text-muted-foreground">
-                      No pricing tiers configured for this product yet.
-                    </CardContent>
+                    <CardContent className="py-12 text-center text-muted-foreground">No pricing configured for this plan yet.</CardContent>
                   </Card>
                 ) : (
-                  <div className="space-y-3">
-                    {tiers.map((tier, i) => {
-                      const key = tierKey(tier, i);
-                      const customRetail = getRetailPrice(selectedProductData.id, tier, i);
-                      const isEditing = key in editingTiers;
-                      const markup = getMarkup(tier.dealerCost, customRetail ?? tier.suggestedRetail);
+                  <Card>
+                    <CardContent className="py-4 px-4 sm:px-6 space-y-4">
 
-                      return (
-                        <Card key={i} className={cn("transition-all duration-150", isEditing && "ring-2 ring-primary/30 border-primary/20")}>
-                          <CardContent className="py-4 px-5">
-                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-x-6 gap-y-3 items-center">
-                              <div>
-                                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Term</p>
-                                <p className="font-semibold text-sm">{tier.termLabel}</p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Mileage</p>
-                                <p className="font-medium text-sm">{tier.km}</p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Dealer Cost</p>
-                                <p className="font-bold text-sm">{fmt(tier.dealerCost)}</p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Suggested Retail</p>
-                                <p className="text-sm text-muted-foreground">{fmt(tier.suggestedRetail)}</p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Your Retail Price</p>
-                                {isEditing ? (
-                                  <div className="flex items-center gap-2">
-                                    <div className="relative">
-                                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
-                                      <Input
-                                        type="number"
-                                        className="w-28 h-8 pl-6 text-sm"
-                                        placeholder="0.00"
-                                        value={editingTiers[key]}
-                                        onChange={(e) => setEditingTiers((prev) => ({ ...prev, [key]: e.target.value }))}
-                                        autoFocus={!editAllMode}
-                                      />
-                                    </div>
-                                    {!editAllMode && (
-                                      <>
-                                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleSaveTierPrice(selectedProductData.id, tier, i)} disabled={saving[key]}>
-                                          <Check className="w-4 h-4 text-green-600" />
-                                        </Button>
-                                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setEditingTiers((prev) => { const n = { ...prev }; delete n[key]; return n; })}>
-                                          <X className="w-4 h-4 text-muted-foreground" />
-                                        </Button>
-                                      </>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center gap-2">
-                                    {customRetail != null ? (
-                                      <span className="font-bold text-sm text-primary">{fmt(customRetail)}</span>
-                                    ) : (
-                                      <span className="text-sm text-muted-foreground/50 italic">Not set</span>
-                                    )}
-                                    {isAdmin && !editAllMode && (
-                                      <Button size="icon" variant="ghost" className="h-7 w-7"
-                                        onClick={() => setEditingTiers((prev) => ({ ...prev, [key]: customRetail?.toString() || tier.suggestedRetail.toString() }))}>
-                                        <Pencil className="w-3.5 h-3.5" />
-                                      </Button>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                              <div>
-                                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Markup</p>
-                                <Badge
-                                  variant={markup !== "—" ? "default" : "secondary"}
-                                  className={cn("text-xs", markup !== "—" && "bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400")}
-                                >
-                                  {markup}
+                      {/* Tier (per-claim) tabs */}
+                      <Tabs
+                        value={activeTier.toString()}
+                        onValueChange={(v) => { setActiveTier(parseInt(v, 10)); setActiveBand(0); setEditingCell(null); }}
+                      >
+                        <TabsList className="flex-wrap h-auto gap-1">
+                          {structured.tiers.map((t, i) => (
+                            <TabsTrigger key={i} value={i.toString()} className="text-xs sm:text-sm">
+                              {t.label}
+                            </TabsTrigger>
+                          ))}
+                        </TabsList>
+                      </Tabs>
+
+                      {currentTier && (
+                        <>
+                          {/* Tier metadata row */}
+                          <div className="flex flex-wrap items-center gap-2 justify-between">
+                            <div className="flex flex-wrap gap-2">
+                              {currentTier.perClaimAmount != null && (
+                                <Badge variant="secondary">Per Claim: {fmt(currentTier.perClaimAmount)}</Badge>
+                              )}
+                              {currentTier.deductible != null && (
+                                <Badge variant="secondary">
+                                  Deductible: {currentTier.deductible === 0 ? "None" : fmt(currentTier.deductible)}
                                 </Badge>
-                              </div>
+                              )}
+                              <Badge variant="outline">{currentTier.terms.length} term{currentTier.terms.length !== 1 ? "s" : ""}</Badge>
+                              {hasBands && (
+                                <Badge variant="outline">{currentTier.mileageBands!.length} mileage bands</Badge>
+                              )}
                             </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                  </div>
+
+                            {/* Bulk markup */}
+                            {isAdmin && (
+                              <div className="flex items-center gap-2 bg-muted/40 rounded-lg px-3 py-1.5 border">
+                                <Zap className="w-3.5 h-3.5 text-primary shrink-0" />
+                                <span className="text-xs font-medium whitespace-nowrap">Bulk markup</span>
+                                <div className="relative">
+                                  <Input
+                                    type="number"
+                                    value={bulkPercent}
+                                    onChange={(e) => setBulkPercent(e.target.value)}
+                                    className="w-16 h-7 pr-5 text-xs"
+                                  />
+                                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                                </div>
+                                <Button size="sm" variant="outline" className="h-7 text-xs whitespace-nowrap" onClick={applyBulkMarkup}>
+                                  Apply to empty
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Mileage band tabs */}
+                          {hasBands && currentTier.mileageBands && (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mileage Band</span>
+                              <Tabs
+                                value={activeBand.toString()}
+                                onValueChange={(v) => { setActiveBand(parseInt(v, 10)); setEditingCell(null); }}
+                              >
+                                <TabsList className="flex-wrap h-auto">
+                                  {currentTier.mileageBands.map((b, i) => (
+                                    <TabsTrigger key={i} value={i.toString()} className="text-xs">{b.label}</TabsTrigger>
+                                  ))}
+                                </TabsList>
+                              </Tabs>
+                            </div>
+                          )}
+
+                          {/* Pricing matrix table */}
+                          <div className="overflow-x-auto border rounded-lg">
+                            <table className="w-full text-sm">
+                              <thead className="bg-muted/40">
+                                <tr>
+                                  <th className="text-left px-3 py-2.5 font-semibold sticky left-0 bg-muted/40 z-10 min-w-[180px]">
+                                    Coverage / Add-on
+                                  </th>
+                                  {currentTier.terms.map((term, i) => (
+                                    <th key={i} className="text-left px-3 py-2.5 font-semibold whitespace-nowrap min-w-[150px]">
+                                      <div className="text-xs">{term.label}</div>
+                                      {term.km && <div className="text-[10px] text-muted-foreground font-normal">{term.km}</div>}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {matrixRows.map((mr, rIdx) => (
+                                  <tr
+                                    key={`${mr.rowIdx}-${mr.bandIdx ?? "x"}`}
+                                    className={cn(
+                                      "border-t",
+                                      mr.isBase && "bg-primary/5",
+                                      rIdx % 2 === 1 && !mr.isBase && "bg-muted/20"
+                                    )}
+                                  >
+                                    <td className="px-3 py-2.5 font-medium sticky left-0 bg-inherit z-10">
+                                      <div className="flex items-center gap-2">
+                                        {mr.isBase && (
+                                          <Badge className="bg-primary/15 text-primary hover:bg-primary/15 text-[9px] px-1 py-0 h-4">
+                                            BASE
+                                          </Badge>
+                                        )}
+                                        <span className={cn(mr.isBase && "font-bold")}>{mr.label}</span>
+                                      </div>
+                                    </td>
+                                    {currentTier.terms.map((_t, tIdx) => (
+                                      <td key={tIdx} className="px-3 py-2.5 align-top">
+                                        {renderCell(mr, tIdx)}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          <p className="text-xs text-muted-foreground">
+                            Click the pencil on any cell to set a custom retail price. Grey italic values show suggested retail — customers only see your saved price.
+                          </p>
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
                 )}
               </>
             )}
