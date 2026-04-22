@@ -46,13 +46,6 @@ const typeLabel = (type: string) => {
   return map[type] || type;
 };
 
-const typeColor = (type: string) => {
-  if (["VSC", "EXTENDED_WARRANTY", "warranty"].includes(type))
-    return "bg-primary/10 text-primary";
-  if (["Tire & Rim", "TIRE_RIM", "tire_rim"].includes(type))
-    return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
-  return "bg-muted text-muted-foreground";
-};
 
 const getMinPrice = (pricing: any): number | null => {
   if (!pricing) return null;

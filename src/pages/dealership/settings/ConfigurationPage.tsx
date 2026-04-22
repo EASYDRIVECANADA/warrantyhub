@@ -4,7 +4,7 @@ import { Card, CardContent } from "../../../components/ui/card";
 import { Input } from "../../../components/ui/input";
 import { Button } from "../../../components/ui/button";
 import { Switch } from "../../../components/ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "../../../components/ui/select";
 import { Badge } from "../../../components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "../../../components/ui/tabs";
 import { supabase } from "../../../integrations/supabase/client";

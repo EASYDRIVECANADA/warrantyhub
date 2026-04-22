@@ -199,14 +199,12 @@ export default function ProductCoveragePage() {
   const minCost = allCosts.length ? Math.min(...allCosts) : null;
 
   const deductible = pr.deductible;
-  const claimLimit = pr.claimLimit || pr.perClaimLimit || pr.claimRange || activeTier || null;
 
   const eligibilityText = [
     er.maxAge ? `Vehicles up to ${er.maxAge} years old` : null,
     er.maxMileage ? `Up to ${Number(er.maxMileage).toLocaleString()} km` : null,
   ].filter(Boolean).join(" • ");
 
-  const typeLabel = TYPE_LABELS[product.type] || product.type;
 
   const sections = [
     { key: "overview" as const, label: "Overview" },

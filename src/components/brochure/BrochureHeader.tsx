@@ -1,7 +1,6 @@
 import { useLocation, Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
-import { BRAND } from "../../lib/brand";
 import { cn } from "../../lib/utils";
 
 export default function BrochureHeader() {
