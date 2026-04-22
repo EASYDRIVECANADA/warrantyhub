@@ -422,7 +422,7 @@ export default function ConfigurationPage() {
     toast({ title: "Custom price cleared" });
   };
 
-  const applyBulkMarkup = async () => {
+  const applyBulkMarkup = async (overwriteAll = false) => {
     if (!currentTier || !selectedProductId) return;
     const pct = parseFloat(bulkPercent);
     if (isNaN(pct) || pct < 0) {
@@ -430,12 +430,12 @@ export default function ConfigurationPage() {
       return;
     }
     const factor = 1 + pct / 100;
-    const newRetail = { ...retailMap };
+    const newRetail = overwriteAll ? {} : { ...retailMap };
     let count = 0;
 
     const fill = (cost: any, key: string) => {
       if (!isNumericCost(cost)) return;
-      if (newRetail[key] != null) return; // skip already-set cells
+      if (!overwriteAll && newRetail[key] != null) return;
       newRetail[key] = Math.round(cost * factor);
       count++;
     };
@@ -460,7 +460,10 @@ export default function ConfigurationPage() {
     }
 
     await persistRetail(selectedProductId, newRetail);
-    toast({ title: "Bulk markup applied", description: `Filled ${count} empty cell${count !== 1 ? "s" : ""} with +${pct}% markup.` });
+    toast({
+      title: overwriteAll ? "All prices updated" : "Bulk markup applied",
+      description: `${overwriteAll ? "Set" : "Filled"} ${count} cell${count !== 1 ? "s" : ""} to +${pct}% markup.`,
+    });
   };
 
   const handleToggleConfidentiality = async (enabled: boolean) => {
@@ -864,7 +867,7 @@ export default function ConfigurationPage() {
 
                             {/* Bulk markup */}
                             {isAdmin && (
-                              <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-sm">
+                              <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-sm flex-wrap">
                                 <Zap className="w-4 h-4 text-primary shrink-0" />
                                 <span className="text-sm font-semibold text-slate-700 whitespace-nowrap">Bulk markup</span>
                                 <div className="flex items-center gap-1.5">
@@ -878,8 +881,11 @@ export default function ConfigurationPage() {
                                   />
                                   <span className="text-sm font-bold text-slate-600">%</span>
                                 </div>
-                                <Button size="sm" variant="default" className="h-8 text-xs px-3 whitespace-nowrap bg-primary hover:bg-primary/90" onClick={applyBulkMarkup}>
-                                  Apply to empty
+                                <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap" onClick={() => applyBulkMarkup(false)}>
+                                  Fill empty
+                                </Button>
+                                <Button size="sm" variant="default" className="h-8 text-xs px-3 whitespace-nowrap bg-primary hover:bg-primary/90" onClick={() => applyBulkMarkup(true)}>
+                                  Apply to all
                                 </Button>
                               </div>
                             )}
