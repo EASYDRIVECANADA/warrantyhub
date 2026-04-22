@@ -5,8 +5,7 @@ import { Input } from "../../components/ui/input";
 import { Button } from "../../components/ui/button";
 import { Label } from "../../components/ui/label";
 import { Badge } from "../../components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
-import { Search, RotateCcw, Car, Shield, Check, Loader2, AlertCircle, LayoutGrid, FileText, DollarSign, ChevronRight } from "lucide-react";
+import { Search, RotateCcw, Car, Shield, Check, Loader2, AlertCircle, LayoutGrid, FileText, DollarSign } from "lucide-react";
 import { supabase } from "../../integrations/supabase/client";
 import { useDealership } from "../../hooks/useDealership";
 
@@ -72,10 +71,27 @@ const getMinPrice = (pricing: any): number | null => {
 };
 
 
-const getBenefits = (pricing: any): string[] => {
+const getMaxPrice = (pricing: any): number | null => {
+  if (!pricing) return null;
+  const retails: number[] = [];
+  for (const r of pricing.rows || []) {
+    if (typeof r.dealerCost === "number" && r.dealerCost > 0) retails.push(r.dealerCost);
+    if (typeof r.dealer_cost === "number" && r.dealer_cost > 0) retails.push(r.dealer_cost);
+  }
+  return retails.length > 0 ? Math.max(...retails) : null;
+};
+
+const getUniqueTierNames = (pricing: any): string[] => {
   if (!pricing) return [];
-  const raw = pricing.benefits || [];
-  return raw.map((b: any) => typeof b === "string" ? b : b.name).filter(Boolean);
+  const seen = new Set<string>();
+  const chips: string[] = [];
+  for (const r of pricing.rows || []) {
+    const vc: string = (r.vehicleClass ?? r.vehicle_class ?? "").trim();
+    // Extract short name: "Bronze - $750 Per Claim" → "Bronze"
+    const short = vc.split(" - ")[0].trim();
+    if (short && !seen.has(short)) { seen.add(short); chips.push(short); }
+  }
+  return chips;
 };
 
 /**
@@ -551,113 +567,128 @@ export default function FindProductsPage() {
                 const useCustomRetail = config?.confidentiality_enabled && config?.retail_price && Object.keys(config.retail_price).length > 0;
                 const minCustomRetail = useCustomRetail ? Math.min(...Object.values(config.retail_price).filter(v => v > 0)) : null;
                 const minPrice = minCustomRetail ?? getMinPrice(product.pricing_json);
-                const benefits = getBenefits(product.pricing_json);
+                const maxPrice = getMaxPrice(product.pricing_json);
+                const tierChips = getUniqueTierNames(product.pricing_json);
                 const cd = product.coverage_details_json || {};
-                const highlights: string[] = cd.highlights || cd.included_coverage || [];
                 const categories: Array<{ name: string; parts: string[] }> = cd.categories || [];
-                const description: string = cd.description || "";
+                const er = product.eligibility_rules || {};
+                const eligParts: string[] = [];
+                if (er.maxAge) eligParts.push(`up to ${er.maxAge} yrs`);
+                if (er.maxMileage) eligParts.push(`up to ${Number(er.maxMileage).toLocaleString()} km`);
+                const eligText = eligParts.length ? eligParts.join(", ") : "";
+                const isTireRim = ["Tire & Rim", "TIRE_RIM", "tire_rim"].includes(product.product_type);
+                const totalCoverage = categories.length;
+                const visibleCats = categories.slice(0, 5);
+                const hiddenCount = totalCoverage - 5;
 
                 return (
-                  <Card key={product.id} className="group hover:shadow-lg transition-all hover:border-primary/30 flex flex-col">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <Badge className={`text-xs mb-2 ${typeColor(product.product_type)}`}>
-                            {typeLabel(product.product_type)}
-                          </Badge>
-                          <CardTitle className="text-base leading-snug">{product.name}</CardTitle>
-                          <p className="text-xs text-muted-foreground mt-1">{product.providerName}</p>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4 flex-1 flex flex-col">
-                      {/* Coverage categories or highlights */}
-                      {categories.length > 0 ? (
-                        <ul className="space-y-1.5">
-                          {categories.slice(0, 4).map((cat, i) => (
-                            <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                              <Check className="h-3 w-3 text-primary mt-0.5 shrink-0" />
-                              <span><strong>{cat.name}</strong>{cat.parts.length > 0 ? ` (${cat.parts.length} components)` : ""}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : highlights.length > 0 ? (
-                        <ul className="space-y-1.5">
-                          {highlights.slice(0, 4).map((h: string, i: number) => (
-                            <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                              <Check className="h-3 w-3 text-primary mt-0.5 shrink-0" />
-                              {h}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : description ? (
-                        <p className="text-xs text-muted-foreground line-clamp-3">{description}</p>
-                      ) : null}
+                  <div key={product.id} className="flex flex-col rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md hover:border-primary/30 transition-all overflow-hidden">
+                    {/* Colorful accent bar */}
+                    <div className={`h-1.5 w-full ${isTireRim ? "bg-gradient-to-r from-teal-500 to-cyan-400" : "bg-gradient-to-r from-primary to-blue-400"}`} />
 
-                      <div className="mt-auto space-y-3">
+                    <div className="p-5 flex flex-col flex-1 gap-3">
+
+                      {/* Badges: provider + tier count or type */}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                          {product.providerName}
+                        </span>
+                        {tierChips.length > 0 ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20">
+                            {tierChips.length} Tier{tierChips.length !== 1 ? "s" : ""}
+                          </span>
+                        ) : isTireRim ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-200">
+                            Tire & Rim
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {/* Plan name + price */}
+                      <div>
+                        <h3 className="font-bold text-slate-900 text-[15px] leading-snug">{product.name}</h3>
                         {minPrice !== null && (
-                          <div className="pt-3 border-t border-border/50">
-                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-                              Price from
-                            </p>
-                            <p className="font-bold text-2xl text-primary">${minPrice.toLocaleString()}</p>
-                          </div>
+                          <p className="text-sm font-bold text-primary mt-0.5">
+                            ${minPrice.toLocaleString()}
+                            {maxPrice !== null && maxPrice !== minPrice && ` – $${maxPrice.toLocaleString()}`}
+                          </p>
                         )}
-
-                        {benefits.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {benefits.slice(0, 3).map((b: string, i: number) => (
-                              <Badge key={i} variant="secondary" className="text-[10px]">{b}</Badge>
-                            ))}
-                            {benefits.length > 3 && (
-                              <Badge variant="secondary" className="text-[10px]">+{benefits.length - 3} more</Badge>
-                            )}
-                          </div>
-                        )}
-
-                        {product.eligibility_rules?.maxAge && (
-                          <Badge variant="outline" className="text-xs w-full justify-center">
-                            Vehicles up to {product.eligibility_rules.maxAge} years old
-                          </Badge>
-                        )}
-                        {product.eligibility_rules?.maxMileage && (
-                          <Badge variant="outline" className="text-xs w-full justify-center">
-                            Up to {Number(product.eligibility_rules.maxMileage).toLocaleString()} km
-                          </Badge>
-                        )}
-                        {product.product_type === "GAP" && loanAmount && (
-                          <div className="pt-2 border-t border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 rounded-lg px-3 py-2 text-xs text-blue-700 dark:text-blue-300">
-                            Loan amount: <strong>${Number(loanAmount).toLocaleString()}</strong>
-                          </div>
-                        )}
-
-                        {/* Action buttons */}
-                        <div className="flex gap-2 pt-1">
-                          {["Tire & Rim", "TIRE_RIM", "tire_rim"].includes(product.product_type) ? (
-                            <button
-                              onClick={() => navigate("/dealership/tire-rim")}
-                              className="flex-1 flex items-center justify-center gap-1 text-xs font-medium text-primary hover:underline py-1.5"
-                            >
-                              View Plans <ChevronRight className="w-3 h-3" />
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => navigate(`/dealership/coverage/${product.id}`)}
-                              className="flex-1 flex items-center justify-center gap-1 text-xs font-medium text-primary hover:underline py-1.5"
-                            >
-                              View Coverage <ChevronRight className="w-3 h-3" />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => navigate(`/dealership/contracts/new?productId=${product.id}`)}
-                            className="flex-1 flex items-center justify-center gap-1 text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 rounded-md py-1.5 transition-colors"
-                          >
-                            <FileText className="w-3 h-3" /> Quote
-                          </button>
-                        </div>
                       </div>
-                    </CardContent>
-                  </Card>
+
+                      {/* Tier chips (Bronze, Gold, etc.) */}
+                      {tierChips.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {tierChips.slice(0, 4).map((chip) => (
+                            <span key={chip} className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                              {chip}
+                            </span>
+                          ))}
+                          {tierChips.length > 4 && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-500">
+                              +{tierChips.length - 4}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Eligibility box */}
+                      {eligText && (
+                        <div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+                          <p className="text-xs text-slate-500">{eligText.charAt(0).toUpperCase() + eligText.slice(1)}</p>
+                        </div>
+                      )}
+
+                      {/* Coverage count + list */}
+                      {totalCoverage > 0 && (
+                        <>
+                          <div className="flex items-center gap-1.5">
+                            <Shield className="w-3.5 h-3.5 text-primary shrink-0" />
+                            <span className="text-xs font-semibold text-slate-800">
+                              <strong>{totalCoverage}</strong> item{totalCoverage !== 1 ? "s" : ""} covered
+                            </span>
+                          </div>
+                          <ul className="space-y-1">
+                            {visibleCats.map((cat) => (
+                              <li key={cat.name} className="flex items-center gap-2 text-xs text-slate-600">
+                                <Check className="w-3.5 h-3.5 text-primary shrink-0" />
+                                <span className="font-medium text-slate-700">{cat.name}</span>
+                              </li>
+                            ))}
+                            {hiddenCount > 0 && (
+                              <li className="text-xs text-primary font-medium pl-5">
+                                +{hiddenCount} more
+                              </li>
+                            )}
+                          </ul>
+                        </>
+                      )}
+
+                      {/* $0 Premium Fees */}
+                      <div className="flex">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                          $0 Premium Fees
+                        </span>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="mt-auto pt-1 flex gap-2">
+                        <button
+                          onClick={() => isTireRim ? navigate("/dealership/tire-rim") : navigate(`/dealership/coverage/${product.id}`)}
+                          className="flex-1 py-2.5 text-xs font-bold rounded-xl bg-primary hover:bg-primary/90 text-white transition-colors shadow-sm"
+                        >
+                          View Details →
+                        </button>
+                        <button
+                          onClick={() => navigate(`/dealership/contracts/new?productId=${product.id}`)}
+                          className="flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold rounded-xl border border-slate-300 text-slate-600 hover:border-primary/40 hover:text-primary bg-white transition-colors"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          Quote
+                        </button>
+                      </div>
+
+                    </div>
+                  </div>
                 );
               })}
             </div>

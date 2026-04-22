@@ -83,6 +83,7 @@ export default function ProductCoveragePage() {
   const [expandedCategories, setExpandedCategories] = useState<Set<number>>(new Set());
   const [customPricing, setCustomPricing] = useState<Record<string, number>>({});
   const [confidentialityEnabled, setConfidentialityEnabled] = useState(false);
+  const [selectedTier, setSelectedTier] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) { setNotFound(true); setLoading(false); return; }
@@ -180,15 +181,25 @@ export default function ProductCoveragePage() {
   const powertrainCats = categories.filter(c => isPowertrain(c.name));
   const additionalCats = categories.filter(c => !isPowertrain(c.name));
 
+  // Unique claim tiers (vehicleClass) for the selector buttons
+  const uniqueTiers = [...new Set(pricingRows.map(r => r.vehicleClass).filter(Boolean))] as string[];
+  // Auto-select first tier on load
+  const activeTier = selectedTier ?? (uniqueTiers[0] || null);
+  const tierRows = activeTier ? pricingRows.filter(r => r.vehicleClass === activeTier) : pricingRows;
+
   const allRetails = pricingRows.map(r => r.suggestedRetail).filter(Boolean);
   const minRetail = allRetails.length ? Math.min(...allRetails) : null;
   const maxRetail = allRetails.length ? Math.max(...allRetails) : null;
+
+  const tierRetails = tierRows.map(r => r.suggestedRetail).filter(Boolean);
+  const tierMinRetail = tierRetails.length ? Math.min(...tierRetails) : minRetail;
+  const tierMaxRetail = tierRetails.length ? Math.max(...tierRetails) : maxRetail;
 
   const allCosts = pricingRows.map(r => r.dealerCost).filter(Boolean);
   const minCost = allCosts.length ? Math.min(...allCosts) : null;
 
   const deductible = pr.deductible;
-  const claimLimit = pr.claimLimit || pr.perClaimLimit || pr.claimRange || null;
+  const claimLimit = pr.claimLimit || pr.perClaimLimit || pr.claimRange || activeTier || null;
 
   const eligibilityText = [
     er.maxAge ? `Vehicles up to ${er.maxAge} years old` : null,
@@ -224,45 +235,67 @@ export default function ProductCoveragePage() {
           </Link>
         </Button>
 
-        {/* ── Hero card (dark gradient) ── */}
-        <div className="rounded-xl bg-gradient-to-br from-[hsl(225,80%,15%)] via-[hsl(225,70%,20%)] to-[hsl(225,60%,25%)] text-white p-6 md:p-8">
+        {/* ── Hero card ── */}
+        <div className="rounded-xl bg-gradient-to-br from-[#0f1b3d] via-[#162554] to-[#1a3066] text-white p-6 md:p-8">
           <div className="grid lg:grid-cols-[1fr,auto] gap-8 items-start">
             <div>
               {/* Badges */}
               <div className="flex flex-wrap items-center gap-2 mb-3">
                 {providerName && (
-                  <Badge className="bg-accent/20 text-accent border-accent/30">{providerName}</Badge>
+                  <Badge className="bg-accent/20 text-accent border-accent/30 text-xs">{providerName}</Badge>
                 )}
-                <Badge className="bg-white/10 text-white border-white/20">{typeLabel}</Badge>
+                <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 text-xs">$0 Premium Fees</Badge>
               </div>
 
               {/* Name */}
-              <h1 className="font-display text-2xl md:text-3xl font-bold">{product.name}</h1>
+              <h1 className="font-display text-2xl md:text-3xl font-bold">
+                {activeTier ? `${product.name.replace(" Warranty", "").replace(" Protection", "")} ${activeTier.split(" - ")[0]}` : product.name}
+              </h1>
 
-              {/* Eligibility / description text */}
-              <p className="text-white/50 mt-3 text-sm">
-                {eligibilityText || product.description || ""}
-              </p>
+              {/* Claim tier selector buttons */}
+              {uniqueTiers.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-4">
+                  {uniqueTiers.map((tier) => (
+                    <button
+                      key={tier}
+                      onClick={() => setSelectedTier(tier)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all",
+                        activeTier === tier
+                          ? "bg-accent text-[#0f1b3d] border-accent shadow-md"
+                          : "bg-white/10 text-white/70 border-white/20 hover:bg-white/20 hover:text-white"
+                      )}
+                    >
+                      {tier}
+                    </button>
+                  ))}
+                </div>
+              )}
 
-              {/* Price range */}
-              {minRetail !== null && (
-                <div className="mt-4 flex items-baseline gap-2">
+              {/* Eligibility */}
+              {eligibilityText && (
+                <p className="text-white/50 mt-3 text-sm">{eligibilityText}</p>
+              )}
+
+              {/* Price range — updates per selected tier */}
+              {tierMinRetail !== null && (
+                <div className="mt-3 flex items-baseline gap-2">
                   <span className="text-accent font-display text-2xl font-bold">
-                    ${minRetail.toLocaleString()}
-                    {maxRetail !== null && maxRetail !== minRetail ? ` – $${maxRetail.toLocaleString()}` : ""}
+                    ${tierMinRetail!.toLocaleString()}
+                    {tierMaxRetail !== null && tierMaxRetail !== tierMinRetail ? ` – $${tierMaxRetail!.toLocaleString()}` : ""}
                   </span>
                   <span className="text-white/40 text-sm">starting price range</span>
                 </div>
               )}
               {minCost !== null && (
-                <p className="mt-1 text-sm text-white/50">Dealer cost from ${minCost.toLocaleString()}</p>
+                <p className="mt-0.5 text-sm text-white/40">Dealer cost from ${minCost.toLocaleString()}</p>
               )}
 
               {/* CTA */}
               <Button
                 size="lg"
                 className="mt-4 bg-accent text-[#0f1b3d] hover:bg-accent/90 font-semibold"
-                onClick={() => navigate("/dealership/contracts/new")}
+                onClick={() => navigate(`/dealership/contracts/new?productId=${product.id}`)}
               >
                 Get a Quote →
               </Button>
@@ -291,30 +324,30 @@ export default function ProductCoveragePage() {
               )}
             </div>
 
-            {/* Metric sidebar cards */}
-            <div className="flex flex-wrap lg:flex-col gap-3">
-              {claimLimit && (
-                <div className="bg-white/10 rounded-lg px-5 py-3 min-w-[140px]">
+            {/* Right stats — dynamic based on selected tier */}
+            <div className="flex flex-wrap lg:flex-col gap-3 lg:min-w-[160px]">
+              {activeTier && (
+                <div className="bg-white/10 rounded-lg px-5 py-3 w-full">
                   <p className="text-[10px] text-white/40 uppercase tracking-wider">Per Claim</p>
-                  <p className="font-bold text-accent text-lg">{claimLimit}</p>
+                  <p className="font-bold text-accent text-lg leading-snug">{activeTier.includes(" - ") ? activeTier.split(" - ")[1] : activeTier}</p>
                 </div>
               )}
               {deductible && (
-                <div className="bg-white/10 rounded-lg px-5 py-3 min-w-[140px]">
+                <div className="bg-white/10 rounded-lg px-5 py-3 w-full">
                   <p className="text-[10px] text-white/40 uppercase tracking-wider">Deductible</p>
                   <p className="font-bold text-white text-lg">${deductible}</p>
                 </div>
               )}
-              {pricingRows.length > 0 && (
-                <div className="bg-white/10 rounded-lg px-5 py-3 min-w-[140px]">
-                  <p className="text-[10px] text-white/40 uppercase tracking-wider">Pricing Tiers</p>
-                  <p className="font-bold text-white text-lg">{pricingRows.length} option{pricingRows.length !== 1 ? "s" : ""}</p>
+              {uniqueTiers.length > 0 && (
+                <div className="bg-white/10 rounded-lg px-5 py-3 w-full">
+                  <p className="text-[10px] text-white/40 uppercase tracking-wider">Claim Tiers</p>
+                  <p className="font-bold text-white text-lg">{uniqueTiers.length} option{uniqueTiers.length !== 1 ? "s" : ""}</p>
                 </div>
               )}
-              {categories.length > 0 && (
-                <div className="bg-white/10 rounded-lg px-5 py-3 min-w-[140px]">
-                  <p className="text-[10px] text-white/40 uppercase tracking-wider">Categories</p>
-                  <p className="font-bold text-white text-lg">{categories.length} covered</p>
+              {tierRows.length > 0 && (
+                <div className="bg-white/10 rounded-lg px-5 py-3 w-full">
+                  <p className="text-[10px] text-white/40 uppercase tracking-wider">Term Options</p>
+                  <p className="font-bold text-white text-lg">{tierRows.length} total</p>
                 </div>
               )}
             </div>
@@ -348,13 +381,13 @@ export default function ProductCoveragePage() {
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h2 className="font-display text-xl font-bold text-foreground">Available Pricing</h2>
-                    <p className="text-sm text-muted-foreground mt-1">{pricingRows.length} tier{pricingRows.length !== 1 ? "s" : ""} available</p>
+                    <h2 className="font-display text-xl font-bold text-foreground">Available Options</h2>
+                    <p className="text-sm text-muted-foreground mt-1">{uniqueTiers.length} claim tier{uniqueTiers.length !== 1 ? "s" : ""} available</p>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => setActiveSection("pricing")}>View Full Pricing</Button>
                 </div>
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {pricingRows.slice(0, 4).map((row, i) => (
+                  {tierRows.slice(0, 4).map((row, i) => (
                     <div
                       key={i}
                       className="rounded-xl border bg-card p-5 cursor-pointer hover:border-primary/30 hover:shadow-md transition-all group"

@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart2 } from "lucide-react";
+import { BarChart2, Check, Shield } from "lucide-react";
 import BrochureHeader from "../../components/brochure/BrochureHeader";
 import BrochurePlanCard, { type BrochureProduct } from "../../components/brochure/BrochurePlanCard";
 import { supabase } from "../../integrations/supabase/client";
@@ -56,49 +56,39 @@ function parseProduct(row: any, providerName: string): BrochureProduct {
   };
 }
 
-// Tire & Rim preview card (mini)
-function TireRimPreviewCard({ product, showPricing }: { product: BrochureProduct; showPricing: boolean }) {
-  const navigate = useNavigate();
-  return (
-    <div className="rounded-xl border border-border bg-white dark:bg-card p-5 flex flex-col gap-4 hover:shadow-md transition-shadow">
-      <div className="flex flex-wrap gap-1.5">
-        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
-          {product.providerName}
-        </span>
-        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-          Tire & Rim
-        </span>
-      </div>
-      <div>
-        <h4 className="font-bold text-foreground text-sm">{product.name}</h4>
-        {product.eligibilityText && (
-          <p className="text-xs text-muted-foreground mt-1">{product.eligibilityText}</p>
-        )}
-      </div>
-      {product.categories.length > 0 && (
-        <ul className="space-y-1">
-          {product.categories.slice(0, 3).map((c) => (
-            <li key={c.name} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="w-1 h-1 rounded-full bg-blue-400 shrink-0" />
-              {c.name}
-            </li>
-          ))}
-        </ul>
-      )}
-      {showPricing && product.minRetail > 0 && (
-        <p className="text-xs font-semibold text-blue-600 dark:text-blue-400">
-          From ${product.minRetail.toLocaleString()}
-        </p>
-      )}
-      <button
-        onClick={() => navigate(`/brochure/${product.id}`)}
-        className="mt-auto text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline text-left"
-      >
-        View Details →
-      </button>
-    </div>
-  );
-}
+const TIRE_TIER_CONFIG = [
+  {
+    level: "Essential",
+    color: "text-blue-700",
+    bg: "bg-blue-50",
+    border: "border-blue-200",
+    bar: "bg-blue-500",
+    btn: "bg-blue-600 hover:bg-blue-700",
+    desc: "Tire & wheel repair + roadside assistance",
+    features: ["Tire & Rim repair/replacement", "Mounting & balancing", "Roadside assistance"],
+  },
+  {
+    level: "Extended",
+    color: "text-violet-700",
+    bg: "bg-violet-50",
+    border: "border-violet-200",
+    bar: "bg-violet-500",
+    btn: "bg-violet-600 hover:bg-violet-700",
+    desc: "Everything in Essential + key/remote & car rental",
+    features: ["Key & remote replacement (up to $800/yr)", "Car rental ($70/day)", "All Essential benefits"],
+  },
+  {
+    level: "Superior",
+    color: "text-emerald-700",
+    bg: "bg-emerald-50",
+    border: "border-emerald-200",
+    bar: "bg-emerald-500",
+    btn: "bg-emerald-600 hover:bg-emerald-700",
+    desc: "Everything in Extended + windshield, dent & interior",
+    features: ["Windshield & lens chip repair", "Paintless dent repair (5 cm)", "Rip/tear/burn interior repair"],
+    badge: "Best Value",
+  },
+];
 
 export default function BrochurePage() {
   const navigate = useNavigate();
@@ -293,27 +283,92 @@ export default function BrochurePage() {
 
       {/* Tire & Rim section */}
       {!loading && tireRimProducts.length > 0 && (
-        <div className="bg-slate-50 dark:bg-slate-900/30 border-t border-border py-12">
-          <div className="max-w-7xl mx-auto px-4">
-            <div className="flex items-center justify-between mb-6">
+        <div className="border-t border-slate-200 py-14" style={{ background: "linear-gradient(135deg, #0f1b3d 0%, #1a3066 60%, #0f1b3d 100%)" }}>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+
+            {/* Section header */}
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
               <div>
-                <h2 className="text-xl font-bold text-foreground">Tire & Rim Protection</h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Coverage against road hazards, potholes, and curb damage.
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-7 h-7 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center">
+                    <Shield className="w-4 h-4 text-white" />
+                  </div>
+                  <span className="text-xs font-bold text-white/50 uppercase tracking-widest">Add-On Protection</span>
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-extrabold text-white">Tire & Rim Protection</h2>
+                <p className="text-white/60 text-sm mt-1 max-w-md">
+                  Complete road-hazard coverage for tires and wheels. Choose your level of protection.
                 </p>
               </div>
               <button
                 onClick={() => navigate("/brochure/tire-rim")}
-                className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                className="shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/10 border border-white/20 text-white text-sm font-semibold hover:bg-white/20 transition-colors"
               >
-                View All Details →
+                View Full Plans →
               </button>
             </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-              {tireRimProducts.slice(0, 4).map((p) => (
-                <TireRimPreviewCard key={p.id} product={p} showPricing={showPricing} />
+
+            {/* Tier cards */}
+            <div className="grid sm:grid-cols-3 gap-4">
+              {TIRE_TIER_CONFIG.map((tier) => (
+                <div key={tier.level} className="relative flex flex-col rounded-2xl bg-white border border-white/20 overflow-hidden shadow-lg hover:shadow-xl transition-all hover:-translate-y-0.5">
+                  {/* Best Value badge */}
+                  {tier.badge && (
+                    <div className="absolute top-3 right-3 z-10">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white shadow">
+                        {tier.badge}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Accent bar */}
+                  <div className={`h-1.5 w-full ${tier.bar}`} />
+
+                  <div className="p-5 flex flex-col gap-3 flex-1">
+                    {/* Level badge */}
+                    <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${tier.bg} ${tier.color} border ${tier.border} w-fit`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${tier.bar}`} />
+                      {tier.level} Protection
+                    </div>
+
+                    <p className="text-xs text-slate-500 leading-relaxed">{tier.desc}</p>
+
+                    {/* Features */}
+                    <ul className="space-y-1.5">
+                      {tier.features.map((f) => (
+                        <li key={f} className="flex items-start gap-2 text-xs text-slate-700">
+                          <Check className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${tier.color}`} />
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
+
+                    {/* Classes */}
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {["Class 1", "Class 2", "Class 3"].map((cls) => (
+                        <span key={cls} className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${tier.bg} ${tier.color} border ${tier.border}`}>
+                          {cls}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="mt-auto pt-2">
+                      <button
+                        onClick={() => navigate("/brochure/tire-rim")}
+                        className={`w-full py-2.5 rounded-xl text-xs font-bold text-white transition-colors ${tier.btn}`}
+                      >
+                        View {tier.level} Plans →
+                      </button>
+                    </div>
+                  </div>
+                </div>
               ))}
             </div>
+
+            {/* Provider tag */}
+            <p className="text-center text-white/30 text-xs mt-6">
+              Provided by {tireRimProducts[0]?.providerName} · Vehicles up to 10 years old · No deductible
+            </p>
           </div>
         </div>
       )}
