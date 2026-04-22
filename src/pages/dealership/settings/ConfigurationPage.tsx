@@ -433,34 +433,34 @@ export default function ConfigurationPage() {
     const newRetail = { ...retailMap };
     let count = 0;
 
-    const fill = (cost: any, suggested: any, key: string) => {
+    const fill = (cost: any, key: string) => {
       if (!isNumericCost(cost)) return;
       if (newRetail[key] != null) return; // skip already-set cells
-      newRetail[key] = suggested != null && suggested > 0 ? suggested : Math.round(cost * factor);
+      newRetail[key] = Math.round(cost * factor);
       count++;
     };
 
     if (hasBands && currentTier.mileageBands) {
       currentTier.mileageBands.forEach((band, bIdx) => {
         currentTier.terms.forEach((_t, tIdx) => {
-          fill(band.values[tIdx], band.suggestedValues?.[tIdx], storageKey(bIdx, -1, tIdx));
+          fill(band.values[tIdx], storageKey(bIdx, -1, tIdx));
         });
       });
       currentTier.rows.forEach((row, rIdx) => {
         currentTier.terms.forEach((_t, tIdx) => {
-          fill(row.values[tIdx], row.suggestedValues?.[tIdx], storageKey(null, rIdx, tIdx));
+          fill(row.values[tIdx], storageKey(null, rIdx, tIdx));
         });
       });
     } else {
       currentTier.rows.forEach((row, rIdx) => {
         currentTier.terms.forEach((_t, tIdx) => {
-          fill(row.values[tIdx], row.suggestedValues?.[tIdx], storageKey(null, rIdx, tIdx));
+          fill(row.values[tIdx], storageKey(null, rIdx, tIdx));
         });
       });
     }
 
     await persistRetail(selectedProductId, newRetail);
-    toast({ title: "Bulk markup applied", description: `Filled ${count} empty cell${count !== 1 ? "s" : ""} with suggested retail.` });
+    toast({ title: "Bulk markup applied", description: `Filled ${count} empty cell${count !== 1 ? "s" : ""} with +${pct}% markup.` });
   };
 
   const handleToggleConfidentiality = async (enabled: boolean) => {
@@ -630,7 +630,11 @@ export default function ConfigurationPage() {
           {view === "plans" && (
             <Select value={activeProviderId || ""} onValueChange={(v) => { setActiveProviderId(v); setSelectedProductId(null); setSearch(""); }}>
               <SelectTrigger className="w-full sm:w-[240px]">
-                <SelectValue placeholder="Switch provider" />
+                <span className="truncate text-sm">
+                  {activeProviderId && providers[activeProviderId]
+                    ? providers[activeProviderId]
+                    : "Switch provider"}
+                </span>
               </SelectTrigger>
               <SelectContent>
                 {Object.entries(providers).map(([id, name]) => (
@@ -860,19 +864,21 @@ export default function ConfigurationPage() {
 
                             {/* Bulk markup */}
                             {isAdmin && (
-                              <div className="flex items-center gap-2 bg-muted/40 rounded-lg px-3 py-1.5 border">
-                                <Zap className="w-3.5 h-3.5 text-primary shrink-0" />
-                                <span className="text-xs font-medium whitespace-nowrap">Bulk markup</span>
-                                <div className="relative">
+                              <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-sm">
+                                <Zap className="w-4 h-4 text-primary shrink-0" />
+                                <span className="text-sm font-semibold text-slate-700 whitespace-nowrap">Bulk markup</span>
+                                <div className="flex items-center gap-1.5">
                                   <Input
                                     type="number"
                                     value={bulkPercent}
                                     onChange={(e) => setBulkPercent(e.target.value)}
-                                    className="w-16 h-7 pr-5 text-xs"
+                                    className="w-20 h-8 text-sm font-bold text-center border-slate-300"
+                                    min="0"
+                                    max="999"
                                   />
-                                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                                  <span className="text-sm font-bold text-slate-600">%</span>
                                 </div>
-                                <Button size="sm" variant="outline" className="h-7 text-xs whitespace-nowrap" onClick={applyBulkMarkup}>
+                                <Button size="sm" variant="default" className="h-8 text-xs px-3 whitespace-nowrap bg-primary hover:bg-primary/90" onClick={applyBulkMarkup}>
                                   Apply to empty
                                 </Button>
                               </div>
