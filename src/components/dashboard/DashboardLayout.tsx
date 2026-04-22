@@ -81,11 +81,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, t
         <div className="flex flex-col h-full overflow-y-auto">
           {/* Logo & Role */}
           <div className="px-6 border-b border-border py-4 shrink-0">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-                <span className="text-xs font-extrabold text-primary-foreground tracking-tight">BW</span>
-              </div>
-              <span className="font-bold text-lg text-foreground">Bridge Warranty</span>
+            <div className="flex items-center">
+              <img
+                src="/images/Bridge Warranty_Transparent.png"
+                alt="Bridge Warranty"
+                className="h-10 w-auto object-contain"
+              />
             </div>
             <p className="text-xs text-muted-foreground mt-2 tracking-wide uppercase">
               {roleLabel}

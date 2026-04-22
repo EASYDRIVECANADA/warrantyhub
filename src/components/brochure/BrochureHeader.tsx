@@ -25,14 +25,13 @@ export default function BrochureHeader() {
       <div className="max-w-7xl mx-auto h-full px-6 flex items-center justify-between gap-8">
 
         {/* Logo — clicks to landing page */}
-        <Link to="/find-insurance" className="shrink-0 flex items-center gap-3 group">
-          <div className="w-9 h-9 rounded-lg bg-[#0f1b3d] flex items-center justify-center shrink-0 transition-opacity group-hover:opacity-80">
-            <span className="text-xs font-extrabold text-white tracking-tight">BW</span>
-          </div>
-          <div>
-            <span className="font-bold text-base text-foreground leading-none">{BRAND.name}</span>
-            <p className="text-muted-foreground text-[10px] font-medium tracking-widest uppercase mt-0.5">Coverage Brochure</p>
-          </div>
+        <Link to="/find-insurance" className="shrink-0 flex items-center gap-2 group transition-opacity hover:opacity-80">
+          <img
+            src="/images/Bridge Warranty_Transparent.png"
+            alt="Bridge Warranty"
+            className="h-10 w-auto object-contain"
+          />
+          <p className="text-muted-foreground text-[10px] font-medium tracking-widest uppercase">Coverage Brochure</p>
         </Link>
 
         {/* Desktop nav — centered */}
