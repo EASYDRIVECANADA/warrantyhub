@@ -114,7 +114,7 @@ export function Navbar() {
           {/* Logo */}
           <Link to={brandPath} className="shrink-0 group">
             <img
-              src={BRAND.logoUrl}
+              src="/images/Bridge Warranty_Transparent.png"
               alt={BRAND.name}
               className="h-12 w-auto object-contain transition-opacity group-hover:opacity-75"
             />
