@@ -165,6 +165,7 @@ BEGIN
   addon_rows AS (
     SELECT
       p.id,
+      p.name AS product_name,
       coalesce(
         jsonb_agg(e.elem ORDER BY e.ord)
           FILTER (
@@ -181,7 +182,7 @@ BEGIN
     LEFT JOIN LATERAL jsonb_array_elements(coalesce(p.pricing_json->'rows', '[]'::jsonb))
       WITH ORDINALITY AS e(elem, ord) ON true
     WHERE p.provider_entity_id = v_eid
-    GROUP BY p.id
+    GROUP BY p.id, p.name
   )
   UPDATE public.products p
   SET pricing_json = jsonb_set(
@@ -191,7 +192,8 @@ BEGIN
     true
   )
   FROM base_rows
-  LEFT JOIN addon_rows ON addon_rows.id = p.id
+  LEFT JOIN addon_rows ON addon_rows.product_name = base_rows.product_name
   WHERE p.provider_entity_id = v_eid
+    AND p.id = addon_rows.id
     AND p.name = base_rows.product_name;
 END $$;
