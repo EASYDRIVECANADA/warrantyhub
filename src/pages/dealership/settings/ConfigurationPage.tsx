@@ -627,11 +627,12 @@ export default function ConfigurationPage() {
         <Badge className="bg-green-100 text-green-700 hover:bg-green-100 text-[10px]">Included</Badge>
       );
     }
-    if (!isNumericCost(raw)) return <span className="text-sm">{String(raw)}</span>;
-
-    const cost = raw as number;
     const defaultSuggested = mr.suggestedValues?.[termIdx];
     const defaultSuggestedNumber = typeof defaultSuggested === "number" && defaultSuggested > 0 ? defaultSuggested : null;
+    const isZeroCostRetailCell = typeof raw === "number" && Number.isFinite(raw) && raw === 0 && defaultSuggestedNumber != null;
+    if (!isNumericCost(raw) && !isZeroCostRetailCell) return <span className="text-sm">{String(raw)}</span>;
+
+    const cost = typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
     const suggested = customRetail ?? defaultSuggestedNumber ?? Math.round(cost * 1.4);
     const hasCustom = customRetail != null;
     const markupPct = cost > 0 ? ((suggested - cost) / cost) * 100 : 0;
