@@ -13,6 +13,18 @@ import { supabase } from "../../integrations/supabase/client";
 import { getContractsV2Api } from "../../lib/contracts/contractsV2";
 import { cn } from "../../lib/utils";
 import {
+  buildAddOnPricingRows,
+  buildBasePricingRows,
+  numericPrice,
+  pricingRowKey,
+  resolveCustomerRetail,
+  resolveCustomerRetailNumber,
+  type ContractAddonSnapshot,
+  type DealerPricingConfig,
+  type NormalizedAddOnRow,
+  type NormalizedPricingRow,
+} from "../../lib/pricing/dealerPricing";
+import {
   ArrowLeft, Check, AlertCircle, Car, Shield, DollarSign,
   User, FileText, Loader2, Search,
 } from "lucide-react";
@@ -48,14 +60,16 @@ interface PricingRow {
 
 interface AddOn {
   name: string;
-  price: number;
+  dealerCost: number;
+  retail: number;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function getPricingRows(pricing: any): PricingRow[] {
+export function getPricingRows(pricing: any): PricingRow[] {
   if (!pricing) return [];
   return (pricing.rows || pricing.tiers || [])
+    .filter((r: any) => r?.kind !== "addon" && r?.type !== "addon" && !r?.addonName)
     .map((r: any) => ({
       label: r.term || r.label || "Standard",
       vehicleClass: r.vehicleClass || r.vehicle_class || "",
@@ -65,13 +79,43 @@ function getPricingRows(pricing: any): PricingRow[] {
     .filter((r: PricingRow) => r.dealerCost > 0 || r.retail > 0);
 }
 
-function getAddOns(pricing: any): AddOn[] {
+export function pricingTierKey(vehicleClass: string): string {
+  const normalized = vehicleClass.replace(/\u00c2\u00b7/g, "\u00b7").trim();
+  if (normalized.includes("\u00b7")) {
+    const [, tier = ""] = normalized.split("\u00b7").map((s) => s.trim());
+    return tier.replace(/\/claim/i, " / claim");
+  }
+  return normalized;
+}
+
+export function getAddOns(pricing: any, selectedRow: PricingRow | null): AddOn[] {
+  if (!pricing) return [];
+
+  const structuredAddOns = (pricing.rows || [])
+    .filter((r: any) => r?.kind === "addon" || r?.type === "addon" || !!r?.addonName)
+    .filter((r: any) => {
+      if (!selectedRow) return false;
+      const label = r.term || r.label || "Standard";
+      const vehicleClass = r.vehicleClass || r.vehicle_class || "";
+      return label === selectedRow.label
+        && (vehicleClass === selectedRow.vehicleClass || pricingTierKey(vehicleClass) === pricingTierKey(selectedRow.vehicleClass));
+    })
+    .map((r: any) => ({
+      name: r.addonName || r.name || "Add-on",
+      dealerCost: Number(r.dealerCost ?? r.dealer_cost ?? r.price ?? 0),
+      retail: Number(r.suggestedRetail ?? r.suggested_retail ?? r.retail ?? r.price ?? 0),
+    }))
+    .filter((a: AddOn) => a.dealerCost > 0 || a.retail > 0);
+
+  if (structuredAddOns.length > 0) return structuredAddOns;
   if (!pricing?.addons?.length) return [];
+
   return pricing.addons
     .filter((a: any) => a && !(a.included))
     .map((a: any) => ({
       name: typeof a === "string" ? a : a.name,
-      price: typeof a === "string" ? 0 : Number(a.price ?? 0),
+      dealerCost: typeof a === "string" ? 0 : Number(a.dealerCost ?? a.dealer_cost ?? a.price ?? 0),
+      retail: typeof a === "string" ? 0 : Number(a.retail ?? a.suggestedRetail ?? a.suggested_retail ?? a.price ?? 0),
     }));
 }
 
@@ -99,6 +143,15 @@ function safeDate(dateStr: string): string {
   } catch {
     return dateStr;
   }
+}
+
+function parseTermSnapshot(term: string): { months?: number; km?: number | null } {
+  const monthsMatch = term.match(/(\d+)\s*Months?/i);
+  const kmMatch = term.match(/\/\s*([\d,]+|Unlimited)\s*km/i);
+  return {
+    months: monthsMatch ? Number(monthsMatch[1]) : undefined,
+    km: kmMatch ? (kmMatch[1].toLowerCase() === "unlimited" ? null : Number(kmMatch[1].replace(/,/g, ""))) : undefined,
+  };
 }
 
 const STEP_LABELS = ["Vehicle", "Product", "Pricing", "Add-Ons", "Customer", "Review"];
@@ -130,7 +183,8 @@ export default function NewContractPage() {
   const [selectedProductId, setSelectedProductId] = useState("");
 
   // Step 3 — Pricing
-  const [selectedTierLabel, setSelectedTierLabel] = useState("");
+  const [selectedPricingKey, setSelectedPricingKey] = useState("");
+  const [dealerPricingConfig, setDealerPricingConfig] = useState<DealerPricingConfig>(null);
 
   // Step 4 — Add-ons
   const [selectedAddOns, setSelectedAddOns] = useState<Set<string>>(new Set());
@@ -189,24 +243,63 @@ export default function NewContractPage() {
   useEffect(() => {
     const p = products.find(p => p.id === selectedProductId);
     if (p) {
-      const rows = getPricingRows(p.pricing_json);
-      setSelectedTierLabel(rows.length === 1 ? rows[0].label : "");
+      const rows = buildBasePricingRows(p.pricing_json);
+      setSelectedPricingKey(rows.length === 1 ? pricingRowKey(rows[0]) : "");
       setSelectedAddOns(new Set());
       setProviderName(p.providerName);
+    } else {
+      setSelectedPricingKey("");
+      setSelectedAddOns(new Set());
+      setProviderName("");
     }
   }, [selectedProductId, products]);
 
+  useEffect(() => {
+    if (!dealershipId || !selectedProductId) {
+      setDealerPricingConfig(null);
+      return;
+    }
+
+    supabase
+      .from("dealership_product_pricing")
+      .select("retail_price, confidentiality_enabled")
+      .eq("dealership_id", dealershipId)
+      .eq("product_id", selectedProductId)
+      .maybeSingle()
+      .then(({ data }) => {
+        setDealerPricingConfig(data ? {
+          retail_price: ((data as any).retail_price ?? {}) as Record<string, number>,
+          confidentiality_enabled: Boolean((data as any).confidentiality_enabled),
+        } : null);
+      });
+  }, [dealershipId, selectedProductId]);
+
   // Derived values
   const selectedProduct = products.find(p => p.id === selectedProductId) ?? null;
-  const pricingRows = selectedProduct ? getPricingRows(selectedProduct.pricing_json) : [];
-  const addOns = selectedProduct ? getAddOns(selectedProduct.pricing_json) : [];
-  const chosenRow = pricingRows.find(r => r.label === selectedTierLabel) ?? (pricingRows.length === 1 ? pricingRows[0] : null);
-  const addOnTotal = Array.from(selectedAddOns).reduce((sum, name) => {
-    const ao = addOns.find(a => a.name === name);
-    return sum + (ao?.price || 0);
-  }, 0);
-  const totalDealerCost = (chosenRow?.dealerCost || 0) + addOnTotal;
-  const totalRetail = (chosenRow?.retail || 0) + addOnTotal;
+  const pricingRows: NormalizedPricingRow[] = selectedProduct ? buildBasePricingRows(selectedProduct.pricing_json) : [];
+  const chosenRow = pricingRows.find(r => pricingRowKey(r) === selectedPricingKey) ?? (pricingRows.length === 1 ? pricingRows[0] : null);
+  const addOns: NormalizedAddOnRow[] = selectedProduct && chosenRow
+    ? buildAddOnPricingRows(selectedProduct.pricing_json, chosenRow.vehicleClass)
+        .filter((row) => row.term === chosenRow.term && row.tierKey === chosenRow.tierKey)
+    : [];
+  const selectedAddOnRows = Array.from(selectedAddOns)
+    .map((name) => addOns.find(a => a.name === name))
+    .filter((row): row is NormalizedAddOnRow => Boolean(row));
+  const baseRetail = chosenRow ? resolveCustomerRetailNumber(chosenRow, dealerPricingConfig) : 0;
+  const baseDealerCost = chosenRow?.dealerCost || 0;
+  const addOnDealerTotal = selectedAddOnRows.reduce((sum, row) => sum + numericPrice(row.dealerCost), 0);
+  const addOnRetailTotal = selectedAddOnRows.reduce((sum, row) => sum + numericPrice(resolveCustomerRetail(row, dealerPricingConfig)), 0);
+  const totalDealerCost = baseDealerCost + addOnDealerTotal;
+  const totalRetail = baseRetail + addOnRetailTotal;
+  const addonSnapshot: ContractAddonSnapshot[] = selectedAddOnRows.map((row) => ({
+    name: row.name,
+    term: row.term,
+    vehicleClass: row.vehicleClass,
+    dealerCost: numericPrice(row.dealerCost),
+    retail: numericPrice(resolveCustomerRetail(row, dealerPricingConfig)),
+    retailKey: row.retailKey,
+  }));
+  const pricingTermSnapshot = chosenRow ? parseTermSnapshot(chosenRow.term) : {};
 
   // ── VIN decode ─────────────────────────────────────────────────────────────
   const handleDecodeVin = async () => {
@@ -274,6 +367,14 @@ export default function NewContractPage() {
         vehicleMileage: mileage ? parseInt(mileage) : undefined,
         contractPrice: totalRetail || totalDealerCost || undefined,
         dealerCost: totalDealerCost || undefined,
+        pricingVehicleClass: chosenRow?.vehicleClass || undefined,
+        pricingTermMonths: pricingTermSnapshot.months,
+        pricingTermKm: pricingTermSnapshot.km,
+        pricingBasePriceCents: chosenRow ? Math.round(baseRetail * 100) : undefined,
+        pricingDealerCostCents: chosenRow ? Math.round(baseDealerCost * 100) : undefined,
+        addonSnapshot,
+        addonTotalRetailCents: Math.round(addOnRetailTotal * 100),
+        addonTotalCostCents: Math.round(addOnDealerTotal * 100),
         startDate: startDate || undefined,
       });
       toast({ title: "Contract saved", description: "Print the contract or close to view it in your contracts list." });
@@ -428,8 +529,8 @@ export default function NewContractPage() {
                 {products.map(p => {
                   const elig = checkEligibility(p, vehicleInfo?.year ?? null, mileage ? parseInt(mileage) : null);
                   const cats: string[] = (p.coverage_details_json?.categories || []).map((c: any) => c.name).slice(0, 4);
-                  const rows = getPricingRows(p.pricing_json);
-                  const minCost = rows.length ? Math.min(...rows.map(r => r.dealerCost).filter(Boolean)) : 0;
+                  const rows = buildBasePricingRows(p.pricing_json);
+                  const minRetail = rows.length ? Math.min(...rows.map(r => r.suggestedRetail).filter(Boolean)) : 0;
                   const isSelected = selectedProductId === p.id;
                   return (
                     <button
@@ -457,10 +558,10 @@ export default function NewContractPage() {
                             </div>
                           )}
                         </div>
-                        {minCost > 0 && isFinite(minCost) && (
+                        {minRetail > 0 && isFinite(minRetail) && (
                           <div className="text-right shrink-0">
                             <p className="text-xs text-muted-foreground">From</p>
-                            <p className="font-bold text-primary text-sm">${minCost.toLocaleString()}</p>
+                            <p className="font-bold text-primary text-sm">${minRetail.toLocaleString()}</p>
                           </div>
                         )}
                       </div>
@@ -485,12 +586,13 @@ export default function NewContractPage() {
             ) : (
               <div className="grid gap-3">
                 {pricingRows.map(row => {
-                  const isSelected = chosenRow?.label === row.label;
-                  const margin = row.retail - row.dealerCost;
+                  const rowRetail = resolveCustomerRetailNumber(row, dealerPricingConfig);
+                  const isSelected = chosenRow ? pricingRowKey(chosenRow) === pricingRowKey(row) : false;
+                  const margin = rowRetail - row.dealerCost;
                   return (
                     <button
-                      key={row.label}
-                      onClick={() => setSelectedTierLabel(row.label)}
+                      key={pricingRowKey(row)}
+                      onClick={() => setSelectedPricingKey(pricingRowKey(row))}
                       className={cn(
                         "w-full text-left rounded-xl border p-4 transition-all",
                         isSelected ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:border-primary/40 hover:bg-muted/20",
@@ -503,7 +605,7 @@ export default function NewContractPage() {
                         </div>
                         <div className="text-right space-y-0.5">
                           <p className="font-bold">${row.dealerCost.toLocaleString()} <span className="text-xs text-muted-foreground font-normal">dealer cost</span></p>
-                          {row.retail > 0 && <p className="text-sm text-primary font-semibold">${row.retail.toLocaleString()} <span className="text-xs text-muted-foreground font-normal">retail</span></p>}
+                          {rowRetail > 0 && <p className="text-sm text-primary font-semibold">${rowRetail.toLocaleString()} <span className="text-xs text-muted-foreground font-normal">retail</span></p>}
                           {margin > 0 && <p className="text-xs text-green-600 font-medium">+${margin.toLocaleString()} margin</p>}
                         </div>
                       </div>
@@ -533,6 +635,8 @@ export default function NewContractPage() {
               <div className="space-y-3">
                 {addOns.map(ao => {
                   const isSelected = selectedAddOns.has(ao.name);
+                  const retailValue = resolveCustomerRetail(ao, dealerPricingConfig);
+                  const retailAmount = numericPrice(retailValue);
                   return (
                     <div
                       key={ao.name}
@@ -555,24 +659,28 @@ export default function NewContractPage() {
                         })}
                       />
                       <span className="flex-1 font-medium text-sm">{ao.name}</span>
-                      {ao.price > 0 && <span className="font-semibold text-sm">+${ao.price.toLocaleString()}</span>}
+                      {retailValue === "Included" ? (
+                        <span className="font-semibold text-sm text-primary">Included</span>
+                      ) : retailAmount > 0 ? (
+                        <span className="font-semibold text-sm">+${retailAmount.toLocaleString()}</span>
+                      ) : null}
                     </div>
                   );
                 })}
                 <div className="rounded-xl bg-muted/40 border p-4 space-y-1.5">
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Base cost</span>
-                    <span className="font-semibold">${(chosenRow?.dealerCost || 0).toLocaleString()}</span>
+                    <span className="text-muted-foreground">Base retail</span>
+                    <span className="font-semibold">${baseRetail.toLocaleString()}</span>
                   </div>
-                  {addOnTotal > 0 && (
+                  {addOnRetailTotal > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Add-ons</span>
-                      <span className="font-semibold">+${addOnTotal.toLocaleString()}</span>
+                      <span className="font-semibold">+${addOnRetailTotal.toLocaleString()}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-sm font-bold border-t pt-2">
-                    <span>Total dealer cost</span>
-                    <span>${totalDealerCost.toLocaleString()}</span>
+                    <span>Total customer price</span>
+                    <span>${totalRetail.toLocaleString()}</span>
                   </div>
                 </div>
               </div>
@@ -672,14 +780,16 @@ export default function NewContractPage() {
                   <div className="space-y-1.5">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Base Coverage</span>
-                      <span className="font-semibold">${(chosenRow?.dealerCost || 0).toLocaleString()}</span>
+                      <span className="font-semibold">${baseRetail.toLocaleString()}</span>
                     </div>
                     {Array.from(selectedAddOns).map(name => {
                       const ao = addOns.find(a => a.name === name);
+                      const retailValue = ao ? resolveCustomerRetail(ao, dealerPricingConfig) : 0;
+                      const retailAmount = numericPrice(retailValue);
                       return ao ? (
                         <div key={name} className="flex justify-between text-sm">
                           <span className="text-muted-foreground">{name}</span>
-                          <span className="font-semibold">+${ao.price.toLocaleString()}</span>
+                          <span className="font-semibold">{retailValue === "Included" ? "Included" : `+$${retailAmount.toLocaleString()}`}</span>
                         </div>
                       ) : null;
                     })}

@@ -79,13 +79,15 @@ function productToForm(product: ProductV2): ProductForm {
   const pr = (product.pricing ?? {}) as any;
   const er = (product.eligibilityRules ?? {}) as any;
 
-  const pricingRows: PricingRow[] = (pr.rows || pr.tiers || []).map((t: any) => ({
-    term: t.term || t.label || "",
-    mileageBracket: t.mileageBracket || t.mileage_bracket || "",
-    vehicleClass: t.vehicleClass || t.vehicle_class || "Class 1",
-    dealerCost: t.dealerCost || t.dealer_cost || 0,
-    suggestedRetail: t.suggestedRetail || t.suggested_retail || 0,
-  }));
+  const pricingRows: PricingRow[] = (pr.rows || pr.tiers || [])
+    .filter((t: any) => t?.kind !== "addon" && t?.type !== "addon" && !t?.addonName)
+    .map((t: any) => ({
+      term: t.term || t.label || "",
+      mileageBracket: t.mileageBracket || t.mileage_bracket || "",
+      vehicleClass: t.vehicleClass || t.vehicle_class || "Class 1",
+      dealerCost: t.dealerCost || t.dealer_cost || 0,
+      suggestedRetail: t.suggestedRetail || t.suggested_retail || 0,
+    }));
 
   const coverageCategories: CoverageCategory[] = (cd.categories || cd.coverageCategories || []).map((c: any) => ({
     name: c.name || "",

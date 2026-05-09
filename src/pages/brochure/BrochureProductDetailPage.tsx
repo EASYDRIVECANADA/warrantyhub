@@ -7,6 +7,7 @@ import BrochureBenefitsSection from "../../components/brochure/BrochureBenefitsS
 import BrochureFinePrintSection from "../../components/brochure/BrochureFinePrintSection";
 import { supabase } from "../../integrations/supabase/client";
 import { useAuth } from "../../providers/AuthProvider";
+import { buildBasePricingRows } from "../../lib/pricing/dealerPricing";
 
 interface PricingTier {
   label: string;
@@ -80,12 +81,11 @@ export default function BrochureProductDetailPage() {
       if (erObj.maxAge) eligParts.push(`up to ${erObj.maxAge} yrs`);
       if (erObj.maxMileage) eligParts.push(`up to ${Number(erObj.maxMileage).toLocaleString()} km`);
 
-      const rawTiers: any[] = prObj.rows || prObj.tiers || [];
-      const tiers: PricingTier[] = rawTiers.map((r: any) => ({
+      const tiers: PricingTier[] = buildBasePricingRows(prObj).map((r) => ({
         label: r.label || r.term || "Standard",
-        vehicleClass: r.vehicleClass || r.vehicle_class || "",
-        dealerCost: Number(r.dealerCost ?? r.dealer_cost ?? 0),
-        suggestedRetail: Number(r.suggestedRetail ?? r.suggested_retail ?? r.retail ?? 0),
+        vehicleClass: r.vehicleClass || "",
+        dealerCost: r.dealerCost,
+        suggestedRetail: r.suggestedRetail,
       }));
 
       const categories = (cdObj.categories || []).map((c: any) => ({

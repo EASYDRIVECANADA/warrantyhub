@@ -2520,11 +2520,15 @@ create table if not exists public.dealership_product_pricing (
   product_id uuid not null references public.products(id) on delete cascade,
   retail_price jsonb not null default '{}',
   confidentiality_enabled boolean not null default false,
+  sort_order integer,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (dealership_id, product_id)
 );
 alter table public.dealership_product_pricing enable row level security;
+
+create index if not exists idx_dealership_product_pricing_sort_order
+  on public.dealership_product_pricing(dealership_id, sort_order, product_id);
 
 drop trigger if exists update_dealership_product_pricing_updated_at on public.dealership_product_pricing;
 create trigger update_dealership_product_pricing_updated_at

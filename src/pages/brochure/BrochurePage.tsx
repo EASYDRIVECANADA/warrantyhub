@@ -5,6 +5,7 @@ import BrochureHeader from "../../components/brochure/BrochureHeader";
 import BrochurePlanCard, { type BrochureProduct } from "../../components/brochure/BrochurePlanCard";
 import { supabase } from "../../integrations/supabase/client";
 import { useAuth } from "../../providers/AuthProvider";
+import { buildBasePricingRows, parseVehicleClass } from "../../lib/pricing/dealerPricing";
 
 interface Provider {
   id: string;
@@ -22,16 +23,17 @@ function parseProduct(row: any, providerName: string): BrochureProduct {
     parts: Array.isArray(c.parts) ? c.parts : [],
   }));
 
-  const rows: any[] = prObj.rows || prObj.tiers || [];
-  const costs = rows.map((r: any) => Number(r.dealerCost ?? r.dealer_cost ?? 0)).filter(Boolean);
-  const retails = rows.map((r: any) => Number(r.suggestedRetail ?? r.suggested_retail ?? r.retail ?? 0)).filter(Boolean);
+  const rows = buildBasePricingRows(prObj);
+  const costs = rows.map((r) => r.dealerCost).filter(Boolean);
+  const retails = rows.map((r) => r.suggestedRetail).filter(Boolean);
 
   // Unique vehicleClass names (e.g. "Bronze - $750 Per Claim") for display chips
   const seenClasses = new Set<string>();
   const planChips: string[] = [];
   for (const r of rows) {
-    const vc: string = (r.vehicleClass ?? r.vehicle_class ?? "").trim();
-    if (vc && !seenClasses.has(vc)) { seenClasses.add(vc); planChips.push(vc); }
+    const vc = parseVehicleClass(r.vehicleClass || "").tierKey;
+    const short = vc.split(" - ")[0].trim();
+    if (short && !seenClasses.has(short)) { seenClasses.add(short); planChips.push(short); }
   }
 
   const er = row.eligibility_rules ?? {};

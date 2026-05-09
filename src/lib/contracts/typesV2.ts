@@ -1,5 +1,14 @@
 export type ContractStatusV2 = "draft" | "submitted" | "active" | "cancelled" | "expired";
 
+export type ContractAddonSnapshot = {
+  name: string;
+  term: string;
+  vehicleClass: string;
+  dealerCost: number;
+  retail: number;
+  retailKey: string;
+};
+
 export type ContractV2 = {
   id: string;
   dealershipId: string;
@@ -17,6 +26,14 @@ export type ContractV2 = {
   vehicleMileage?: number;
   contractPrice?: number;
   dealerCost?: number;
+  pricingVehicleClass?: string;
+  pricingTermMonths?: number;
+  pricingTermKm?: number | null;
+  pricingBasePriceCents?: number;
+  pricingDealerCostCents?: number;
+  addonSnapshot?: ContractAddonSnapshot[];
+  addonTotalRetailCents?: number;
+  addonTotalCostCents?: number;
   status: ContractStatusV2;
   startDate?: string;
   endDate?: string;
@@ -39,6 +56,14 @@ export type CreateContractV2Input = {
   vehicleMileage?: number;
   contractPrice?: number;
   dealerCost?: number;
+  pricingVehicleClass?: string;
+  pricingTermMonths?: number;
+  pricingTermKm?: number | null;
+  pricingBasePriceCents?: number;
+  pricingDealerCostCents?: number;
+  addonSnapshot?: ContractAddonSnapshot[];
+  addonTotalRetailCents?: number;
+  addonTotalCostCents?: number;
   startDate?: string;
   endDate?: string;
 };

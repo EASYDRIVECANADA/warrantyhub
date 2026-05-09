@@ -8,6 +8,7 @@ import { Badge } from "../../components/ui/badge";
 import { Search, RotateCcw, Car, Shield, Check, Loader2, AlertCircle, LayoutGrid, FileText, DollarSign } from "lucide-react";
 import { supabase } from "../../integrations/supabase/client";
 import { useDealership } from "../../hooks/useDealership";
+import { buildBasePricingRows, resolveCustomerRetailNumber } from "../../lib/pricing/dealerPricing";
 
 interface VehicleInfo {
   year: number | null;
@@ -46,31 +47,18 @@ const typeLabel = (type: string) => {
   return map[type] || type;
 };
 
+const isAddonPricingRow = (row: any) => row?.kind === "addon" || row?.type === "addon" || !!row?.addonName;
 
 const getMinPrice = (pricing: any): number | null => {
   if (!pricing) return null;
-  const costs: number[] = [];
-  // V2 editor format: rows[].dealerCost  ← what ProviderProductEditorPage saves
-  for (const r of pricing.rows || []) {
-    if (typeof r.dealerCost === "number" && r.dealerCost > 0) costs.push(r.dealerCost);
-    if (typeof r.dealer_cost === "number" && r.dealer_cost > 0) costs.push(r.dealer_cost);
-  }
-  // Legacy flat tiers format
-  for (const t of pricing.tiers || []) {
-    if (typeof t.dealer_cost === "number" && t.dealer_cost > 0) costs.push(t.dealer_cost);
-    if (typeof t.dealerCost === "number" && t.dealerCost > 0) costs.push(t.dealerCost);
-  }
-  return costs.length > 0 ? Math.min(...costs) : null;
+  const retails = buildBasePricingRows(pricing).map((row) => row.suggestedRetail).filter((value) => value > 0);
+  return retails.length > 0 ? Math.min(...retails) : null;
 };
 
 
 const getMaxPrice = (pricing: any): number | null => {
   if (!pricing) return null;
-  const retails: number[] = [];
-  for (const r of pricing.rows || []) {
-    if (typeof r.dealerCost === "number" && r.dealerCost > 0) retails.push(r.dealerCost);
-    if (typeof r.dealer_cost === "number" && r.dealer_cost > 0) retails.push(r.dealer_cost);
-  }
+  const retails = buildBasePricingRows(pricing).map((row) => row.suggestedRetail).filter((value) => value > 0);
   return retails.length > 0 ? Math.max(...retails) : null;
 };
 
@@ -78,7 +66,7 @@ const getUniqueTierNames = (pricing: any): string[] => {
   if (!pricing) return [];
   const seen = new Set<string>();
   const chips: string[] = [];
-  for (const r of pricing.rows || []) {
+  for (const r of (pricing.rows || []).filter((row: any) => !isAddonPricingRow(row))) {
     const vc: string = (r.vehicleClass ?? r.vehicle_class ?? "").trim();
     // Extract short name: "Bronze - $750 Per Claim" → "Bronze"
     const short = vc.split(" - ")[0].trim();
@@ -148,7 +136,7 @@ export default function FindProductsPage() {
   const [providers, setProviders] = useState<string[]>([]);
   const [selectedProvider, setSelectedProvider] = useState("all");
   const [selectedType, setSelectedType] = useState("all");
-  const [dealerPricing, setDealerPricing] = useState<Record<string, { retail_price: Record<string, number>; confidentiality_enabled: boolean }>>({});
+  const [dealerPricing, setDealerPricing] = useState<Record<string, { retail_price: Record<string, number>; confidentiality_enabled: boolean; sort_order?: number | null }>>({});
 
   // ── load products (real data) ──────────────────────────────────────────
   useEffect(() => {
@@ -223,9 +211,9 @@ export default function FindProductsPage() {
     (async () => {
       const { data } = await supabase
         .from("dealership_product_pricing")
-        .select("product_id, retail_price, confidentiality_enabled")
+        .select("product_id, retail_price, confidentiality_enabled, sort_order")
         .eq("dealership_id", dealershipId);
-      const map: Record<string, { retail_price: Record<string, number>; confidentiality_enabled: boolean }> = {};
+      const map: Record<string, { retail_price: Record<string, number>; confidentiality_enabled: boolean; sort_order?: number | null }> = {};
       (data || []).forEach((r: any) => { map[r.product_id] = r; });
       setDealerPricing(map);
     })();
@@ -288,7 +276,7 @@ export default function FindProductsPage() {
   const mileageKm = mileage ? parseInt(mileage, 10) : null;
 
   const filteredProducts = useMemo(() => {
-    let list = products;
+    let list = [...products];
 
     // Provider filter
     if (selectedProvider !== "all") list = list.filter((p) => p.providerName === selectedProvider);
@@ -307,8 +295,15 @@ export default function FindProductsPage() {
       list = list.filter((p) => isEligible(p.eligibility_rules, vehicleInfo, mileageKm));
     }
 
-    return list;
-  }, [products, selectedProvider, selectedType, searchQuery, vehicleInfo, mileageKm]);
+    return list.sort((a, b) => {
+      const aOrder = dealerPricing[a.id]?.sort_order;
+      const bOrder = dealerPricing[b.id]?.sort_order;
+      if (aOrder != null && bOrder != null && aOrder !== bOrder) return aOrder - bOrder;
+      if (aOrder != null && bOrder == null) return -1;
+      if (aOrder == null && bOrder != null) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [products, selectedProvider, selectedType, searchQuery, vehicleInfo, mileageKm, dealerPricing]);
 
   const productTypes = useMemo(() => [...new Set(products.map((p) => p.product_type))].sort(), [products]);
 
@@ -557,10 +552,12 @@ export default function FindProductsPage() {
             <div className="grid sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
               {filteredProducts.map((product) => {
                 const config = dealerPricing[product.id];
-                const useCustomRetail = config?.confidentiality_enabled && config?.retail_price && Object.keys(config.retail_price).length > 0;
-                const minCustomRetail = useCustomRetail ? Math.min(...Object.values(config.retail_price).filter(v => v > 0)) : null;
-                const minPrice = minCustomRetail ?? getMinPrice(product.pricing_json);
-                const maxPrice = getMaxPrice(product.pricing_json);
+                const baseRows = buildBasePricingRows(product.pricing_json);
+                const customerPrices = baseRows
+                  .map((row) => resolveCustomerRetailNumber(row, config))
+                  .filter((value) => value > 0);
+                const minPrice = customerPrices.length ? Math.min(...customerPrices) : getMinPrice(product.pricing_json);
+                const maxPrice = customerPrices.length ? Math.max(...customerPrices) : getMaxPrice(product.pricing_json);
                 const tierChips = getUniqueTierNames(product.pricing_json);
                 const cd = product.coverage_details_json || {};
                 const categories: Array<{ name: string; parts: string[] }> = cd.categories || [];

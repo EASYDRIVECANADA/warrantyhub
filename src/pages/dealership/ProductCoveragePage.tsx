@@ -11,6 +11,13 @@ import {
 import { supabase } from "../../integrations/supabase/client";
 import { useDealership } from "../../hooks/useDealership";
 import { cn } from "../../lib/utils";
+import {
+  buildAddOnPricingRows as buildSharedAddOnPricingRows,
+  buildBasePricingRows,
+  parseVehicleClass as parseSharedVehicleClass,
+  resolveCustomerRetail,
+  resolveCustomerRetailNumber,
+} from "../../lib/pricing/dealerPricing";
 
 // ── Types ─────────────────────────────────────────
 
@@ -25,6 +32,15 @@ interface PricingRow {
   vehicleClass?: string;
   dealerCost: number;
   suggestedRetail: number;
+  retailKey: string;
+}
+
+interface AddOnPricingRow {
+  name: string;
+  term: string;
+  vehicleClass: string;
+  suggestedRetail: number | string;
+  retailKey: string;
 }
 
 interface Benefit {
@@ -59,6 +75,149 @@ function isPowertrain(name: string) {
 }
 
 // ── Main Component ────────────────────────────────
+
+export function cellKey(tierIdx: number, bandIdx: number | null, rowIdx: number, termIdx: number) {
+  return `t${tierIdx}|m${bandIdx == null ? "-" : bandIdx}|r${rowIdx}|term${termIdx}`;
+}
+
+export function parseVehicleClass(vcRaw: string): { tierKey: string; bandKey: string | null } {
+  const vc = vcRaw.replace(/\u00c2\u00b7/g, "\u00b7").trim();
+  if (vc.includes("\u00b7")) {
+    const [band = "", tier = ""] = vc.split("\u00b7").map((s) => s.trim());
+    return { tierKey: tier.replace(/\/claim/i, " / claim"), bandKey: band || null };
+  }
+
+  const classMatch = vc.match(/^(.+?)\s*-\s*(Class \d+)$/i);
+  if (classMatch) {
+    return { tierKey: classMatch[1].trim(), bandKey: classMatch[2].trim() };
+  }
+
+  return { tierKey: vc || "Standard", bandKey: null };
+}
+
+export function buildRetailKeys(rows: any[]): string[] {
+  const tierOrder: string[] = [];
+  const bandOrder = new Map<string, string[]>();
+  const termOrder = new Map<string, string[]>();
+
+  const parsedRows = rows.map((row) => {
+    const termLabel = (row.label || row.term || "").toString().trim();
+    const { tierKey, bandKey } = parseVehicleClass((row.vehicleClass || row.vehicle_class || "Standard").toString());
+    const normalizedBandKey = bandKey ?? "-";
+
+    if (!tierOrder.includes(tierKey)) {
+      tierOrder.push(tierKey);
+      bandOrder.set(tierKey, []);
+      termOrder.set(tierKey, []);
+    }
+
+    const bands = bandOrder.get(tierKey)!;
+    if (!bands.includes(normalizedBandKey)) bands.push(normalizedBandKey);
+
+    const terms = termOrder.get(tierKey)!;
+    if (!terms.includes(termLabel)) terms.push(termLabel);
+
+    return { tierKey, bandKey: normalizedBandKey, termLabel };
+  });
+
+  return parsedRows.map((row) => {
+    const tierIdx = tierOrder.indexOf(row.tierKey);
+    const bands = bandOrder.get(row.tierKey) ?? [];
+    const terms = termOrder.get(row.tierKey) ?? [];
+    const termIdx = Math.max(terms.indexOf(row.termLabel), 0);
+    const hasBands = bands.length > 1 || (bands.length === 1 && bands[0] !== "-");
+
+    if (hasBands) {
+      return cellKey(tierIdx, Math.max(bands.indexOf(row.bandKey), 0), -1, termIdx);
+    }
+
+    return cellKey(tierIdx, null, 0, termIdx);
+  });
+}
+
+export function isAddonPricingRow(row: any): boolean {
+  return row?.kind === "addon" || row?.type === "addon" || !!row?.addonName;
+}
+
+export function coercePrice(value: any): number | string {
+  if (typeof value === "number") return Number.isFinite(value) ? value : "n/a";
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return "n/a";
+    const lower = trimmed.toLowerCase();
+    if (lower === "included") return "Included";
+    if (["n/a", "na", "-", "—"].includes(lower)) return "n/a";
+    const numeric = Number(trimmed.replace(/[$,]/g, ""));
+    return Number.isFinite(numeric) ? numeric : trimmed;
+  }
+  return "n/a";
+}
+
+export function isDisplayableAddOnPrice(value: number | string): boolean {
+  if (typeof value === "number") return Number.isFinite(value) && value > 0;
+  return value.trim().toLowerCase() === "included";
+}
+
+export function buildAddOnPricingRows(baseRows: any[], addonRows: any[], activeTier: string | null): AddOnPricingRow[] {
+  const tierOrder: string[] = [];
+  const bandOrder = new Map<string, string[]>();
+  const termOrder = new Map<string, string[]>();
+
+  baseRows.forEach((row) => {
+    const termLabel = (row.label || row.term || "").toString().trim();
+    const { tierKey, bandKey } = parseVehicleClass((row.vehicleClass || row.vehicle_class || "Standard").toString());
+    const normalizedBandKey = bandKey ?? "-";
+
+    if (!tierOrder.includes(tierKey)) {
+      tierOrder.push(tierKey);
+      bandOrder.set(tierKey, []);
+      termOrder.set(tierKey, []);
+    }
+
+    const bands = bandOrder.get(tierKey)!;
+    if (!bands.includes(normalizedBandKey)) bands.push(normalizedBandKey);
+
+    const terms = termOrder.get(tierKey)!;
+    if (!terms.includes(termLabel)) terms.push(termLabel);
+  });
+
+  const activeTierKey = activeTier ? parseVehicleClass(activeTier).tierKey : null;
+  const addonOrder = new Map<string, string[]>();
+  const rows: AddOnPricingRow[] = [];
+
+  addonRows.forEach((row) => {
+    const name = (row.addonName || row.name || "Add-on").toString().trim();
+    const termLabel = (row.label || row.term || "").toString().trim();
+    const { tierKey } = parseVehicleClass((row.vehicleClass || row.vehicle_class || "Standard").toString());
+    if (activeTierKey && tierKey !== activeTierKey) return;
+
+    const tierIdx = tierOrder.indexOf(tierKey);
+    const terms = termOrder.get(tierKey) ?? [];
+    const termIdx = terms.indexOf(termLabel);
+    if (tierIdx < 0 || termIdx < 0) return;
+
+    const labels = addonOrder.get(tierKey) ?? [];
+    if (!labels.includes(name)) labels.push(name);
+    addonOrder.set(tierKey, labels);
+
+    const bands = bandOrder.get(tierKey) ?? [];
+    const hasBands = bands.length > 1 || (bands.length === 1 && bands[0] !== "-");
+    const addonIdx = labels.indexOf(name);
+    const rowIdx = hasBands ? addonIdx : addonIdx + 1;
+    const suggestedRetail = coercePrice(row.suggestedRetail ?? row.suggested_retail ?? row.retail ?? row.price ?? "n/a");
+    if (!isDisplayableAddOnPrice(suggestedRetail)) return;
+
+    rows.push({
+      name,
+      term: termLabel,
+      vehicleClass: tierKey,
+      suggestedRetail,
+      retailKey: cellKey(tierIdx, null, rowIdx, termIdx),
+    });
+  });
+
+  return rows;
+}
 
 export default function ProductCoveragePage() {
   const { id } = useParams();
@@ -116,11 +275,19 @@ export default function ProductCoveragePage() {
     })();
   }, [dealershipId, id]);
 
-  // Returns the dealer's custom price for a tier, or falls back to suggestedRetail
-  function getDisplayPrice(row: PricingRow, index: number): number {
-    const key = `${row.term}|${row.vehicleClass || ""}|${index}`;
-    if (confidentialityEnabled && customPricing[key] !== undefined) return customPricing[key];
-    return row.dealerCost;
+  // Returns the dealer's saved customer-facing retail, or falls back to provider suggested retail.
+  function getDisplayPrice(row: PricingRow): number {
+    return resolveCustomerRetailNumber(row, {
+      retail_price: customPricing,
+      confidentiality_enabled: confidentialityEnabled,
+    });
+  }
+
+  function getAddOnDisplayPrice(row: AddOnPricingRow): number | string {
+    return resolveCustomerRetail(row, {
+      retail_price: customPricing,
+      confidentiality_enabled: confidentialityEnabled,
+    });
   }
 
   if (loading) {
@@ -153,13 +320,7 @@ export default function ProductCoveragePage() {
     parts: Array.isArray(c.parts) ? c.parts : [],
   }));
 
-  const pricingRows: PricingRow[] = (pr.rows || []).map((r: any) => ({
-    term: r.label || r.term || "",
-    mileageBracket: r.mileageBracket || r.mileage_bracket || "",
-    vehicleClass: r.vehicleClass || r.vehicle_class || "",
-    dealerCost: Number(r.dealerCost || r.dealer_cost || 0),
-    suggestedRetail: Number(r.suggestedRetail || r.suggested_retail || 0),
-  }));
+  const pricingRows: PricingRow[] = buildBasePricingRows(pr);
 
   const rawBenefits: Benefit[] = (pr.benefits || []).map((b: any) =>
     typeof b === "string" ? { name: b, included: true } : { name: b.name, included: b.included ?? true }
@@ -171,17 +332,35 @@ export default function ProductCoveragePage() {
   const powertrainCats = categories.filter(c => isPowertrain(c.name));
   const additionalCats = categories.filter(c => !isPowertrain(c.name));
 
-  // Unique claim tiers (vehicleClass) for the selector buttons
-  const uniqueTiers = [...new Set(pricingRows.map(r => r.vehicleClass).filter(Boolean))] as string[];
-  // Auto-select first tier on load
+  // Unique claim tiers for the selector buttons
+  const uniqueTiers = [...new Set(pricingRows.map(r => parseSharedVehicleClass(r.vehicleClass || "").tierKey).filter(Boolean))] as string[];
   const activeTier = selectedTier ?? (uniqueTiers[0] || null);
-  const tierRows = activeTier ? pricingRows.filter(r => r.vehicleClass === activeTier) : pricingRows;
+  const tierRows = activeTier
+    ? pricingRows.filter(r => parseSharedVehicleClass(r.vehicleClass || "").tierKey === activeTier)
+    : pricingRows;
+  const baseTermLabels = [...new Set(tierRows.map((row) => row.term))];
+  const baseMatrixRows = [...tierRows.reduce((map, row) => {
+    const { bandKey } = parseSharedVehicleClass(row.vehicleClass || "");
+    const label = bandKey ?? "Base Price";
+    const termMap = map.get(label) ?? new Map<string, PricingRow>();
+    termMap.set(row.term, row);
+    map.set(label, termMap);
+    return map;
+  }, new Map<string, Map<string, PricingRow>>()).entries()];
+  const addOnRows = buildSharedAddOnPricingRows(pr, activeTier);
+  const addOnTermLabels = [...new Set(addOnRows.map((row) => row.term))];
+  const addOnMatrixRows = [...addOnRows.reduce((map, row) => {
+    const termMap = map.get(row.name) ?? new Map<string, AddOnPricingRow>();
+    termMap.set(row.term, row);
+    map.set(row.name, termMap);
+    return map;
+  }, new Map<string, Map<string, AddOnPricingRow>>()).entries()];
 
-  const allRetails = pricingRows.map(r => r.suggestedRetail).filter(Boolean);
+  const allRetails = pricingRows.map(r => getDisplayPrice(r)).filter(Boolean);
   const minRetail = allRetails.length ? Math.min(...allRetails) : null;
   const maxRetail = allRetails.length ? Math.max(...allRetails) : null;
 
-  const tierRetails = tierRows.map(r => r.suggestedRetail).filter(Boolean);
+  const tierRetails = tierRows.map(r => getDisplayPrice(r)).filter(Boolean);
   const tierMinRetail = tierRetails.length ? Math.min(...tierRetails) : minRetail;
   const tierMaxRetail = tierRetails.length ? Math.max(...tierRetails) : maxRetail;
 
@@ -385,7 +564,7 @@ export default function ProductCoveragePage() {
                         <Badge variant="secondary" className="text-xs">{row.vehicleClass || "Standard"}</Badge>
                         <DollarSign className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
                       </div>
-                      <p className="font-display font-bold text-2xl text-foreground">${getDisplayPrice(row, i).toLocaleString()}</p>
+                      <p className="font-display font-bold text-2xl text-foreground">${getDisplayPrice(row).toLocaleString()}</p>
                       <p className="text-xs text-muted-foreground">Price</p>
                       <div className="border-t mt-3 pt-3 space-y-1.5">
                         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -537,29 +716,142 @@ export default function ProductCoveragePage() {
         {/* ── Pricing Table ── */}
         {activeSection === "pricing" && pricingRows.length > 0 && (
           <div className="space-y-4">
-            <h2 className="font-display text-xl font-bold text-foreground">Pricing & Options</h2>
-            <div className="overflow-x-auto rounded-lg border">
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+                <div>
+                  <h2 className="font-display text-xl font-bold text-foreground">Pricing & Options</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Compare base coverage and optional add-ons for the selected claim tier.
+                  </p>
+                </div>
+                {tierMinRetail !== null && (
+                  <div className="rounded-lg border bg-card px-4 py-3 md:text-right">
+                    <p className="text-xs uppercase font-semibold tracking-wide text-muted-foreground">Selected range</p>
+                    <p className="text-lg font-bold text-primary">
+                      ${tierMinRetail.toLocaleString()}
+                      {tierMaxRetail !== null && tierMaxRetail !== tierMinRetail ? ` - $${tierMaxRetail.toLocaleString()}` : ""}
+                    </p>
+                  </div>
+                )}
+              </div>
+              {uniqueTiers.length > 1 && (
+                <div className="flex flex-wrap gap-2">
+                  {uniqueTiers.map((tier) => (
+                    <button
+                      key={tier}
+                      onClick={() => setSelectedTier(tier)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all",
+                        activeTier === tier
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-card text-muted-foreground border-border hover:border-primary/40 hover:text-foreground"
+                      )}
+                    >
+                      {tier}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="space-y-3">
+              <h3 className="font-display text-lg font-bold text-foreground">Base Pricing</h3>
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/50">
+                      <th className="text-left px-4 py-3 font-semibold min-w-[220px]">
+                        {baseMatrixRows.length > 1 ? "Mileage Band" : "Coverage"}
+                      </th>
+                      {baseTermLabels.map((term) => (
+                        <th key={term} className="text-right px-4 py-3 font-semibold text-primary min-w-[160px]">
+                          {term}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {baseMatrixRows.map(([label, terms]) => (
+                      <tr key={label} className="hover:bg-muted/20 transition-colors">
+                        <td className="px-4 py-3 font-medium">{label}</td>
+                        {baseTermLabels.map((term) => {
+                          const row = terms.get(term);
+                          return (
+                            <td key={term} className="px-4 py-3 text-right text-primary font-semibold">
+                              {row ? `$${getDisplayPrice(row).toLocaleString()}` : (
+                                <span className="text-muted-foreground/50">—</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="hidden">
               <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="text-left px-4 py-3 font-semibold">Term</th>
-                    <th className="text-left px-4 py-3 font-semibold">Vehicle Class</th>
-                    <th className="text-right px-4 py-3 font-semibold text-primary">Price</th>
-                  </tr>
-                </thead>
                 <tbody className="divide-y">
                   {pricingRows.map((row, i) => (
                     <tr key={i} className="hover:bg-muted/20 transition-colors">
                       <td className="px-4 py-3 font-medium">{row.term}</td>
                       <td className="px-4 py-3 text-muted-foreground">{row.vehicleClass || "—"}</td>
                       <td className="px-4 py-3 text-right text-primary font-semibold">
-                        ${getDisplayPrice(row, i).toLocaleString()}
+                        ${getDisplayPrice(row).toLocaleString()}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            {addOnRows.length > 0 && (
+              <div className="space-y-3 pt-2">
+                <div>
+                  <h3 className="font-display text-lg font-bold text-foreground">Optional Add-ons</h3>
+                  {activeTier && (
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      Available for {parseSharedVehicleClass(activeTier).tierKey}
+                    </p>
+                  )}
+                </div>
+                <div className="overflow-x-auto rounded-lg border">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/50">
+                        <th className="text-left px-4 py-3 font-semibold min-w-[220px]">Add-on</th>
+                        {addOnTermLabels.map((term) => (
+                          <th key={term} className="text-right px-4 py-3 font-semibold text-primary min-w-[160px]">
+                            {term}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {addOnMatrixRows.map(([name, terms]) => (
+                        <tr key={name} className="hover:bg-muted/20 transition-colors">
+                          <td className="px-4 py-3 font-medium">{name}</td>
+                          {addOnTermLabels.map((term) => {
+                            const row = terms.get(term);
+                            const price = row ? getAddOnDisplayPrice(row) : null;
+                            return (
+                              <td key={term} className="px-4 py-3 text-right text-primary font-semibold">
+                                {price == null ? (
+                                  <span className="text-muted-foreground/50">—</span>
+                                ) : typeof price === "number" ? (
+                                  `$${price.toLocaleString()}`
+                                ) : (
+                                  <Badge className="bg-green-100 text-green-700 hover:bg-green-100">{price}</Badge>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
             {deductible && (
               <p className="text-sm text-muted-foreground">Deductible: ${deductible} per claim</p>
             )}

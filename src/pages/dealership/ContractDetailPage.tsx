@@ -22,6 +22,21 @@ interface ContractRow {
   vehicle_mileage: number | null;
   contract_price: number | null;
   dealer_cost_dollars: number | null;
+  pricing_vehicle_class: string | null;
+  pricing_term_months: number | null;
+  pricing_term_km: number | null;
+  pricing_base_price_cents: number | null;
+  pricing_dealer_cost_cents: number | null;
+  addon_snapshot: Array<{
+    name?: string;
+    term?: string;
+    vehicleClass?: string;
+    dealerCost?: number;
+    retail?: number;
+    retailKey?: string;
+  }> | null;
+  addon_total_retail_cents: number | null;
+  addon_total_cost_cents: number | null;
   status_new: string | null;
   status: string | null;
   start_date: string | null;
@@ -49,6 +64,16 @@ const statusColors: Record<string, string> = {
   expired: "bg-red-100 text-red-800",
   cancelled: "bg-destructive/10 text-destructive",
 };
+
+function centsToDollars(value: number | null | undefined): number | null {
+  return typeof value === "number" ? value / 100 : null;
+}
+
+function formatPricingTerm(months: number | null, km: number | null): string | null {
+  if (!months) return null;
+  const kmLabel = km == null ? "Unlimited km" : `${km.toLocaleString()} km`;
+  return `${months} Months / ${kmLabel}`;
+}
 
 export default function ContractDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -150,13 +175,22 @@ export default function ContractDetailPage() {
 
   // Find the matching tier label from pricing rows if we have a tier stored
   const pricingRows: Array<{ label: string; vehicleClass: string; dealerCost: number; retail: number }> =
-    (pr.rows || pr.tiers || []).map((r: any) => ({
+    (pr.rows || pr.tiers || [])
+      .filter((r: any) => r?.kind !== "addon" && r?.type !== "addon" && !r?.addonName)
+      .map((r: any) => ({
       label: r.term || r.label || "Standard",
       vehicleClass: r.vehicleClass || r.vehicle_class || "",
       dealerCost: Number(r.dealerCost ?? r.dealer_cost ?? 0),
       retail: Number(r.suggestedRetail ?? r.suggested_retail ?? r.retail ?? 0),
     }));
 
+  const addonSnapshot = Array.isArray(contract.addon_snapshot) ? contract.addon_snapshot : [];
+  const baseRetailDollars = centsToDollars(contract.pricing_base_price_cents);
+  const baseDealerDollars = centsToDollars(contract.pricing_dealer_cost_cents);
+  const addonRetailDollars = centsToDollars(contract.addon_total_retail_cents);
+  const addonCostDollars = centsToDollars(contract.addon_total_cost_cents);
+  const hasPricingSnapshot = baseRetailDollars != null || baseDealerDollars != null || addonSnapshot.length > 0;
+  const pricingTermLabel = formatPricingTerm(contract.pricing_term_months, contract.pricing_term_km);
   const contractNumber = `WH-${contract.id.substring(0, 8).toUpperCase()}`;
 
   return (
@@ -248,6 +282,18 @@ export default function ContractDetailPage() {
                     <p className="font-semibold text-sm">{product?.product_type || "—"}</p>
                   </div>
                 )}
+                {contract.pricing_vehicle_class && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">Selected Coverage</p>
+                    <p className="font-semibold text-sm">{contract.pricing_vehicle_class}</p>
+                  </div>
+                )}
+                {pricingTermLabel && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">Term</p>
+                    <p className="font-semibold text-sm">{pricingTermLabel}</p>
+                  </div>
+                )}
                 {deductible && (
                   <div>
                     <p className="text-xs text-muted-foreground">Deductible</p>
@@ -261,12 +307,42 @@ export default function ContractDetailPage() {
             <div className="rounded-lg border p-4">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Pricing</p>
               <div className="space-y-1.5">
-                {contract.dealer_cost_dollars != null && contract.dealer_cost_dollars > 0 && (
+                {hasPricingSnapshot ? (
+                  <>
+                    {baseRetailDollars != null && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Base Coverage</span>
+                        <span className="font-semibold">${baseRetailDollars.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {addonSnapshot.map((addon, index) => (
+                      <div key={`${addon.name || "addon"}-${index}`} className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">
+                          {addon.name || "Add-on"}
+                          {addon.term ? <span className="text-[10px]"> ({addon.term})</span> : null}
+                        </span>
+                        <span className="font-semibold">+${Number(addon.retail || 0).toLocaleString()}</span>
+                      </div>
+                    ))}
+                    {addonRetailDollars != null && addonRetailDollars > 0 && addonSnapshot.length === 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Add-ons</span>
+                        <span className="font-semibold">+${addonRetailDollars.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {(baseDealerDollars != null || addonCostDollars != null || contract.dealer_cost_dollars != null) && (
+                      <div className="flex justify-between text-xs text-muted-foreground border-t pt-2">
+                        <span>Dealer Cost</span>
+                        <span>${Number(contract.dealer_cost_dollars ?? ((baseDealerDollars || 0) + (addonCostDollars || 0))).toLocaleString()}</span>
+                      </div>
+                    )}
+                  </>
+                ) : contract.dealer_cost_dollars != null && contract.dealer_cost_dollars > 0 ? (
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Dealer Cost</span>
                     <span className="font-semibold">${Number(contract.dealer_cost_dollars).toLocaleString()}</span>
                   </div>
-                )}
+                ) : null}
                 <div className="flex justify-between font-bold pt-2 border-t">
                   <span>Total Contract Price</span>
                   <span className="text-primary text-lg">${Number(contract.contract_price || 0).toLocaleString()}</span>

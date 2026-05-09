@@ -12,7 +12,7 @@ import { useDealership } from "../../../hooks/useDealership";
 import { useToast } from "../../../hooks/use-toast";
 import {
   Settings2, DollarSign, Pencil, Check, X, ChevronRight, ChevronLeft,
-  Search, Package, Zap, Building2, Shield,
+  Search, Package, Zap, Building2, Shield, GripVertical,
 } from "lucide-react";
 import { cn } from "../../../lib/utils";
 
@@ -32,18 +32,19 @@ interface PricingConfig {
   product_id: string;
   retail_price: Record<string, number>;
   confidentiality_enabled: boolean;
+  sort_order?: number | null;
 }
 
 interface StructuredRow {
   label: string;
   values: (number | string)[];
-  suggestedValues?: number[];
+  suggestedValues?: (number | string)[];
 }
 
 interface StructuredBand {
   label: string;
   values: (number | string)[];
-  suggestedValues?: number[];
+  suggestedValues?: (number | string)[];
 }
 
 interface StructuredTier {
@@ -94,17 +95,39 @@ function parseVC(vc: string): { tierKey: string; bandKey: string | null } {
   return { tierKey: vc, bandKey: null };
 }
 
+function isAddonRow(row: any): boolean {
+  return row?.kind === "addon" || row?.type === "addon" || !!row?.addonName;
+}
+
+function coerceCellValue(value: any): number | string {
+  if (typeof value === "number") return Number.isFinite(value) ? value : "n/a";
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return "n/a";
+    const lower = trimmed.toLowerCase();
+    if (lower === "included") return "Included";
+    if (["n/a", "na", "-", "—"].includes(lower)) return "n/a";
+    const parsed = Number(trimmed.replace(/[$,]/g, ""));
+    return Number.isFinite(parsed) ? parsed : trimmed;
+  }
+  return "n/a";
+}
+
 function extractStructuredFromV2(rows: any[]): Structured {
   if (!Array.isArray(rows) || rows.length === 0) return { tiers: [] };
 
+  const baseRows = rows.filter((row) => !isAddonRow(row));
+  const addonRows = rows.filter(isAddonRow);
   const tierOrder: string[] = [];
   const perClaimMap: Map<string, number | undefined> = new Map();
   const bandOrder: Map<string, string[]> = new Map();
   const termOrder: Map<string, string[]> = new Map();
-  type Cell = { cost: number; retail: number };
+  const addonOrder: Map<string, string[]> = new Map();
+  type Cell = { cost: number | string; retail: number | string };
   const cells: Map<string, Map<string, Map<string, Cell>>> = new Map();
+  const addonCells: Map<string, Map<string, Map<string, Cell>>> = new Map();
 
-  for (const row of rows) {
+  for (const row of baseRows) {
     const vc = (row.vehicleClass || "Standard").toString().trim();
     const termLabel = (row.label || "").toString().trim();
     const { tierKey, bandKey } = parseVC(vc);
@@ -117,6 +140,8 @@ function extractStructuredFromV2(rows: any[]): Structured {
       cells.set(tierKey, new Map());
       bandOrder.set(tierKey, []);
       termOrder.set(tierKey, []);
+      addonOrder.set(tierKey, []);
+      addonCells.set(tierKey, new Map());
     }
 
     const bands = bandOrder.get(tierKey)!;
@@ -128,8 +153,27 @@ function extractStructuredFromV2(rows: any[]): Structured {
     const tierCells = cells.get(tierKey)!;
     if (!tierCells.has(bk)) tierCells.set(bk, new Map());
     tierCells.get(bk)!.set(termLabel, {
-      cost: Number(row.dealerCost ?? row.dealer_cost ?? 0),
-      retail: Number(row.suggestedRetail ?? row.suggested_retail ?? 0),
+      cost: coerceCellValue(row.dealerCost ?? row.dealer_cost ?? 0),
+      retail: coerceCellValue(row.suggestedRetail ?? row.suggested_retail ?? 0),
+    });
+  }
+
+  for (const row of addonRows) {
+    const vc = (row.vehicleClass || row.vehicle_class || "Standard").toString().trim();
+    const termLabel = (row.label || row.term || "").toString().trim();
+    const addonLabel = (row.addonName || row.name || "Add-on").toString().trim();
+    const { tierKey } = parseVC(vc);
+
+    if (!cells.has(tierKey) || !termOrder.get(tierKey)?.includes(termLabel)) continue;
+
+    const labels = addonOrder.get(tierKey)!;
+    if (!labels.includes(addonLabel)) labels.push(addonLabel);
+
+    const byAddon = addonCells.get(tierKey)!;
+    if (!byAddon.has(addonLabel)) byAddon.set(addonLabel, new Map());
+    byAddon.get(addonLabel)!.set(termLabel, {
+      cost: coerceCellValue(row.dealerCost ?? row.dealer_cost ?? row.price ?? "n/a"),
+      retail: coerceCellValue(row.suggestedRetail ?? row.suggested_retail ?? row.retail ?? "n/a"),
     });
   }
 
@@ -142,6 +186,14 @@ function extractStructuredFromV2(rows: any[]): Structured {
     }));
     const tierCells = cells.get(tierKey)!;
     const hasBands = bands.length > 1 || (bands.length === 1 && bands[0] !== "-");
+    const addonRowsForTier: StructuredRow[] = (addonOrder.get(tierKey) ?? []).map((addonLabel) => {
+      const byTerm = addonCells.get(tierKey)?.get(addonLabel) ?? new Map();
+      return {
+        label: addonLabel,
+        values: terms.map((t) => byTerm.get(t.label)?.cost ?? "n/a"),
+        suggestedValues: terms.map((t) => byTerm.get(t.label)?.retail ?? "n/a"),
+      };
+    });
 
     if (hasBands) {
       const mileageBands: StructuredBand[] = bands.map((bk) => {
@@ -157,7 +209,7 @@ function extractStructuredFromV2(rows: any[]): Structured {
         perClaimAmount: perClaimMap.get(tierKey),
         terms,
         mileageBands,
-        rows: [],
+        rows: addonRowsForTier,
         baseInRows: false,
       };
     } else {
@@ -167,11 +219,14 @@ function extractStructuredFromV2(rows: any[]): Structured {
         perClaimAmount: perClaimMap.get(tierKey),
         terms,
         mileageBands: undefined,
-        rows: [{
-          label: "Base Price",
-          values: terms.map((t) => bandCells.get(t.label)?.cost ?? 0),
-          suggestedValues: terms.map((t) => bandCells.get(t.label)?.retail ?? 0),
-        }],
+        rows: [
+          {
+            label: "Base Price",
+            values: terms.map((t) => bandCells.get(t.label)?.cost ?? 0),
+            suggestedValues: terms.map((t) => bandCells.get(t.label)?.retail ?? 0),
+          },
+          ...addonRowsForTier,
+        ],
         baseInRows: true,
       };
     }
@@ -265,6 +320,7 @@ export default function ConfigurationPage() {
   const [activeProviderId, setActiveProviderId] = useState<string | null>(null);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [draggedProductId, setDraggedProductId] = useState<string | null>(null);
 
   // Pricing matrix state
   const [activeTier, setActiveTier] = useState(0);
@@ -316,12 +372,12 @@ export default function ConfigurationPage() {
       if (dealershipId) {
         const { data: configs } = await supabase
           .from("dealership_product_pricing")
-          .select("product_id, retail_price, confidentiality_enabled")
+          .select("product_id, retail_price, confidentiality_enabled, sort_order")
           .eq("dealership_id", dealershipId);
 
         const configMap: Record<string, PricingConfig> = {};
         (configs || []).forEach((c: any) => {
-          configMap[c.product_id] = c;
+        configMap[c.product_id] = c;
           if (c.confidentiality_enabled) setConfidentialityEnabled(true);
         });
         setPricingConfigs(configMap);
@@ -359,8 +415,15 @@ export default function ConfigurationPage() {
     if (!activeProviderId) return [];
     return (providerGroups[activeProviderId] || [])
       .filter((p) => !search || p.name.toLowerCase().includes(search.toLowerCase()))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [providerGroups, activeProviderId, search]);
+      .sort((a, b) => {
+        const aOrder = pricingConfigs[a.id]?.sort_order;
+        const bOrder = pricingConfigs[b.id]?.sort_order;
+        if (aOrder != null && bOrder != null && aOrder !== bOrder) return aOrder - bOrder;
+        if (aOrder != null && bOrder == null) return -1;
+        if (aOrder == null && bOrder != null) return 1;
+        return a.name.localeCompare(b.name);
+      });
+  }, [providerGroups, activeProviderId, search, pricingConfigs]);
 
   // ── Selected product & structured pricing ──
   const selectedProduct = products.find((p) => p.id === selectedProductId);
@@ -397,8 +460,55 @@ export default function ConfigurationPage() {
     }
     setPricingConfigs((prev) => ({
       ...prev,
-      [productId]: { product_id: productId, retail_price: newRetail, confidentiality_enabled: confidentialityEnabled },
+      [productId]: { product_id: productId, retail_price: newRetail, confidentiality_enabled: confidentialityEnabled, sort_order: existing?.sort_order ?? null },
     }));
+  };
+
+  const persistPlanOrder = async (orderedPlans: Product[]) => {
+    if (!dealershipId || !isAdmin) return;
+
+    const rows = orderedPlans.map((product, index) => ({
+      dealership_id: dealershipId,
+      product_id: product.id,
+      retail_price: pricingConfigs[product.id]?.retail_price ?? {},
+      confidentiality_enabled: confidentialityEnabled,
+      sort_order: index,
+    }));
+
+    const { error } = await supabase
+      .from("dealership_product_pricing")
+      .upsert(rows, { onConflict: "dealership_id,product_id" });
+
+    if (error) {
+      toast({ title: "Could not save plan order", description: error.message, variant: "destructive" });
+      return;
+    }
+
+    setPricingConfigs((prev) => {
+      const next = { ...prev };
+      orderedPlans.forEach((product, index) => {
+        const existing = next[product.id];
+        next[product.id] = {
+          product_id: product.id,
+          retail_price: existing?.retail_price ?? {},
+          confidentiality_enabled: existing?.confidentiality_enabled ?? confidentialityEnabled,
+          sort_order: index,
+        };
+      });
+      return next;
+    });
+  };
+
+  const movePlan = (fromProductId: string, toProductId: string) => {
+    if (!isAdmin || fromProductId === toProductId) return;
+    const fromIndex = plansForProvider.findIndex((product) => product.id === fromProductId);
+    const toIndex = plansForProvider.findIndex((product) => product.id === toProductId);
+    if (fromIndex < 0 || toIndex < 0) return;
+
+    const ordered = [...plansForProvider];
+    const [moved] = ordered.splice(fromIndex, 1);
+    ordered.splice(toIndex, 0, moved);
+    void persistPlanOrder(ordered);
   };
 
   const saveCell = async (key: string, value: number) => {
@@ -485,7 +595,7 @@ export default function ConfigurationPage() {
   // ── Matrix rows for current tier/band ──
   type MatrixRow = {
     label: string; isBase: boolean; rowIdx: number; bandIdx: number | null;
-    values: (number | string)[]; suggestedValues?: number[];
+    values: (number | string)[]; suggestedValues?: (number | string)[];
   };
 
   const matrixRows: MatrixRow[] = [];
@@ -521,7 +631,8 @@ export default function ConfigurationPage() {
 
     const cost = raw as number;
     const defaultSuggested = mr.suggestedValues?.[termIdx];
-    const suggested = customRetail ?? (defaultSuggested != null && defaultSuggested > 0 ? defaultSuggested : Math.round(cost * 1.4));
+    const defaultSuggestedNumber = typeof defaultSuggested === "number" && defaultSuggested > 0 ? defaultSuggested : null;
+    const suggested = customRetail ?? defaultSuggestedNumber ?? Math.round(cost * 1.4);
     const hasCustom = customRetail != null;
     const markupPct = cost > 0 ? ((suggested - cost) / cost) * 100 : 0;
     const isEditing = editingCell === key;
@@ -744,14 +855,38 @@ export default function ConfigurationPage() {
                     return (
                       <button
                         key={p.id}
+                        draggable={isAdmin && !search}
+                        onDragStart={(e) => {
+                          if (!isAdmin || search) return;
+                          setDraggedProductId(p.id);
+                          e.dataTransfer.effectAllowed = "move";
+                          e.dataTransfer.setData("text/plain", p.id);
+                        }}
+                        onDragOver={(e) => {
+                          if (!isAdmin || search || !draggedProductId || draggedProductId === p.id) return;
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const fromId = e.dataTransfer.getData("text/plain") || draggedProductId;
+                          if (fromId) movePlan(fromId, p.id);
+                          setDraggedProductId(null);
+                        }}
+                        onDragEnd={() => setDraggedProductId(null)}
                         onClick={() => setSelectedProductId(p.id)}
                         className={cn(
                           "w-full text-left rounded-xl px-4 py-3 transition-all hover:bg-muted/60",
-                          isSelected ? "bg-primary/10 border border-primary/30 shadow-sm" : "bg-card border border-transparent"
+                          isSelected ? "bg-primary/10 border border-primary/30 shadow-sm" : "bg-card border border-transparent",
+                          draggedProductId === p.id && "opacity-50",
+                          isAdmin && !search && "cursor-grab active:cursor-grabbing"
                         )}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0 flex items-center gap-2">
+                            {isAdmin && !search && (
+                              <GripVertical className="w-4 h-4 shrink-0 text-muted-foreground/40" aria-hidden="true" />
+                            )}
                             <Shield className={cn("w-4 h-4 shrink-0", isSelected ? "text-primary" : "text-muted-foreground/60")} />
                             <div className="min-w-0">
                               <p className="font-semibold text-sm truncate">{p.name}</p>
@@ -760,7 +895,7 @@ export default function ConfigurationPage() {
                           </div>
                           <ChevronRight className={cn("w-4 h-4 shrink-0", isSelected ? "text-primary" : "text-muted-foreground/40")} />
                         </div>
-                        <div className="flex flex-wrap gap-1.5 mt-1.5 pl-6">
+                        <div className={cn("flex flex-wrap gap-1.5 mt-1.5", isAdmin && !search ? "pl-10" : "pl-6")}>
                           <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                             {s.tiers.length} tier{s.tiers.length !== 1 ? "s" : ""}
                           </Badge>
