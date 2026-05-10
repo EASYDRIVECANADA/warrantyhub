@@ -8,7 +8,7 @@ import { useAuth } from "../../providers/AuthProvider";
 import { supabase } from "../../integrations/supabase/client";
 import { Link } from "react-router-dom";
 import {
-  FileText, Users, DollarSign, TrendingUp, Search, BarChart3,
+  AlertCircle, FileText, Users, DollarSign, TrendingUp, Search, BarChart3,
 } from "lucide-react";
 import {
   ChartContainer, ChartTooltip, ChartTooltipContent,
@@ -21,7 +21,7 @@ const emptyStats = {
 };
 
 export default function DealershipOverviewPage() {
-  const { dealershipId, loading: dLoading } = useDealership();
+  const { dealershipId, loading: dLoading, reloadDealership } = useDealership();
   const { user } = useAuth();
   const [stats, setStats] = useState(emptyStats);
   const [chartData, setChartData] = useState<{ month: string; contracts: number }[]>([]);
@@ -79,6 +79,33 @@ export default function DealershipOverviewPage() {
     };
     fetchData();
   }, [dealershipId, user]);
+
+  if (!dLoading && !dealershipId) {
+    return (
+      <DashboardLayout navItems={dealershipNavItems} title="Dashboard">
+        <div className="mx-auto flex min-h-[420px] max-w-xl items-center justify-center">
+          <Card className="w-full">
+            <CardContent className="p-8 text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-600">
+                <AlertCircle className="h-6 w-6" />
+              </div>
+              <h2 className="text-lg font-semibold">Dealership connection needed</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                This account is signed in, but it is not attached to an active dealership record yet.
+                Dashboard metrics will appear once the dealership membership is connected.
+              </p>
+              <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
+                <Button onClick={reloadDealership}>Retry Connection</Button>
+                <Button variant="outline" asChild>
+                  <Link to="/support">Contact Support</Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   if (dLoading || loading) {
     return (

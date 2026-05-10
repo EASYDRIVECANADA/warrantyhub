@@ -56,28 +56,39 @@ const SelectTrigger = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttrib
 );
 SelectTrigger.displayName = "SelectTrigger";
 
-function SelectValue({ placeholder }: { placeholder?: string }) {
+function SelectValue({
+  placeholder,
+  labels,
+}: {
+  placeholder?: string;
+  labels?: Record<string, React.ReactNode>;
+}) {
   const ctx = React.useContext(SelectContext);
-  return <span className={ctx.value ? "" : "text-muted-foreground"}>{ctx.value || placeholder || ""}</span>;
+  return (
+    <span className={ctx.value ? "" : "text-muted-foreground"}>
+      {ctx.value ? (labels?.[ctx.value] ?? ctx.value) : (placeholder || "")}
+    </span>
+  );
 }
 
 const SelectContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, children, ...props }, ref) => {
     const ctx = React.useContext(SelectContext);
+    const { open, setOpen } = ctx;
     const containerRef = React.useRef<HTMLDivElement>(null);
 
     React.useEffect(() => {
-      if (!ctx.open) return;
+      if (!open) return;
       const handle = (e: MouseEvent) => {
         if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-          ctx.setOpen(false);
+          setOpen(false);
         }
       };
       document.addEventListener("mousedown", handle);
       return () => document.removeEventListener("mousedown", handle);
-    }, [ctx.open]);
+    }, [open, setOpen]);
 
-    if (!ctx.open) return null;
+    if (!open) return null;
     return (
       <div
         ref={(node) => {

@@ -23,6 +23,21 @@ const TYPE_LABELS: Record<string, string> = {
   Other: "Other",
 };
 
+const TYPE_FILTER_LABELS: Record<string, string> = {
+  all: "All Types",
+  VSC: "Vehicle Service Contract",
+  "Tire & Rim": "Tire & Rim",
+  GAP: "GAP Insurance",
+  Other: "Other",
+};
+
+const STATUS_FILTER_LABELS: Record<string, string> = {
+  all: "All Status",
+  active: "Active",
+  draft: "Draft",
+  inactive: "Inactive",
+};
+
 export default function ProviderProductsPage2() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -137,7 +152,7 @@ export default function ProviderProductsPage2() {
             <Input placeholder="Search products..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="All Types" /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="All Types" labels={TYPE_FILTER_LABELS} /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Types</SelectItem>
               <SelectItem value="VSC">Vehicle Service Contract</SelectItem>
@@ -147,7 +162,7 @@ export default function ProviderProductsPage2() {
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full sm:w-[140px]"><SelectValue placeholder="All Status" /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-[140px]"><SelectValue placeholder="All Status" labels={STATUS_FILTER_LABELS} /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="active">Active</SelectItem>

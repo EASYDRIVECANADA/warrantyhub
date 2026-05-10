@@ -70,7 +70,10 @@ export function SupportWidget() {
     location.pathname === "/dealer-dashboard" ||
     location.pathname === "/dealer-admin" ||
     location.pathname === "/provider-dashboard" ||
-    location.pathname === "/company-dashboard";
+    location.pathname === "/company-dashboard" ||
+    location.pathname.startsWith("/dealership/") ||
+    location.pathname.startsWith("/provider/") ||
+    location.pathname.startsWith("/admin/");
 
   const shouldRender = Boolean(userId) && canUseSupport && isDashboardPath;
   const supabaseEnabled = shouldRender && open && mode === "supabase";

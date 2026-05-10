@@ -226,11 +226,27 @@ export default function ProviderProductEditorPage() {
   // AI extract
   const handleAIExtract = async () => {
     if (!aiText.trim()) return;
+    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+      toast({
+        title: "Supabase Not Configured",
+        description: "AI import requires the Supabase project URL and anon key.",
+        variant: "destructive",
+      });
+      return;
+    }
     setAiLoading(true);
     try {
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-plan-data`,
-        { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` }, body: JSON.stringify({ text: aiText }) }
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ text: aiText }),
+        }
       );
       if (!response.ok) { const err = await response.json().catch(() => ({})); throw new Error(err.error || "AI extraction failed"); }
       const data = await response.json();
@@ -251,7 +267,10 @@ export default function ProviderProductEditorPage() {
         setActiveTab("overview");
       }
     } catch (err: any) {
-      toast({ title: "AI Error", description: err.message, variant: "destructive" });
+      const message = err.message === "LOVABLE_API_KEY is not configured"
+        ? "Lovable is not connected on the Supabase function. Add LOVABLE_API_KEY as a Supabase Edge Function secret."
+        : err.message;
+      toast({ title: "AI Error", description: message, variant: "destructive" });
     } finally { setAiLoading(false); }
   };
 
@@ -331,21 +350,21 @@ export default function ProviderProductEditorPage() {
     <DashboardLayout navItems={providerNavItems} title={isNew ? "New Product" : "Edit Product"}>
       <div className="space-y-4 max-w-5xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
             <Button variant="ghost" size="sm" onClick={() => navigate("/provider/products")}>
               <ArrowLeft className="w-4 h-4 mr-1" /> Back
             </Button>
-            <h2 className="text-xl font-bold">{isNew ? "Create New Product" : `Edit: ${form.name}`}</h2>
+            <h2 className="min-w-0 text-xl font-bold">{isNew ? "Create New Product" : `Edit: ${form.name}`}</h2>
             {!isNew && (
               <Badge variant={published ? "default" : "secondary"} className={published ? "bg-green-500 text-white" : ""}>
                 {published ? "Published" : "Draft"}
               </Badge>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 md:justify-end">
             {!isNew && (
-              <Button variant="outline" onClick={handlePublishToggle} disabled={publishing}>
+              <Button variant="outline" onClick={handlePublishToggle} disabled={publishing} className="flex-1 sm:flex-none">
                 {published
                   ? <><EyeOff className="w-4 h-4 mr-1" />{publishing ? "Unpublishing..." : "Unpublish"}</>
                   : <><Globe className="w-4 h-4 mr-1" />{publishing ? "Publishing..." : "Publish"}</>
@@ -354,17 +373,17 @@ export default function ProviderProductEditorPage() {
             )}
             {isNew ? (
               <>
-                <Button variant="outline" onClick={() => handleSave(false)} disabled={saving}>
+                <Button variant="outline" onClick={() => handleSave(false)} disabled={saving} className="flex-1 sm:flex-none">
                   <Save className="w-4 h-4 mr-1" />
                   {saving ? "Saving..." : "Save as Draft"}
                 </Button>
-                <Button onClick={() => handleSave(true)} disabled={saving}>
+                <Button onClick={() => handleSave(true)} disabled={saving} className="flex-1 sm:flex-none">
                   <Globe className="w-4 h-4 mr-1" />
                   {saving ? "Publishing..." : "Save & Publish"}
                 </Button>
               </>
             ) : (
-              <Button onClick={() => handleSave(published)} disabled={saving}>
+              <Button onClick={() => handleSave(published)} disabled={saving} className="flex-1 sm:flex-none">
                 <Save className="w-4 h-4 mr-1" />
                 {saving ? "Saving..." : "Save"}
               </Button>
@@ -390,24 +409,19 @@ export default function ProviderProductEditorPage() {
                 <CardTitle className="flex items-center gap-2"><Sparkles className="w-5 h-5 text-primary" /> AI-Powered Plan Import</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {!import.meta.env.VITE_LOVABLE_API_KEY ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <div className="rounded-full bg-muted p-4 mb-4"><Sparkles className="w-8 h-8 text-muted-foreground" /></div>
-                    <h3 className="text-lg font-semibold mb-2">AI Extraction Not Configured</h3>
-                    <p className="text-sm text-muted-foreground max-w-md">AI-powered plan import requires an API key to be configured. Please contact your administrator to enable this feature.</p>
-                  </div>
-                ) : (
-                  <>
-                    <p className="text-sm text-muted-foreground">Paste your plan document or brochure text. AI will extract all details and auto-fill the form.</p>
-                    <Textarea value={aiText} onChange={(e) => setAiText(e.target.value)} placeholder="Paste your plan document text here..." className="min-h-[300px] font-mono text-sm" />
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-muted-foreground">{aiText.length} characters</p>
-                      <Button onClick={handleAIExtract} disabled={aiLoading || !aiText.trim()}>
-                        <Sparkles className="w-4 h-4 mr-1" /> {aiLoading ? "Extracting..." : "Extract & Auto-Fill"}
-                      </Button>
-                    </div>
-                  </>
-                )}
+                <p className="text-sm text-muted-foreground">
+                  Paste your plan document or brochure text. The Supabase function will use Lovable AI to extract details and auto-fill the form.
+                </p>
+                <Textarea value={aiText} onChange={(e) => setAiText(e.target.value)} placeholder="Paste your plan document text here..." className="min-h-[300px] font-mono text-sm" />
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-muted-foreground">{aiText.length} characters</p>
+                  <Button onClick={handleAIExtract} disabled={aiLoading || !aiText.trim()}>
+                    <Sparkles className="w-4 h-4 mr-1" /> {aiLoading ? "Extracting..." : "Extract & Auto-Fill"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Lovable API keys stay server-side. Configure `LOVABLE_API_KEY` as a Supabase Edge Function secret.
+                </p>
               </CardContent>
             </Card>
           </TabsContent>
