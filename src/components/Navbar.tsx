@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Menu, X } from "lucide-react";
 import { Button } from "./ui/button";
@@ -10,15 +10,34 @@ function NavPill({
   to,
   label,
   exact = false,
+  landingScrolled = false,
 }: {
   to: string;
   label: string;
   exact?: boolean;
+  landingScrolled?: boolean;
 }) {
   const location = useLocation();
+  const isLandingPage = location.pathname === "/find-insurance";
   const active = exact
     ? location.pathname === to
     : location.pathname.startsWith(to);
+
+  if (isLandingPage) {
+    return (
+      <Link
+        to={to}
+        className={cn(
+          "text-sm font-medium transition-colors whitespace-nowrap",
+          landingScrolled
+            ? "text-slate-600 hover:text-slate-950"
+            : "text-white/70 hover:text-white",
+        )}
+      >
+        {label}
+      </Link>
+    );
+  }
 
   return (
     <Link
@@ -38,9 +57,23 @@ function NavPill({
 export function Navbar() {
   const { user, signOut } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const isUnassigned = user?.role === "UNASSIGNED";
   const location = useLocation();
   const hideProfileLink = location.pathname === "/request-access";
+  const isLandingPage = !user && location.pathname === "/find-insurance";
+
+  useEffect(() => {
+    if (!isLandingPage) {
+      setScrolled(false);
+      return;
+    }
+
+    const handleScroll = () => setScrolled(window.scrollY > 20);
+    handleScroll();
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [isLandingPage]);
 
   const dashboardPath =
     user?.role === "UNASSIGNED"
@@ -60,7 +93,7 @@ export function Navbar() {
   const brandPath =
     user?.role === "SUPER_ADMIN" ? "/platform" : dashboardPath ?? "/find-insurance";
 
-  // Nav items per role — kept short so they don't overflow
+  // Nav items per role kept short so they don't overflow.
   const loggedInLinks: { to: string; label: string; exact?: boolean }[] = user
     ? user.role === "DEALER_ADMIN"
       ? [
@@ -108,27 +141,50 @@ export function Navbar() {
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 z-50 h-[70px] bg-white/90 backdrop-blur-xl border-b border-slate-200/80 shadow-sm">
+      <nav
+        className={cn(
+          "fixed top-0 left-0 right-0 z-50 h-[70px] transition-all duration-300",
+          isLandingPage
+            ? scrolled
+              ? "bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm"
+              : "bg-transparent border-b border-transparent shadow-none"
+            : "bg-white/90 border-b border-slate-200/80 shadow-sm",
+        )}
+      >
         <div className="max-w-7xl mx-auto px-6 h-full flex items-center gap-6">
 
           {/* Logo */}
           <Link to={brandPath} className="shrink-0 group">
-            <img
-              src="/images/Bridge Warranty_Transparent.png"
-              alt={BRAND.name}
-              className="h-12 w-auto object-contain transition-opacity group-hover:opacity-75"
-            />
+            {isLandingPage ? (
+              <div className={cn("flex items-center gap-2.5", scrolled ? "text-slate-950" : "text-white")}>
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground shadow-md shadow-primary/30">
+                  BW
+                </div>
+                <span className="text-lg font-bold tracking-tight">Bridge Warranty</span>
+              </div>
+            ) : (
+              <img
+                src="/images/Bridge Warranty_Transparent.png"
+                alt={BRAND.name}
+                className="h-12 w-auto object-contain transition-opacity group-hover:opacity-75"
+              />
+            )}
           </Link>
 
           {/* Divider */}
-          <div className="hidden md:block h-7 w-px bg-slate-200 shrink-0" />
+          <div
+            className={cn(
+              "hidden md:block h-7 w-px shrink-0",
+              isLandingPage && !scrolled ? "bg-white/15" : "bg-slate-200",
+            )}
+          />
 
           {/* Center nav links */}
           <div className="hidden md:flex items-center gap-1 flex-1">
             {!user ? (
               <>
-                <NavPill to="/find-insurance" label="Home" exact />
-                <NavPill to="/brochure" label="Coverage Brochure" />
+                <NavPill to="/find-insurance" label="Home" exact landingScrolled={scrolled} />
+                <NavPill to="/brochure" label="Coverage Brochure" landingScrolled={scrolled} />
               </>
             ) : !isUnassigned ? (
               loggedInLinks.map((link) => (
@@ -137,7 +193,7 @@ export function Navbar() {
             ) : null}
           </div>
 
-          {/* Right — desktop */}
+          {/* Right desktop */}
           <div className="hidden md:flex items-center gap-2 ml-auto shrink-0">
             {user ? (
               <>
@@ -173,16 +229,26 @@ export function Navbar() {
                   variant="ghost"
                   size="sm"
                   asChild
-                  className="text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-medium"
+                  className={cn(
+                    "font-medium",
+                    isLandingPage
+                      ? scrolled
+                        ? "text-slate-700 hover:bg-slate-100 hover:text-slate-950"
+                        : "text-white/80 hover:bg-white/10 hover:text-white"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100",
+                  )}
                 >
                   <Link to="/sign-in">Sign In</Link>
                 </Button>
                 <Button
                   size="sm"
                   asChild
-                  className="bg-primary hover:bg-primary/90 text-white font-semibold px-5 rounded-full shadow-sm"
+                  className={cn(
+                    "font-semibold px-5 shadow-md",
+                    isLandingPage ? "bg-accent text-accent-foreground hover:bg-accent/90 shadow-accent/20" : "bg-primary hover:bg-primary/90 text-white",
+                  )}
                 >
-                  <Link to="/register-dealership">Register Dealership</Link>
+                  <Link to="/register-dealership">{isLandingPage ? "Register Your Dealership" : "Register Dealership"}</Link>
                 </Button>
               </>
             )}
@@ -190,7 +256,14 @@ export function Navbar() {
 
           {/* Mobile hamburger */}
           <button
-            className="md:hidden ml-auto p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+            className={cn(
+              "md:hidden ml-auto p-2 rounded-lg transition-colors",
+              isLandingPage
+                ? scrolled
+                  ? "text-slate-700 hover:bg-slate-100 hover:text-slate-950"
+                  : "text-white/80 hover:bg-white/10 hover:text-white"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100",
+            )}
             onClick={() => setMobileOpen((v) => !v)}
             aria-label="Toggle menu"
           >

@@ -239,6 +239,7 @@ export function RootLayout() {
   const showSuperAdminShell = Boolean(user) && user?.role === "SUPER_ADMIN" && !isAuthLikeRoute;
 
   const hideTopNavbar = isAuthLikeRoute;
+  const isPublicLandingPage = !user && location.pathname === "/find-insurance";
 
   const isAppRoute =
     location.pathname.startsWith("/dealer-") ||
@@ -1117,7 +1118,7 @@ export function RootLayout() {
       ) : (
         <>
           {hideTopNavbar || hidePublicNavbarWhileLoading ? null : <Navbar />}
-          <main className={hideTopNavbar ? "" : "pt-16"}>
+          <main className={hideTopNavbar || isPublicLandingPage ? "" : "pt-16"}>
             {isLoading && !user ? (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/30 backdrop-blur-sm">
                 <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" aria-label="Loading" />
