@@ -57,7 +57,7 @@ export function DealerSubscriptionRoute() {
   if (!user) return <Navigate to="/sign-in" replace />;
   if (!isDealerRole(user.role)) return <Outlet />;
 
-  if (Boolean((import.meta as any)?.env?.DEV)) return <Outlet />;
+  if ((import.meta as any)?.env?.DEV) return <Outlet />;
   const host = (globalThis as any)?.location?.hostname ?? "";
   if (host === "localhost" || host === "127.0.0.1") return <Outlet />;
 

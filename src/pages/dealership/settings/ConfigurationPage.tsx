@@ -15,6 +15,12 @@ import {
   Search, Package, Zap, Building2, Shield, GripVertical,
 } from "lucide-react";
 import { cn } from "../../../lib/utils";
+import {
+  cellKey as sharedCellKey,
+  coercePrice,
+  isAddonPricingRow,
+  parseVehicleClass,
+} from "../../../lib/pricing/dealerPricing";
 
 // ─────────────────────── Types ───────────────────────
 
@@ -81,6 +87,10 @@ function parseTermKm(label: string): string {
  *  - "Bronze - $750 Per Claim"      → tierKey="Bronze - $750 Per Claim", bandKey=null
  */
 function parseVC(vc: string): { tierKey: string; bandKey: string | null } {
+  return parseVehicleClass(vc);
+}
+
+function legacyParseVC(vc: string): { tierKey: string; bandKey: string | null } {
   // Diamond Plus style: mileageBand · perClaim
   if (vc.includes("·")) {
     const parts = vc.split("·").map((s) => s.trim());
@@ -94,12 +104,17 @@ function parseVC(vc: string): { tierKey: string; bandKey: string | null } {
   }
   return { tierKey: vc, bandKey: null };
 }
+void legacyParseVC;
 
 function isAddonRow(row: any): boolean {
-  return row?.kind === "addon" || row?.type === "addon" || !!row?.addonName;
+  return isAddonPricingRow(row);
 }
 
 function coerceCellValue(value: any): number | string {
+  return coercePrice(value);
+}
+
+function legacyCoerceCellValue(value: any): number | string {
   if (typeof value === "number") return Number.isFinite(value) ? value : "n/a";
   if (typeof value === "string") {
     const trimmed = value.trim();
@@ -112,6 +127,7 @@ function coerceCellValue(value: any): number | string {
   }
   return "n/a";
 }
+void legacyCoerceCellValue;
 
 function extractStructuredFromV2(rows: any[]): Structured {
   if (!Array.isArray(rows) || rows.length === 0) return { tiers: [] };
@@ -283,7 +299,7 @@ function extractStructured(pricing: any): Structured {
 // ─────────────────────── Cell keys ───────────────────────
 
 function cellKey(tierIdx: number, bandIdx: number | null, rowIdx: number, termIdx: number) {
-  return `t${tierIdx}|m${bandIdx == null ? "-" : bandIdx}|r${rowIdx}|term${termIdx}`;
+  return sharedCellKey(tierIdx, bandIdx, rowIdx, termIdx);
 }
 
 // ─────────────────────── Helpers ───────────────────────

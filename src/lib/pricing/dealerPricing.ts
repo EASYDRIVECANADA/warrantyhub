@@ -44,7 +44,21 @@ export function cellKey(tierIdx: number, bandIdx: number | null, rowIdx: number,
   return `t${tierIdx}|m${bandIdx == null ? "-" : bandIdx}|r${rowIdx}|term${termIdx}`;
 }
 
+function normalizePricingText(value: string): string {
+  return value
+    .replace(/\u00c2\u00b7/g, "\u00b7")
+    .replace(/Ã‚Â·/g, "\u00b7")
+    .replace(/Â·/g, "\u00b7")
+    .replace(/â€¢/g, "\u2022")
+    .replace(/â€“/g, "\u2013")
+    .replace(/â€”/g, "\u2014")
+    .replace(/Ã¢â‚¬â€œ/g, "\u2013")
+    .replace(/Ã¢â‚¬â€/g, "\u2014")
+    .trim();
+}
+
 export function parseVehicleClass(vcRaw: string): { tierKey: string; bandKey: string | null } {
+  vcRaw = normalizePricingText(vcRaw || "");
   const vc = (vcRaw || "").replace(/\u00c2\u00b7/g, "\u00b7").replace(/Â·/g, "\u00b7").trim();
   if (vc.includes("\u00b7")) {
     const [band = "", tier = ""] = vc.split("\u00b7").map((s) => s.trim());
@@ -62,10 +76,12 @@ export function parseVehicleClass(vcRaw: string): { tierKey: string; bandKey: st
 export function coercePrice(value: any): PricingValue {
   if (typeof value === "number") return Number.isFinite(value) ? value : "n/a";
   if (typeof value === "string") {
+    value = normalizePricingText(value);
     const trimmed = value.trim();
     if (!trimmed) return "n/a";
     const lower = trimmed.toLowerCase();
     if (lower === "included") return "Included";
+    if (["n/a", "na", "-", "\u2014", "\u2013"].includes(lower)) return "n/a";
     if (["n/a", "na", "-", "—", "â€”"].includes(lower)) return "n/a";
     const numeric = Number(trimmed.replace(/[$,]/g, ""));
     return Number.isFinite(numeric) ? numeric : trimmed;
@@ -179,7 +195,7 @@ function getRawPricingRows(pricing: any): any[] {
 }
 
 function normalizeTierKey(value: string): string {
-  return value.replace(/\/claim/i, " / claim").replace(/\s+\/\s+/g, " / ").trim();
+  return normalizePricingText(value).replace(/\/claim/i, " / claim").replace(/\s+\/\s+/g, " / ").trim();
 }
 
 function buildPricingOrders(rows: any[]) {

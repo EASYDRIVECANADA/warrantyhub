@@ -135,7 +135,7 @@ function validatePassword(password: string): { valid: boolean; errors: string[] 
   if (!/[A-Z]/.test(password)) errors.push("At least 1 uppercase letter");
   if (!/[a-z]/.test(password)) errors.push("At least 1 lowercase letter");
   if (!/[0-9]/.test(password)) errors.push("At least 1 number");
-  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) errors.push("At least 1 special character");
+  if (!/[!@#$%^&*()_+=[\]{};':"\\|,.<>/?-]/.test(password)) errors.push("At least 1 special character");
   return { valid: errors.length === 0, errors };
 }
 
@@ -780,7 +780,7 @@ export function DealerTeamPage() {
                       { label: "Uppercase letter", valid: /[A-Z]/.test(draft.password) },
                       { label: "Lowercase letter", valid: /[a-z]/.test(draft.password) },
                       { label: "Number", valid: /[0-9]/.test(draft.password) },
-                      { label: "Special character", valid: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(draft.password) },
+                      { label: "Special character", valid: /[!@#$%^&*()_+=[\]{};':"\\|,.<>/?-]/.test(draft.password) },
                       { label: "Passwords match", valid: draft.password === draft.password2 && draft.password2 !== "" },
                     ].map((req) => (
                       <div key={req.label} className={`flex items-center gap-2 text-xs ${req.valid ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
