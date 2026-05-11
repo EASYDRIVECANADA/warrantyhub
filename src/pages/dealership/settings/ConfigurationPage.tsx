@@ -15,6 +15,7 @@ import {
   Search, Package, Zap, Building2, Shield, GripVertical,
 } from "lucide-react";
 import { cn } from "../../../lib/utils";
+import { compareProductsByConfiguredOrder } from "../../../lib/products/defaultProductOrder";
 import {
   cellKey as sharedCellKey,
   coercePrice,
@@ -36,6 +37,7 @@ interface Product {
 
 interface PricingConfig {
   product_id: string;
+  dealer_cost?: Record<string, number>;
   retail_price: Record<string, number>;
   confidentiality_enabled: boolean;
   sort_order?: number | null;
@@ -341,7 +343,7 @@ export default function ConfigurationPage() {
   // Pricing matrix state
   const [activeTier, setActiveTier] = useState(0);
   const [activeBand, setActiveBand] = useState(0);
-  const [editingCell, setEditingCell] = useState<string | null>(null);
+  const [editingCell, setEditingCell] = useState<{ kind: "cost" | "retail"; key: string } | null>(null);
   const [draftValue, setDraftValue] = useState("");
   const [bulkPercent, setBulkPercent] = useState("40");
   const [savingKey, setSavingKey] = useState<string | null>(null);
@@ -388,7 +390,7 @@ export default function ConfigurationPage() {
       if (dealershipId) {
         const { data: configs } = await supabase
           .from("dealership_product_pricing")
-          .select("product_id, retail_price, confidentiality_enabled, sort_order")
+          .select("product_id, dealer_cost, retail_price, confidentiality_enabled, sort_order")
           .eq("dealership_id", dealershipId);
 
         const configMap: Record<string, PricingConfig> = {};
@@ -431,14 +433,7 @@ export default function ConfigurationPage() {
     if (!activeProviderId) return [];
     return (providerGroups[activeProviderId] || [])
       .filter((p) => !search || p.name.toLowerCase().includes(search.toLowerCase()))
-      .sort((a, b) => {
-        const aOrder = pricingConfigs[a.id]?.sort_order;
-        const bOrder = pricingConfigs[b.id]?.sort_order;
-        if (aOrder != null && bOrder != null && aOrder !== bOrder) return aOrder - bOrder;
-        if (aOrder != null && bOrder == null) return -1;
-        if (aOrder == null && bOrder != null) return 1;
-        return a.name.localeCompare(b.name);
-      });
+      .sort((a, b) => compareProductsByConfiguredOrder(a, b, pricingConfigs));
   }, [providerGroups, activeProviderId, search, pricingConfigs]);
 
   // ── Selected product & structured pricing ──
@@ -453,31 +448,51 @@ export default function ConfigurationPage() {
     return (pricingConfigs[selectedProductId]?.retail_price || {}) as Record<string, number>;
   }, [pricingConfigs, selectedProductId]);
 
+  const costMap: Record<string, number> = useMemo(() => {
+    if (!selectedProductId) return {};
+    return (pricingConfigs[selectedProductId]?.dealer_cost || {}) as Record<string, number>;
+  }, [pricingConfigs, selectedProductId]);
+
   const storageKey = (bandIdx: number | null, rowIdx: number, termIdx: number) =>
     cellKey(activeTier, bandIdx, rowIdx, termIdx);
 
-  // ── Persist retail prices ──
-  const persistRetail = async (productId: string, newRetail: Record<string, number>) => {
+  // ── Persist dealer cost and retail prices ──
+  const persistPricing = async (productId: string, newRetail: Record<string, number>, newCost: Record<string, number>) => {
     if (!dealershipId) return;
     const existing = pricingConfigs[productId];
     if (existing) {
       await supabase
         .from("dealership_product_pricing")
-        .update({ retail_price: newRetail, confidentiality_enabled: confidentialityEnabled })
+        .update({ dealer_cost: newCost, retail_price: newRetail, confidentiality_enabled: confidentialityEnabled })
         .eq("dealership_id", dealershipId)
         .eq("product_id", productId);
     } else {
       await supabase.from("dealership_product_pricing").insert({
         dealership_id: dealershipId,
         product_id: productId,
+        dealer_cost: newCost,
         retail_price: newRetail,
         confidentiality_enabled: confidentialityEnabled,
       });
     }
     setPricingConfigs((prev) => ({
       ...prev,
-      [productId]: { product_id: productId, retail_price: newRetail, confidentiality_enabled: confidentialityEnabled, sort_order: existing?.sort_order ?? null },
+      [productId]: {
+        product_id: productId,
+        dealer_cost: newCost,
+        retail_price: newRetail,
+        confidentiality_enabled: confidentialityEnabled,
+        sort_order: existing?.sort_order ?? null,
+      },
     }));
+  };
+
+  const persistRetail = async (productId: string, newRetail: Record<string, number>) => {
+    await persistPricing(productId, newRetail, pricingConfigs[productId]?.dealer_cost ?? {});
+  };
+
+  const persistCost = async (productId: string, newCost: Record<string, number>) => {
+    await persistPricing(productId, pricingConfigs[productId]?.retail_price ?? {}, newCost);
   };
 
   const persistPlanOrder = async (orderedPlans: Product[]) => {
@@ -486,6 +501,7 @@ export default function ConfigurationPage() {
     const rows = orderedPlans.map((product, index) => ({
       dealership_id: dealershipId,
       product_id: product.id,
+      dealer_cost: pricingConfigs[product.id]?.dealer_cost ?? {},
       retail_price: pricingConfigs[product.id]?.retail_price ?? {},
       confidentiality_enabled: confidentialityEnabled,
       sort_order: index,
@@ -506,6 +522,7 @@ export default function ConfigurationPage() {
         const existing = next[product.id];
         next[product.id] = {
           product_id: product.id,
+          dealer_cost: existing?.dealer_cost ?? {},
           retail_price: existing?.retail_price ?? {},
           confidentiality_enabled: existing?.confidentiality_enabled ?? confidentialityEnabled,
           sort_order: index,
@@ -527,25 +544,36 @@ export default function ConfigurationPage() {
     void persistPlanOrder(ordered);
   };
 
-  const saveCell = async (key: string, value: number) => {
+  const saveCell = async (kind: "cost" | "retail", key: string, value: number) => {
     if (!selectedProductId) return;
-    setSavingKey(key);
-    const newRetail = { ...retailMap, [key]: value };
-    await persistRetail(selectedProductId, newRetail);
+    setSavingKey(`${kind}:${key}`);
+    if (kind === "cost") {
+      const newCost = { ...costMap, [key]: value };
+      await persistCost(selectedProductId, newCost);
+    } else {
+      const newRetail = { ...retailMap, [key]: value };
+      await persistRetail(selectedProductId, newRetail);
+    }
     setSavingKey(null);
     setEditingCell(null);
-    toast({ title: "Price saved" });
+    toast({ title: kind === "cost" ? "Cost saved" : "Retail price saved" });
   };
 
-  const clearCell = async (key: string) => {
+  const clearCell = async (kind: "cost" | "retail", key: string) => {
     if (!selectedProductId) return;
-    setSavingKey(key);
-    const newRetail = { ...retailMap };
-    delete newRetail[key];
-    await persistRetail(selectedProductId, newRetail);
+    setSavingKey(`${kind}:${key}`);
+    if (kind === "cost") {
+      const newCost = { ...costMap };
+      delete newCost[key];
+      await persistCost(selectedProductId, newCost);
+    } else {
+      const newRetail = { ...retailMap };
+      delete newRetail[key];
+      await persistRetail(selectedProductId, newRetail);
+    }
     setSavingKey(null);
     setEditingCell(null);
-    toast({ title: "Custom price cleared" });
+    toast({ title: kind === "cost" ? "Custom cost cleared" : "Custom retail cleared" });
   };
 
   const applyBulkMarkup = async (overwriteAll = false) => {
@@ -560,9 +588,10 @@ export default function ConfigurationPage() {
     let count = 0;
 
     const fill = (cost: any, key: string) => {
-      if (!isNumericCost(cost)) return;
+      const effectiveCost = costMap[key] ?? cost;
+      if (!isNumericCost(effectiveCost)) return;
       if (!overwriteAll && newRetail[key] != null) return;
-      newRetail[key] = Math.round(cost * factor);
+      newRetail[key] = Math.round(effectiveCost * factor);
       count++;
     };
 
@@ -635,6 +664,7 @@ export default function ConfigurationPage() {
   const renderCell = (mr: MatrixRow, termIdx: number) => {
     const raw = mr.values[termIdx];
     const key = cellKey(activeTier, mr.bandIdx, mr.rowIdx, termIdx);
+    const customCost = costMap[key];
     const customRetail = retailMap[key];
 
     if (isNA(raw)) return <span className="text-muted-foreground/40 text-sm">—</span>;
@@ -648,39 +678,67 @@ export default function ConfigurationPage() {
     const isZeroCostRetailCell = typeof raw === "number" && Number.isFinite(raw) && raw === 0 && defaultSuggestedNumber != null;
     if (!isNumericCost(raw) && !isZeroCostRetailCell) return <span className="text-sm">{String(raw)}</span>;
 
-    const cost = typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
+    const defaultCost = typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
+    const cost = customCost ?? defaultCost;
     const suggested = customRetail ?? defaultSuggestedNumber ?? Math.round(cost * 1.4);
+    const hasCustomCost = customCost != null;
     const hasCustom = customRetail != null;
     const markupPct = cost > 0 ? ((suggested - cost) / cost) * 100 : 0;
-    const isEditing = editingCell === key;
+    const isEditingCost = editingCell?.kind === "cost" && editingCell.key === key;
+    const isEditingRetail = editingCell?.kind === "retail" && editingCell.key === key;
+    const renderEditor = (kind: "cost" | "retail") => (
+      <div className="flex items-center gap-1">
+        <div className="relative">
+          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+          <Input
+            type="number"
+            className="w-24 h-7 pl-5 text-xs"
+            value={draftValue}
+            autoFocus
+            onChange={(e) => setDraftValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                const n = parseFloat(draftValue);
+                if (!isNaN(n)) saveCell(kind, key, n);
+              } else if (e.key === "Escape") setEditingCell(null);
+            }}
+          />
+        </div>
+        <Button size="icon" variant="ghost" className="h-6 w-6" disabled={savingKey === `${kind}:${key}`}
+          onClick={() => { const n = parseFloat(draftValue); if (!isNaN(n)) saveCell(kind, key, n); }}>
+          <Check className="w-3.5 h-3.5 text-green-600" />
+        </Button>
+        <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setEditingCell(null)}>
+          <X className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+    );
 
     return (
       <div className="flex flex-col gap-1 min-w-[130px]">
-        <span className="text-[11px] text-muted-foreground">Cost {fmt(cost)}</span>
-        {isEditing ? (
-          <div className="flex items-center gap-1">
-            <div className="relative">
-              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
-              <Input
-                type="number"
-                className="w-24 h-7 pl-5 text-xs"
-                value={draftValue}
-                autoFocus
-                onChange={(e) => setDraftValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") { const n = parseFloat(draftValue); if (!isNaN(n)) saveCell(key, n); }
-                  else if (e.key === "Escape") setEditingCell(null);
-                }}
-              />
-            </div>
-            <Button size="icon" variant="ghost" className="h-6 w-6" disabled={savingKey === key}
-              onClick={() => { const n = parseFloat(draftValue); if (!isNaN(n)) saveCell(key, n); }}>
-              <Check className="w-3.5 h-3.5 text-green-600" />
-            </Button>
-            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setEditingCell(null)}>
-              <X className="w-3.5 h-3.5" />
-            </Button>
+        {isEditingCost ? (
+          renderEditor("cost")
+        ) : (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className={cn("text-[11px]", hasCustomCost ? "font-semibold text-slate-700" : "text-muted-foreground")}>
+              Cost {fmt(cost)}
+            </span>
+            {isAdmin && (
+              <Button size="icon" variant="ghost" className="h-6 w-6 opacity-50 hover:opacity-100"
+                onClick={() => { setEditingCell({ kind: "cost", key }); setDraftValue(cost.toString()); }}>
+                <Pencil className="w-3 h-3" />
+              </Button>
+            )}
+            {isAdmin && hasCustomCost && (
+              <Button size="icon" variant="ghost" className="h-6 w-6 opacity-30 hover:opacity-100"
+                onClick={() => clearCell("cost", key)} title="Clear custom cost">
+                <X className="w-3 h-3" />
+              </Button>
+            )}
           </div>
+        )}
+        {isEditingRetail ? (
+          renderEditor("retail")
         ) : (
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className={cn("text-sm font-semibold", hasCustom ? "text-primary" : "text-muted-foreground/60 italic")}>
@@ -694,13 +752,13 @@ export default function ConfigurationPage() {
             </Badge>
             {isAdmin && (
               <Button size="icon" variant="ghost" className="h-6 w-6 opacity-50 hover:opacity-100"
-                onClick={() => { setEditingCell(key); setDraftValue(suggested.toString()); }}>
+                onClick={() => { setEditingCell({ kind: "retail", key }); setDraftValue(suggested.toString()); }}>
                 <Pencil className="w-3 h-3" />
               </Button>
             )}
             {isAdmin && hasCustom && (
               <Button size="icon" variant="ghost" className="h-6 w-6 opacity-30 hover:opacity-100"
-                onClick={() => clearCell(key)} title="Clear custom price">
+                onClick={() => clearCell("retail", key)} title="Clear custom retail">
                 <X className="w-3 h-3" />
               </Button>
             )}
@@ -1108,7 +1166,7 @@ export default function ConfigurationPage() {
                           </div>
 
                           <p className="text-xs text-muted-foreground">
-                            Click the pencil on any cell to set a custom retail price. Grey italic values show suggested retail — customers only see your saved price.
+                            Click either pencil to edit dealer cost or customer retail. Grey italic retail values show provider suggested retail until you save a custom price.
                           </p>
                         </>
                       )}

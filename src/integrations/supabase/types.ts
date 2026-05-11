@@ -263,6 +263,7 @@ export type Database = {
           id: string
           dealership_id: string
           product_id: string
+          dealer_cost: Json
           retail_price: Json
           confidentiality_enabled: boolean
           created_at: string
@@ -272,6 +273,7 @@ export type Database = {
           id?: string
           dealership_id: string
           product_id: string
+          dealer_cost?: Json
           retail_price?: Json
           confidentiality_enabled?: boolean
           created_at?: string
@@ -281,6 +283,7 @@ export type Database = {
           id?: string
           dealership_id?: string
           product_id?: string
+          dealer_cost?: Json
           retail_price?: Json
           confidentiality_enabled?: boolean
           created_at?: string

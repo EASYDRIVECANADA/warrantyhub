@@ -15,7 +15,6 @@ interface TireRimProduct {
   categories: { name: string; parts: string[] }[];
   inclusions: string[];
   exclusions: string[];
-  minDealerCost: number;
   minRetail: number;
 }
 
@@ -31,7 +30,6 @@ function parseProductRow(row: any, providerName: string): TireRimProduct {
   }));
 
   const rows: any[] = prObj.rows || prObj.tiers || [];
-  const costs = rows.map((r: any) => Number(r.dealerCost ?? r.dealer_cost ?? 0)).filter(Boolean);
   const retails = rows.map((r: any) => Number(r.suggestedRetail ?? r.suggested_retail ?? r.retail ?? 0)).filter(Boolean);
 
   const benefits: string[] = (prObj.benefits || []).map((b: any) => (typeof b === "string" ? b : b?.name)).filter(Boolean);
@@ -45,7 +43,6 @@ function parseProductRow(row: any, providerName: string): TireRimProduct {
     categories,
     inclusions: benefits,
     exclusions: Array.isArray(exclusions) ? exclusions : [],
-    minDealerCost: costs.length ? Math.min(...costs) : 0,
     minRetail: retails.length ? Math.min(...retails) : 0,
   };
 }
@@ -192,20 +189,12 @@ export default function DealershipTireRimPage() {
                   )}
 
                   {/* Pricing */}
-                  {(product.minDealerCost > 0 || product.minRetail > 0) && (
+                  {product.minRetail > 0 && (
                     <div className="rounded-lg bg-muted/40 p-3 space-y-1">
-                      {product.minDealerCost > 0 && (
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">Dealer cost from</span>
-                          <span className="font-semibold">${product.minDealerCost.toLocaleString()}</span>
-                        </div>
-                      )}
-                      {product.minRetail > 0 && (
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">Retail from</span>
-                          <span className="font-semibold text-primary">${product.minRetail.toLocaleString()}</span>
-                        </div>
-                      )}
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Retail from</span>
+                        <span className="font-semibold text-primary">${product.minRetail.toLocaleString()}</span>
+                      </div>
                     </div>
                   )}
 

@@ -8,6 +8,7 @@ function toPricing(r: any): DealershipProductPricing {
     id: r.id,
     dealershipId: r.dealership_id,
     productId: r.product_id,
+    dealerCost: r.dealer_cost ?? {},
     retailPrice: r.retail_price ?? {},
     confidentialityEnabled: r.confidentiality_enabled ?? false,
     createdAt: r.created_at,
@@ -55,6 +56,7 @@ export const supabaseDealershipPricingApi: DealershipPricingApi = {
         {
           dealership_id: input.dealershipId,
           product_id: input.productId,
+          dealer_cost: input.dealerCost ?? {},
           retail_price: input.retailPrice,
           confidentiality_enabled: input.confidentialityEnabled ?? false,
         },

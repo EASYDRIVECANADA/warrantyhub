@@ -2518,6 +2518,7 @@ create table if not exists public.dealership_product_pricing (
   id uuid primary key default gen_random_uuid(),
   dealership_id uuid not null references public.dealerships(id) on delete cascade,
   product_id uuid not null references public.products(id) on delete cascade,
+  dealer_cost jsonb not null default '{}',
   retail_price jsonb not null default '{}',
   confidentiality_enabled boolean not null default false,
   sort_order integer,

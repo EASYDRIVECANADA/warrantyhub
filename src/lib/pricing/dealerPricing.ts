@@ -1,6 +1,7 @@
 export type PricingValue = number | string;
 
 export type DealerPricingConfig = {
+  dealer_cost?: Record<string, number>;
   retail_price?: Record<string, number>;
   confidentiality_enabled?: boolean;
 } | null | undefined;
@@ -34,6 +35,44 @@ export type ContractAddonSnapshot = {
   dealerCost: number;
   retail: number;
   retailKey: string;
+};
+
+export type QuoteMatrixTerm = {
+  label: string;
+  months?: number;
+  km?: number | null;
+};
+
+export type QuoteMatrixCell = {
+  kind: "base" | "addon";
+  label: string;
+  term: string;
+  vehicleClass: string;
+  tierKey: string;
+  bandKey: string | null;
+  dealerCost: PricingValue;
+  suggestedRetail: PricingValue;
+  retailKey: string;
+};
+
+export type QuoteMatrixRow = {
+  label: string;
+  isBase: boolean;
+  rowIdx: number;
+  bandIdx: number | null;
+  values: Array<QuoteMatrixCell | null>;
+};
+
+export type QuoteMatrixTier = {
+  label: string;
+  perClaimAmount?: number;
+  terms: QuoteMatrixTerm[];
+  mileageBands?: Array<{ label: string; bandIdx: number; baseValues: Array<QuoteMatrixCell | null> }>;
+  rows: QuoteMatrixRow[];
+};
+
+export type QuotePricingMatrix = {
+  tiers: QuoteMatrixTier[];
 };
 
 export function isAddonPricingRow(row: any): boolean {
@@ -111,6 +150,19 @@ export function resolveCustomerRetailNumber(row: { retailKey?: string; suggested
   return numericPrice(resolveCustomerRetail(row, config));
 }
 
+export function resolveDealerCost(row: { retailKey?: string; dealerCost?: PricingValue; dealer_cost?: PricingValue; cost?: PricingValue }, config: DealerPricingConfig): PricingValue {
+  const key = row.retailKey;
+  const costMap = config?.dealer_cost ?? {};
+  if (key && costMap[key] !== undefined) {
+    return Number(costMap[key]);
+  }
+  return row.dealerCost ?? row.dealer_cost ?? row.cost ?? 0;
+}
+
+export function resolveDealerCostNumber(row: { retailKey?: string; dealerCost?: PricingValue; dealer_cost?: PricingValue; cost?: PricingValue }, config: DealerPricingConfig): number {
+  return numericPrice(resolveDealerCost(row, config));
+}
+
 export function buildBasePricingRows(pricing: any): NormalizedPricingRow[] {
   const rawRows = getRawPricingRows(pricing).filter((row) => !isAddonPricingRow(row));
   const keys = buildRetailKeys(rawRows);
@@ -185,6 +237,123 @@ export function buildAddOnPricingRowsFromRaw(baseRows: any[], addonRows: any[], 
   return rows;
 }
 
+export function buildQuotePricingMatrix(pricing: any): QuotePricingMatrix {
+  const rawRows = getRawPricingRows(pricing);
+  const baseRawRows = rawRows.filter((row) => !isAddonPricingRow(row));
+  const addonRawRows = rawRows.filter(isAddonPricingRow);
+  if (baseRawRows.length === 0) return { tiers: [] };
+
+  const { tierOrder, bandOrder, termOrder } = buildPricingOrders(baseRawRows);
+  const baseRetailKeys = buildRetailKeys(baseRawRows);
+  const baseCellsByTier = new Map<string, Map<string, Map<string, QuoteMatrixCell>>>();
+
+  baseRawRows.forEach((row, index) => {
+    const term = (row.label || row.term || "Standard").toString().trim();
+    const vehicleClass = (row.vehicleClass || row.vehicle_class || "Standard").toString().trim();
+    const { tierKey, bandKey } = parseVehicleClass(vehicleClass);
+    const normalizedBandKey = bandKey ?? "-";
+    if (!baseCellsByTier.has(tierKey)) baseCellsByTier.set(tierKey, new Map());
+    const tierCells = baseCellsByTier.get(tierKey)!;
+    if (!tierCells.has(normalizedBandKey)) tierCells.set(normalizedBandKey, new Map());
+    tierCells.get(normalizedBandKey)!.set(term, {
+      kind: "base",
+      label: "Base Price",
+      term,
+      vehicleClass,
+      tierKey,
+      bandKey,
+      dealerCost: numericPrice(coercePrice(row.dealerCost ?? row.dealer_cost ?? 0)),
+      suggestedRetail: numericPrice(coercePrice(row.suggestedRetail ?? row.suggested_retail ?? row.retail ?? 0)),
+      retailKey: baseRetailKeys[index] ?? "",
+    });
+  });
+
+  const addonCellsByTier = new Map<string, Map<string, Map<string, QuoteMatrixCell>>>();
+  const addonOrderByTier = new Map<string, string[]>();
+
+  addonRawRows.forEach((row) => {
+    const label = (row.addonName || row.name || "Add-on").toString().trim();
+    const term = (row.label || row.term || "").toString().trim();
+    const vehicleClass = (row.vehicleClass || row.vehicle_class || "Standard").toString().trim();
+    const { tierKey } = parseVehicleClass(vehicleClass);
+    const tierIdx = tierOrder.indexOf(tierKey);
+    const terms = termOrder.get(tierKey) ?? [];
+    const termIdx = terms.indexOf(term);
+    if (tierIdx < 0 || termIdx < 0) return;
+
+    const suggestedRetail = coercePrice(row.suggestedRetail ?? row.suggested_retail ?? row.retail ?? row.price ?? "n/a");
+    if (!isDisplayableAddOnPrice(suggestedRetail)) return;
+
+    const labels = addonOrderByTier.get(tierKey) ?? [];
+    if (!labels.includes(label)) labels.push(label);
+    addonOrderByTier.set(tierKey, labels);
+
+    const bands = bandOrder.get(tierKey) ?? [];
+    const hasBands = bands.length > 1 || (bands.length === 1 && bands[0] !== "-");
+    const rowIdx = hasBands ? labels.indexOf(label) : labels.indexOf(label) + 1;
+
+    if (!addonCellsByTier.has(tierKey)) addonCellsByTier.set(tierKey, new Map());
+    const tierCells = addonCellsByTier.get(tierKey)!;
+    if (!tierCells.has(label)) tierCells.set(label, new Map());
+    tierCells.get(label)!.set(term, {
+      kind: "addon",
+      label,
+      term,
+      vehicleClass,
+      tierKey,
+      bandKey: null,
+      dealerCost: coercePrice(row.dealerCost ?? row.dealer_cost ?? row.price ?? 0),
+      suggestedRetail,
+      retailKey: cellKey(tierIdx, null, rowIdx, termIdx),
+    });
+  });
+
+  return {
+    tiers: tierOrder.map((tierKey) => {
+      const bands = bandOrder.get(tierKey) ?? [];
+      const terms = (termOrder.get(tierKey) ?? []).map(parseQuoteMatrixTerm);
+      const hasBands = bands.length > 1 || (bands.length === 1 && bands[0] !== "-");
+      const baseCellsForTier = baseCellsByTier.get(tierKey) ?? new Map();
+      const addonCellsForTier = addonCellsByTier.get(tierKey) ?? new Map();
+      const addonRows: QuoteMatrixRow[] = (addonOrderByTier.get(tierKey) ?? []).map((label, index) => ({
+        label,
+        isBase: false,
+        rowIdx: hasBands ? index : index + 1,
+        bandIdx: null,
+        values: terms.map((term) => addonCellsForTier.get(label)?.get(term.label) ?? null),
+      }));
+
+      const tier: QuoteMatrixTier = {
+        label: tierKey,
+        perClaimAmount: parsePerClaimAmount(tierKey),
+        terms,
+        rows: addonRows,
+      };
+
+      if (hasBands) {
+        tier.mileageBands = bands.map((bandLabel, bandIdx) => ({
+          label: bandLabel,
+          bandIdx,
+          baseValues: terms.map((term) => baseCellsForTier.get(bandLabel)?.get(term.label) ?? null),
+        }));
+      } else {
+        tier.rows = [
+          {
+            label: "Base Price",
+            isBase: true,
+            rowIdx: 0,
+            bandIdx: null,
+            values: terms.map((term) => baseCellsForTier.get("-")?.get(term.label) ?? null),
+          },
+          ...addonRows,
+        ];
+      }
+
+      return tier;
+    }),
+  };
+}
+
 export function pricingRowKey(row: { term?: string; label?: string; vehicleClass?: string }): string {
   return `${row.term || row.label || ""}|${row.vehicleClass || ""}`;
 }
@@ -196,6 +365,21 @@ function getRawPricingRows(pricing: any): any[] {
 
 function normalizeTierKey(value: string): string {
   return normalizePricingText(value).replace(/\/claim/i, " / claim").replace(/\s+\/\s+/g, " / ").trim();
+}
+
+function parseQuoteMatrixTerm(label: string): QuoteMatrixTerm {
+  const monthsMatch = label.match(/(\d+)\s*Months?/i);
+  const kmMatch = label.match(/\/\s*([\d,]+|Unlimited)\s*km/i);
+  return {
+    label,
+    months: monthsMatch ? Number(monthsMatch[1]) : undefined,
+    km: kmMatch ? (kmMatch[1].toLowerCase() === "unlimited" ? null : Number(kmMatch[1].replace(/,/g, ""))) : undefined,
+  };
+}
+
+function parsePerClaimAmount(label: string): number | undefined {
+  const match = label.match(/\$([0-9,]+)/);
+  return match ? Number(match[1].replace(/,/g, "")) : undefined;
 }
 
 function buildPricingOrders(rows: any[]) {

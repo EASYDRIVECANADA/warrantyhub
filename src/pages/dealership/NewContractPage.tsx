@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import DashboardLayout, { dealershipNavItems } from "../../components/dashboard/DashboardLayout";
 import { Card, CardContent } from "../../components/ui/card";
@@ -7,22 +7,29 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Badge } from "../../components/ui/badge";
 import { Checkbox } from "../../components/ui/checkbox";
+import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { useToast } from "../../hooks/use-toast";
 import { useDealership } from "../../hooks/useDealership";
 import { supabase } from "../../integrations/supabase/client";
 import { getContractsV2Api } from "../../lib/contracts/contractsV2";
+import { compareProductsByConfiguredOrder, type ProductOrderConfig } from "../../lib/products/defaultProductOrder";
 import { cn } from "../../lib/utils";
 import {
   buildAddOnPricingRows,
   buildBasePricingRows,
+  buildQuotePricingMatrix,
   numericPrice,
   pricingRowKey,
+  resolveDealerCost,
+  resolveDealerCostNumber,
   resolveCustomerRetail,
   resolveCustomerRetailNumber,
   type ContractAddonSnapshot,
   type DealerPricingConfig,
   type NormalizedAddOnRow,
   type NormalizedPricingRow,
+  type QuoteMatrixCell,
+  type QuoteMatrixRow,
 } from "../../lib/pricing/dealerPricing";
 import {
   ArrowLeft, Check, AlertCircle, Car, Shield, DollarSign,
@@ -64,7 +71,15 @@ interface AddOn {
   retail: number;
 }
 
+type DealerProductOrder = Record<string, ProductOrderConfig>;
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+const productTypeBadgeLabel = (type: string) => {
+  const normalized = (type || "").trim();
+  if (["VSC", "EXTENDED_WARRANTY", "warranty"].includes(normalized)) return "EW";
+  return normalized;
+};
 
 export function getPricingRows(pricing: any): PricingRow[] {
   if (!pricing) return [];
@@ -154,7 +169,9 @@ function parseTermSnapshot(term: string): { months?: number; km?: number | null 
   };
 }
 
-const STEP_LABELS = ["Vehicle", "Product", "Pricing", "Add-Ons", "Customer", "Review"];
+const fmt = (value: number) => `$${value.toLocaleString("en-CA", { maximumFractionDigits: 0 })}`;
+
+const STEP_LABELS = ["Vehicle", "Product", "Quote", "Customer", "Review"];
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -181,10 +198,14 @@ export default function NewContractPage() {
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [selectedProductId, setSelectedProductId] = useState("");
+  const [dealerProductOrder, setDealerProductOrder] = useState<DealerProductOrder>({});
 
   // Step 3 — Pricing
   const [selectedPricingKey, setSelectedPricingKey] = useState("");
   const [dealerPricingConfig, setDealerPricingConfig] = useState<DealerPricingConfig>(null);
+  const [activeQuoteTier, setActiveQuoteTier] = useState(0);
+  const [activeQuoteBand, setActiveQuoteBand] = useState(0);
+  const [quotePrefillApplied, setQuotePrefillApplied] = useState(false);
 
   // Step 4 — Add-ons
   const [selectedAddOns, setSelectedAddOns] = useState<Set<string>>(new Set());
@@ -232,6 +253,25 @@ export default function NewContractPage() {
     })();
   }, []);
 
+  useEffect(() => {
+    if (!dealershipId) {
+      setDealerProductOrder({});
+      return;
+    }
+
+    supabase
+      .from("dealership_product_pricing")
+      .select("product_id, sort_order")
+      .eq("dealership_id", dealershipId)
+      .then(({ data }) => {
+        const map: DealerProductOrder = {};
+        (data || []).forEach((row: any) => {
+          map[row.product_id] = { sort_order: row.sort_order };
+        });
+        setDealerProductOrder(map);
+      });
+  }, [dealershipId]);
+
   // Load dealership name
   useEffect(() => {
     if (!dealershipId) return;
@@ -244,15 +284,42 @@ export default function NewContractPage() {
     const p = products.find(p => p.id === selectedProductId);
     if (p) {
       const rows = buildBasePricingRows(p.pricing_json);
-      setSelectedPricingKey(rows.length === 1 ? pricingRowKey(rows[0]) : "");
-      setSelectedAddOns(new Set());
+      const prefillProductId = searchParams.get("productId");
+      const prefillPricingKey = searchParams.get("pricingKey");
+      const prefillAddOns = searchParams.getAll("addOn").length
+        ? searchParams.getAll("addOn")
+        : (searchParams.get("addOns") || "").split(",").map((name) => name.trim()).filter(Boolean);
+      const prefillRow = prefillPricingKey ? rows.find((row) => pricingRowKey(row) === prefillPricingKey) : null;
+      const shouldApplyPrefill = !quotePrefillApplied && prefillProductId === p.id && Boolean(prefillRow);
+      const nextSelectedRow = shouldApplyPrefill && prefillRow ? prefillRow : rows.length === 1 ? rows[0] : null;
+
+      setSelectedPricingKey(nextSelectedRow ? pricingRowKey(nextSelectedRow) : "");
+      if (shouldApplyPrefill && nextSelectedRow) {
+        const validAddOns = buildAddOnPricingRows(p.pricing_json, nextSelectedRow.vehicleClass)
+          .filter((row) => row.term === nextSelectedRow.term && row.tierKey === nextSelectedRow.tierKey);
+        setSelectedAddOns(new Set(prefillAddOns.filter((name) => validAddOns.some((row) => row.name === name))));
+
+        const matrix = buildQuotePricingMatrix(p.pricing_json);
+        const tierIndex = matrix.tiers.findIndex((tier) => tier.label === nextSelectedRow.tierKey);
+        const tier = tierIndex >= 0 ? matrix.tiers[tierIndex] : null;
+        const bandIndex = tier?.mileageBands?.findIndex((band) => band.label === (nextSelectedRow.bandKey ?? "-")) ?? -1;
+        setActiveQuoteTier(tierIndex >= 0 ? tierIndex : 0);
+        setActiveQuoteBand(bandIndex >= 0 ? bandIndex : 0);
+        setQuotePrefillApplied(true);
+      } else {
+        setSelectedAddOns(new Set());
+        setActiveQuoteTier(0);
+        setActiveQuoteBand(0);
+      }
       setProviderName(p.providerName);
     } else {
       setSelectedPricingKey("");
       setSelectedAddOns(new Set());
+      setActiveQuoteTier(0);
+      setActiveQuoteBand(0);
       setProviderName("");
     }
-  }, [selectedProductId, products]);
+  }, [selectedProductId, products, searchParams]);
 
   useEffect(() => {
     if (!dealershipId || !selectedProductId) {
@@ -262,12 +329,13 @@ export default function NewContractPage() {
 
     supabase
       .from("dealership_product_pricing")
-      .select("retail_price, confidentiality_enabled")
+      .select("dealer_cost, retail_price, confidentiality_enabled")
       .eq("dealership_id", dealershipId)
       .eq("product_id", selectedProductId)
       .maybeSingle()
       .then(({ data }) => {
         setDealerPricingConfig(data ? {
+          dealer_cost: ((data as any).dealer_cost ?? {}) as Record<string, number>,
           retail_price: ((data as any).retail_price ?? {}) as Record<string, number>,
           confidentiality_enabled: Boolean((data as any).confidentiality_enabled),
         } : null);
@@ -275,7 +343,23 @@ export default function NewContractPage() {
   }, [dealershipId, selectedProductId]);
 
   // Derived values
+  const orderedProducts = useMemo(() => {
+    return [...products].sort((a, b) => compareProductsByConfiguredOrder(a, b, dealerProductOrder));
+  }, [products, dealerProductOrder]);
   const selectedProduct = products.find(p => p.id === selectedProductId) ?? null;
+  const quoteMatrix = useMemo(() => selectedProduct ? buildQuotePricingMatrix(selectedProduct.pricing_json) : { tiers: [] }, [selectedProduct]);
+  const quoteTierIndex = quoteMatrix.tiers.length ? Math.min(activeQuoteTier, quoteMatrix.tiers.length - 1) : 0;
+  const quoteTier = quoteMatrix.tiers[quoteTierIndex];
+  const quoteBandIndex = quoteTier?.mileageBands?.length ? Math.min(activeQuoteBand, quoteTier.mileageBands.length - 1) : 0;
+  const quoteBand = quoteTier?.mileageBands?.[quoteBandIndex] ?? null;
+  const quoteRows: QuoteMatrixRow[] = quoteTier
+    ? quoteBand
+      ? [
+          { label: "Base Price", isBase: true, rowIdx: -1, bandIdx: quoteBand.bandIdx, values: quoteBand.baseValues },
+          ...quoteTier.rows,
+        ]
+      : quoteTier.rows
+    : [];
   const pricingRows: NormalizedPricingRow[] = selectedProduct ? buildBasePricingRows(selectedProduct.pricing_json) : [];
   const chosenRow = pricingRows.find(r => pricingRowKey(r) === selectedPricingKey) ?? (pricingRows.length === 1 ? pricingRows[0] : null);
   const addOns: NormalizedAddOnRow[] = selectedProduct && chosenRow
@@ -286,8 +370,8 @@ export default function NewContractPage() {
     .map((name) => addOns.find(a => a.name === name))
     .filter((row): row is NormalizedAddOnRow => Boolean(row));
   const baseRetail = chosenRow ? resolveCustomerRetailNumber(chosenRow, dealerPricingConfig) : 0;
-  const baseDealerCost = chosenRow?.dealerCost || 0;
-  const addOnDealerTotal = selectedAddOnRows.reduce((sum, row) => sum + numericPrice(row.dealerCost), 0);
+  const baseDealerCost = chosenRow ? resolveDealerCostNumber(chosenRow, dealerPricingConfig) : 0;
+  const addOnDealerTotal = selectedAddOnRows.reduce((sum, row) => sum + numericPrice(resolveDealerCost(row, dealerPricingConfig)), 0);
   const addOnRetailTotal = selectedAddOnRows.reduce((sum, row) => sum + numericPrice(resolveCustomerRetail(row, dealerPricingConfig)), 0);
   const totalDealerCost = baseDealerCost + addOnDealerTotal;
   const totalRetail = baseRetail + addOnRetailTotal;
@@ -295,11 +379,32 @@ export default function NewContractPage() {
     name: row.name,
     term: row.term,
     vehicleClass: row.vehicleClass,
-    dealerCost: numericPrice(row.dealerCost),
+    dealerCost: numericPrice(resolveDealerCost(row, dealerPricingConfig)),
     retail: numericPrice(resolveCustomerRetail(row, dealerPricingConfig)),
     retailKey: row.retailKey,
   }));
   const pricingTermSnapshot = chosenRow ? parseTermSnapshot(chosenRow.term) : {};
+
+  const selectBaseQuoteCell = (cell: QuoteMatrixCell) => {
+    setSelectedPricingKey(pricingRowKey({ term: cell.term, vehicleClass: cell.vehicleClass }));
+    setSelectedAddOns(new Set());
+  };
+
+  const toggleAddOnQuoteCell = (cell: QuoteMatrixCell) => {
+    if (!chosenRow || cell.term !== chosenRow.term || cell.tierKey !== chosenRow.tierKey) return;
+    setSelectedAddOns((prev) => {
+      const next = new Set(prev);
+      next.has(cell.label) ? next.delete(cell.label) : next.add(cell.label);
+      return next;
+    });
+  };
+
+  const quoteCellPrice = (cell: QuoteMatrixCell): string => {
+    const retailValue = resolveCustomerRetail(cell, dealerPricingConfig);
+    if (retailValue === "Included") return "Included";
+    const retailAmount = numericPrice(retailValue);
+    return retailAmount > 0 ? fmt(retailAmount) : "—";
+  };
 
   // ── VIN decode ─────────────────────────────────────────────────────────────
   const handleDecodeVin = async () => {
@@ -329,10 +434,9 @@ export default function NewContractPage() {
         if (!selectedProductId) { toast({ title: "Select a product to continue", variant: "destructive" }); return false; }
         return true;
       case 3:
-        if (!chosenRow) { toast({ title: "Select a pricing tier to continue", variant: "destructive" }); return false; }
+        if (!chosenRow) { toast({ title: "Select a base quote option to continue", variant: "destructive" }); return false; }
         return true;
-      case 4: return true;
-      case 5:
+      case 4:
         if (!firstName.trim() || !lastName.trim()) { toast({ title: "First and last name are required", variant: "destructive" }); return false; }
         return true;
       default: return true;
@@ -342,7 +446,7 @@ export default function NewContractPage() {
   const goNext = () => {
     if (!validateStep()) return;
     setCompletedSteps(prev => new Set([...prev, currentStep]));
-    setCurrentStep(s => Math.min(s + 1, 6));
+    setCurrentStep(s => Math.min(s + 1, 5));
   };
 
   const goBack = () => setCurrentStep(s => Math.max(s - 1, 1));
@@ -526,7 +630,7 @@ export default function NewContractPage() {
               <p className="text-sm text-muted-foreground py-8 text-center">No published products available. Ask your provider to publish products first.</p>
             ) : (
               <div className="grid gap-3">
-                {products.map(p => {
+                {orderedProducts.map(p => {
                   const elig = checkEligibility(p, vehicleInfo?.year ?? null, mileage ? parseInt(mileage) : null);
                   const cats: string[] = (p.coverage_details_json?.categories || []).map((c: any) => c.name).slice(0, 4);
                   const rows = buildBasePricingRows(p.pricing_json);
@@ -547,7 +651,7 @@ export default function NewContractPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                            <Badge variant="secondary" className="text-xs">{p.product_type}</Badge>
+                            <Badge variant="secondary" className="text-xs">{productTypeBadgeLabel(p.product_type)}</Badge>
                             <span className="text-xs bg-accent/10 text-accent border border-accent/20 rounded-full px-2 py-0.5">{p.providerName}</span>
                             {!elig.eligible && <Badge variant="destructive" className="text-xs">{elig.reason}</Badge>}
                           </div>
@@ -575,11 +679,163 @@ export default function NewContractPage() {
 
         {/* ── Step 3: Pricing Tiers ── */}
         {currentStep === 3 && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 mb-4">
+              <DollarSign className="w-5 h-5 text-primary" />
+              <h3 className="font-semibold text-base">Build Quote</h3>
+              {selectedProduct && <span className="text-sm text-muted-foreground">— {selectedProduct!.name}</span>}
+            </div>
+            {quoteMatrix.tiers.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-6 text-center">No pricing configured for this product.</p>
+            ) : (
+              <>
+                <Card>
+                  <CardContent className="p-4 space-y-4">
+                    <Tabs
+                      value={quoteTierIndex.toString()}
+                      onValueChange={(value) => {
+                        setActiveQuoteTier(Number(value));
+                        setActiveQuoteBand(0);
+                        setSelectedPricingKey("");
+                        setSelectedAddOns(new Set());
+                      }}
+                    >
+                      <TabsList className="flex-wrap h-auto gap-1">
+                        {quoteMatrix.tiers.map((tier, index) => (
+                          <TabsTrigger key={tier.label} value={index.toString()} className="text-xs sm:text-sm">
+                            {tier.label}
+                          </TabsTrigger>
+                        ))}
+                      </TabsList>
+                    </Tabs>
+
+                    {quoteTier?.mileageBands?.length ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mileage Band</span>
+                        <Tabs
+                          value={quoteBandIndex.toString()}
+                          onValueChange={(value) => {
+                            setActiveQuoteBand(Number(value));
+                            setSelectedPricingKey("");
+                            setSelectedAddOns(new Set());
+                          }}
+                        >
+                          <TabsList className="flex-wrap h-auto">
+                            {quoteTier.mileageBands.map((band, index) => (
+                              <TabsTrigger key={band.label} value={index.toString()} className="text-xs">
+                                {band.label}
+                              </TabsTrigger>
+                            ))}
+                          </TabsList>
+                        </Tabs>
+                      </div>
+                    ) : null}
+
+                    <div className="overflow-x-auto border rounded-lg bg-background">
+                      <table className="w-max min-w-full border-separate border-spacing-0 text-sm">
+                        <thead className="bg-muted">
+                          <tr>
+                            <th className="sticky left-0 z-30 w-[240px] min-w-[240px] max-w-[240px] border-b border-r bg-muted px-3 py-2.5 text-left font-semibold shadow-[6px_0_10px_-8px_rgba(15,23,42,0.35)]">
+                              Coverage / Add-on
+                            </th>
+                            {quoteTier?.terms.map((term) => (
+                              <th key={term.label} className="min-w-[150px] whitespace-nowrap border-b px-3 py-2.5 text-left font-semibold">
+                                <div className="text-xs">{term.label}</div>
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {quoteRows.map((row) => (
+                            <tr key={`${row.label}-${row.bandIdx ?? "x"}-${row.rowIdx}`} className={cn("border-t", row.isBase && "bg-primary/5")}>
+                              <td className="sticky left-0 z-20 w-[240px] min-w-[240px] max-w-[240px] border-r border-t bg-background px-3 py-2.5 font-medium shadow-[6px_0_10px_-8px_rgba(15,23,42,0.35)]">
+                                <div className="flex min-w-0 items-center gap-2">
+                                  {row.isBase ? (
+                                    <Badge className="h-4 shrink-0 bg-primary/15 px-1 py-0 text-[9px] text-primary hover:bg-primary/15">BASE</Badge>
+                                  ) : (
+                                    <Checkbox
+                                      checked={row.values.some((cell) => Boolean(cell && selectedAddOns.has(cell.label)))}
+                                      disabled
+                                      className="h-3.5 w-3.5 shrink-0"
+                                    />
+                                  )}
+                                  <span className={cn("min-w-0 whitespace-normal break-words leading-tight", row.isBase && "font-bold")}>{row.label}</span>
+                                </div>
+                              </td>
+                              {row.values.map((cell, termIdx) => {
+                                if (!cell) {
+                                  return <td key={termIdx} className="border-t px-3 py-2.5 text-muted-foreground/40">—</td>;
+                                }
+                                const retailValue = resolveCustomerRetail(cell, dealerPricingConfig);
+                                const retailAmount = numericPrice(retailValue);
+                                const isSelectedBase = row.isBase && chosenRow && pricingRowKey(chosenRow) === pricingRowKey({ term: cell.term, vehicleClass: cell.vehicleClass });
+                                const isEnabledAddon = !row.isBase && chosenRow?.term === cell.term && chosenRow?.tierKey === cell.tierKey;
+                                const isSelectedAddon = !row.isBase && selectedAddOns.has(cell.label) && isEnabledAddon;
+                                const isIncluded = retailValue === "Included";
+                                return (
+                                  <td key={cell.retailKey || termIdx} className="border-t px-3 py-2.5 align-top">
+                                    <button
+                                      type="button"
+                                      disabled={!row.isBase && !isEnabledAddon}
+                                      onClick={() => row.isBase ? selectBaseQuoteCell(cell) : toggleAddOnQuoteCell(cell)}
+                                      className={cn(
+                                        "w-full min-h-14 rounded-lg border px-3 py-2 text-left transition-all",
+                                        row.isBase
+                                          ? isSelectedBase ? "border-primary bg-primary/10 ring-1 ring-primary" : "border-border hover:border-primary/40 hover:bg-muted/20"
+                                          : isSelectedAddon ? "border-primary bg-primary/10" : "border-border hover:border-primary/30 hover:bg-muted/20",
+                                        !row.isBase && !isEnabledAddon && "opacity-40 cursor-not-allowed hover:bg-transparent hover:border-border",
+                                      )}
+                                    >
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className={cn("font-semibold", isIncluded ? "text-primary" : "text-foreground")}>
+                                          {isIncluded ? "Included" : retailAmount > 0 ? fmt(retailAmount) : quoteCellPrice(cell)}
+                                        </span>
+                                        {!row.isBase && isEnabledAddon ? (
+                                          <Checkbox checked={isSelectedAddon} className="pointer-events-none h-4 w-4" />
+                                        ) : null}
+                                      </div>
+                                      {!row.isBase && !isEnabledAddon ? (
+                                        <div className="text-[10px] text-muted-foreground mt-1">Select matching base term</div>
+                                      ) : null}
+                                    </button>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="rounded-xl bg-muted/40 border p-4 space-y-1.5">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Base retail</span>
+                    <span className="font-semibold">{baseRetail > 0 ? fmt(baseRetail) : "—"}</span>
+                  </div>
+                  {addOnRetailTotal > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Add-ons</span>
+                      <span className="font-semibold">+{fmt(addOnRetailTotal)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm font-bold border-t pt-2">
+                    <span>Total customer price</span>
+                    <span>{totalRetail > 0 ? fmt(totalRetail) : "—"}</span>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {false && currentStep === 3 && (
           <div className="space-y-3">
             <div className="flex items-center gap-2 mb-4">
               <DollarSign className="w-5 h-5 text-primary" />
               <h3 className="font-semibold text-base">Select Pricing Tier</h3>
-              {selectedProduct && <span className="text-sm text-muted-foreground">— {selectedProduct.name}</span>}
+              {selectedProduct && <span className="text-sm text-muted-foreground">— {selectedProduct!.name}</span>}
             </div>
             {pricingRows.length === 0 ? (
               <p className="text-sm text-muted-foreground py-6 text-center">No pricing tiers configured for this product.</p>
@@ -588,7 +844,6 @@ export default function NewContractPage() {
                 {pricingRows.map(row => {
                   const rowRetail = resolveCustomerRetailNumber(row, dealerPricingConfig);
                   const isSelected = chosenRow ? pricingRowKey(chosenRow) === pricingRowKey(row) : false;
-                  const margin = rowRetail - row.dealerCost;
                   return (
                     <button
                       key={pricingRowKey(row)}
@@ -604,9 +859,7 @@ export default function NewContractPage() {
                           {row.vehicleClass && <p className="text-xs text-muted-foreground mt-0.5">{row.vehicleClass}</p>}
                         </div>
                         <div className="text-right space-y-0.5">
-                          <p className="font-bold">${row.dealerCost.toLocaleString()} <span className="text-xs text-muted-foreground font-normal">dealer cost</span></p>
                           {rowRetail > 0 && <p className="text-sm text-primary font-semibold">${rowRetail.toLocaleString()} <span className="text-xs text-muted-foreground font-normal">retail</span></p>}
-                          {margin > 0 && <p className="text-xs text-green-600 font-medium">+${margin.toLocaleString()} margin</p>}
                         </div>
                       </div>
                     </button>
@@ -618,7 +871,7 @@ export default function NewContractPage() {
         )}
 
         {/* ── Step 4: Add-Ons ── */}
-        {currentStep === 4 && (
+        {false && currentStep === 4 && (
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-4">
               <Shield className="w-5 h-5 text-primary" />
@@ -689,7 +942,7 @@ export default function NewContractPage() {
         )}
 
         {/* ── Step 5: Customer ── */}
-        {currentStep === 5 && (
+        {currentStep === 4 && (
           <Card>
             <CardContent className="p-6 space-y-4">
               <div className="flex items-center gap-2 mb-2">
@@ -721,7 +974,7 @@ export default function NewContractPage() {
         )}
 
         {/* ── Step 6: Review & Sign ── */}
-        {currentStep === 6 && (
+        {currentStep === 5 && (
           <>
             {/* Printable contract document */}
             <div className="print-contract-root bg-white">
@@ -795,7 +1048,7 @@ export default function NewContractPage() {
                     })}
                     <div className="flex justify-between font-bold pt-2 border-t">
                       <span>Total Contract Price</span>
-                      <span className="text-primary text-lg">${(totalRetail > 0 ? totalRetail : totalDealerCost).toLocaleString()}</span>
+                      <span className="text-primary text-lg">{totalRetail > 0 ? fmt(totalRetail) : "—"}</span>
                     </div>
                   </div>
                 </div>
@@ -867,7 +1120,7 @@ export default function NewContractPage() {
         )}
 
         {/* ── Next / Back navigation (steps 1–5) — hidden on print ── */}
-        {currentStep < 6 && (
+        {currentStep < 5 && (
           <div className="print:hidden flex justify-between pb-6">
             <Button variant="outline" onClick={goBack} disabled={currentStep === 1}>
               ← Back

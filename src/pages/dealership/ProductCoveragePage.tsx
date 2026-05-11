@@ -14,7 +14,9 @@ import { cn } from "../../lib/utils";
 import {
   buildAddOnPricingRows as buildSharedAddOnPricingRows,
   buildBasePricingRows,
+  numericPrice,
   parseVehicleClass as parseSharedVehicleClass,
+  pricingRowKey,
   resolveCustomerRetail,
   resolveCustomerRetailNumber,
 } from "../../lib/pricing/dealerPricing";
@@ -38,7 +40,10 @@ interface PricingRow {
 interface AddOnPricingRow {
   name: string;
   term: string;
+  label: string;
   vehicleClass: string;
+  tierKey: string;
+  dealerCost: number | string;
   suggestedRetail: number | string;
   retailKey: string;
 }
@@ -210,7 +215,10 @@ export function buildAddOnPricingRows(baseRows: any[], addonRows: any[], activeT
     rows.push({
       name,
       term: termLabel,
+      label: termLabel,
       vehicleClass: tierKey,
+      tierKey,
+      dealerCost: coercePrice(row.dealerCost ?? row.dealer_cost ?? row.price ?? 0),
       suggestedRetail,
       retailKey: cellKey(tierIdx, null, rowIdx, termIdx),
     });
@@ -233,6 +241,8 @@ export default function ProductCoveragePage() {
   const [customPricing, setCustomPricing] = useState<Record<string, number>>({});
   const [confidentialityEnabled, setConfidentialityEnabled] = useState(false);
   const [selectedTier, setSelectedTier] = useState<string | null>(null);
+  const [selectedBaseKey, setSelectedBaseKey] = useState<string>("");
+  const [selectedAddOns, setSelectedAddOns] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!id) { setNotFound(true); setLoading(false); return; }
@@ -355,6 +365,16 @@ export default function ProductCoveragePage() {
     map.set(row.name, termMap);
     return map;
   }, new Map<string, Map<string, AddOnPricingRow>>()).entries()];
+  const selectedBaseRow = pricingRows.find((row) => pricingRowKey(row) === selectedBaseKey) ?? null;
+  const selectableAddOns = selectedBaseRow
+    ? addOnRows.filter((row) => row.term === selectedBaseRow.term)
+    : [];
+  const selectedAddOnRows = Array.from(selectedAddOns)
+    .map((name) => selectableAddOns.find((row) => row.name === name))
+    .filter((row): row is AddOnPricingRow => Boolean(row));
+  const selectedBaseRetail = selectedBaseRow ? getDisplayPrice(selectedBaseRow) : 0;
+  const selectedAddOnRetail = selectedAddOnRows.reduce((sum, row) => sum + numericPrice(getAddOnDisplayPrice(row)), 0);
+  const selectedQuoteTotal = selectedBaseRetail + selectedAddOnRetail;
 
   const allRetails = pricingRows.map(r => getDisplayPrice(r)).filter(Boolean);
   const minRetail = allRetails.length ? Math.min(...allRetails) : null;
@@ -363,9 +383,6 @@ export default function ProductCoveragePage() {
   const tierRetails = tierRows.map(r => getDisplayPrice(r)).filter(Boolean);
   const tierMinRetail = tierRetails.length ? Math.min(...tierRetails) : minRetail;
   const tierMaxRetail = tierRetails.length ? Math.max(...tierRetails) : maxRetail;
-
-  const allCosts = pricingRows.map(r => r.dealerCost).filter(Boolean);
-  const minCost = allCosts.length ? Math.min(...allCosts) : null;
 
   const deductible = pr.deductible;
 
@@ -389,6 +406,36 @@ export default function ProductCoveragePage() {
       next.has(idx) ? next.delete(idx) : next.add(idx);
       return next;
     });
+  };
+
+  const selectTier = (tier: string) => {
+    setSelectedTier(tier);
+    setSelectedBaseKey("");
+    setSelectedAddOns(new Set());
+  };
+
+  const selectBaseRow = (row: PricingRow) => {
+    setSelectedBaseKey(pricingRowKey(row));
+    setSelectedAddOns((prev) => {
+      const validNames = new Set(addOnRows.filter((addOn) => addOn.term === row.term).map((addOn) => addOn.name));
+      return new Set(Array.from(prev).filter((name) => validNames.has(name)));
+    });
+  };
+
+  const toggleAddOn = (row: AddOnPricingRow) => {
+    if (!selectedBaseRow || row.term !== selectedBaseRow.term) return;
+    setSelectedAddOns((prev) => {
+      const next = new Set(prev);
+      next.has(row.name) ? next.delete(row.name) : next.add(row.name);
+      return next;
+    });
+  };
+
+  const quoteUrl = () => {
+    const params = new URLSearchParams({ productId: product.id });
+    if (selectedBaseRow) params.set("pricingKey", pricingRowKey(selectedBaseRow));
+    selectedAddOns.forEach((name) => params.append("addOn", name));
+    return `/dealership/contracts/new?${params.toString()}`;
   };
 
   return (
@@ -425,7 +472,7 @@ export default function ProductCoveragePage() {
                   {uniqueTiers.map((tier) => (
                     <button
                       key={tier}
-                      onClick={() => setSelectedTier(tier)}
+                      onClick={() => selectTier(tier)}
                       className={cn(
                         "px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all",
                         activeTier === tier
@@ -454,15 +501,11 @@ export default function ProductCoveragePage() {
                   <span className="text-white/40 text-sm">starting price range</span>
                 </div>
               )}
-              {minCost !== null && (
-                <p className="mt-0.5 text-sm text-white/40">Dealer cost from ${minCost.toLocaleString()}</p>
-              )}
-
               {/* CTA */}
               <Button
                 size="lg"
                 className="mt-4 bg-accent text-[#0f1b3d] hover:bg-accent/90 font-semibold"
-                onClick={() => navigate(`/dealership/contracts/new?productId=${product.id}`)}
+                onClick={() => navigate(quoteUrl())}
               >
                 Get a Quote →
               </Button>
@@ -739,7 +782,7 @@ export default function ProductCoveragePage() {
                   {uniqueTiers.map((tier) => (
                     <button
                       key={tier}
-                      onClick={() => setSelectedTier(tier)}
+                      onClick={() => selectTier(tier)}
                       className={cn(
                         "px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all",
                         activeTier === tier
@@ -775,9 +818,23 @@ export default function ProductCoveragePage() {
                         <td className="px-4 py-3 font-medium">{label}</td>
                         {baseTermLabels.map((term) => {
                           const row = terms.get(term);
+                          const isSelected = row ? selectedBaseKey === pricingRowKey(row) : false;
                           return (
-                            <td key={term} className="px-4 py-3 text-right text-primary font-semibold">
-                              {row ? `$${getDisplayPrice(row).toLocaleString()}` : (
+                            <td key={term} className="px-3 py-2 text-right">
+                              {row ? (
+                                <button
+                                  type="button"
+                                  onClick={() => selectBaseRow(row)}
+                                  className={cn(
+                                    "w-full rounded-lg border px-3 py-2 text-right font-semibold transition-all",
+                                    isSelected
+                                      ? "border-primary bg-primary/10 text-primary ring-1 ring-primary"
+                                      : "border-transparent text-primary hover:border-primary/40 hover:bg-muted/30"
+                                  )}
+                                >
+                                  ${getDisplayPrice(row).toLocaleString()}
+                                </button>
+                              ) : (
                                 <span className="text-muted-foreground/50">—</span>
                               )}
                             </td>
@@ -833,14 +890,32 @@ export default function ProductCoveragePage() {
                           {addOnTermLabels.map((term) => {
                             const row = terms.get(term);
                             const price = row ? getAddOnDisplayPrice(row) : null;
+                            const isEnabled = Boolean(row && selectedBaseRow && row.term === selectedBaseRow.term);
+                            const isSelected = Boolean(row && isEnabled && selectedAddOns.has(row.name));
                             return (
-                              <td key={term} className="px-4 py-3 text-right text-primary font-semibold">
+                              <td key={term} className="px-3 py-2 text-right">
                                 {price == null ? (
                                   <span className="text-muted-foreground/50">—</span>
-                                ) : typeof price === "number" ? (
-                                  `$${price.toLocaleString()}`
                                 ) : (
-                                  <Badge className="bg-green-100 text-green-700 hover:bg-green-100">{price}</Badge>
+                                  <button
+                                    type="button"
+                                    disabled={!isEnabled || !row}
+                                    onClick={() => row && toggleAddOn(row)}
+                                    className={cn(
+                                      "w-full rounded-lg border px-3 py-2 text-right font-semibold transition-all",
+                                      isSelected
+                                        ? "border-primary bg-primary/10 text-primary ring-1 ring-primary"
+                                        : "border-transparent text-primary hover:border-primary/40 hover:bg-muted/30",
+                                      !isEnabled && "cursor-not-allowed opacity-40 hover:border-transparent hover:bg-transparent"
+                                    )}
+                                  >
+                                    <span className="inline-flex items-center justify-end gap-2">
+                                      {isSelected && <Check className="h-3.5 w-3.5" />}
+                                      {typeof price === "number" ? `$${price.toLocaleString()}` : (
+                                        <Badge className="bg-green-100 text-green-700 hover:bg-green-100">{price}</Badge>
+                                      )}
+                                    </span>
+                                  </button>
                                 )}
                               </td>
                             );
@@ -855,6 +930,29 @@ export default function ProductCoveragePage() {
             {deductible && (
               <p className="text-sm text-muted-foreground">Deductible: ${deductible} per claim</p>
             )}
+            <div className="rounded-xl border bg-card p-4 space-y-2">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-xs uppercase font-semibold tracking-wide text-muted-foreground">Selected quote</p>
+                  <p className="text-sm font-medium text-foreground">
+                    {selectedBaseRow ? `${selectedBaseRow.term} · ${selectedBaseRow.vehicleClass || "Standard"}` : "Select a base price to prefill the quote"}
+                  </p>
+                </div>
+                <div className="text-left md:text-right">
+                  <p className="text-xs text-muted-foreground">Customer price</p>
+                  <p className="text-xl font-bold text-primary">{selectedQuoteTotal > 0 ? `$${selectedQuoteTotal.toLocaleString()}` : "-"}</p>
+                </div>
+              </div>
+              {selectedAddOnRows.length > 0 && (
+                <div className="flex flex-wrap gap-2 border-t pt-3">
+                  {selectedAddOnRows.map((row) => (
+                    <Badge key={row.name} variant="secondary" className="gap-1">
+                      {row.name}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -939,7 +1037,7 @@ export default function ProductCoveragePage() {
           <Button variant="outline" onClick={() => navigate("/dealership/find-products")}>
             <ArrowLeft className="mr-1 h-4 w-4" /> Back to Products
           </Button>
-          <Button className="bg-accent text-[#0f1b3d] hover:bg-accent/90 font-semibold" onClick={() => navigate("/dealership/contracts/new")}>
+          <Button className="bg-accent text-[#0f1b3d] hover:bg-accent/90 font-semibold" onClick={() => navigate(quoteUrl())}>
             Get a Quote →
           </Button>
         </div>

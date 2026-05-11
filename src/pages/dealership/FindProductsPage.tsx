@@ -9,6 +9,7 @@ import { Search, RotateCcw, Car, Shield, Check, Loader2, AlertCircle, LayoutGrid
 import { supabase } from "../../integrations/supabase/client";
 import { useDealership } from "../../hooks/useDealership";
 import { buildBasePricingRows, resolveCustomerRetailNumber } from "../../lib/pricing/dealerPricing";
+import { compareProductsByConfiguredOrder } from "../../lib/products/defaultProductOrder";
 
 interface VehicleInfo {
   year: number | null;
@@ -295,14 +296,7 @@ export default function FindProductsPage() {
       list = list.filter((p) => isEligible(p.eligibility_rules, vehicleInfo, mileageKm));
     }
 
-    return list.sort((a, b) => {
-      const aOrder = dealerPricing[a.id]?.sort_order;
-      const bOrder = dealerPricing[b.id]?.sort_order;
-      if (aOrder != null && bOrder != null && aOrder !== bOrder) return aOrder - bOrder;
-      if (aOrder != null && bOrder == null) return -1;
-      if (aOrder == null && bOrder != null) return 1;
-      return a.name.localeCompare(b.name);
-    });
+    return list.sort((a, b) => compareProductsByConfiguredOrder(a, b, dealerPricing));
   }, [products, selectedProvider, selectedType, searchQuery, vehicleInfo, mileageKm, dealerPricing]);
 
   const productTypes = useMemo(() => [...new Set(products.map((p) => p.product_type))].sort(), [products]);
