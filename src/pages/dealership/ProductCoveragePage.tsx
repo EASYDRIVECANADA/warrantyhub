@@ -6,7 +6,7 @@ import { Badge } from "../../components/ui/badge";
 import { Card, CardContent } from "../../components/ui/card";
 import {
   ArrowLeft, Check, Shield, Wrench, ChevronDown, ChevronRight,
-  DollarSign, Clock, Gauge, Loader2, AlertCircle,
+  DollarSign, Gauge, Loader2, AlertCircle,
 } from "lucide-react";
 import { supabase } from "../../integrations/supabase/client";
 import { useDealership } from "../../hooks/useDealership";
@@ -358,7 +358,11 @@ export default function ProductCoveragePage() {
     return map;
   }, new Map<string, Map<string, PricingRow>>()).entries()];
   const addOnRows = buildSharedAddOnPricingRows(pr, activeTier);
-  const addOnTermLabels = [...new Set(addOnRows.map((row) => row.term))];
+  const addOnTermSet = new Set(addOnRows.map((row) => row.term));
+  const addOnTermLabels = [
+    ...baseTermLabels.filter((term) => addOnTermSet.has(term)),
+    ...Array.from(addOnTermSet).filter((term) => !baseTermLabels.includes(term)),
+  ];
   const addOnMatrixRows = [...addOnRows.reduce((map, row) => {
     const termMap = map.get(row.name) ?? new Map<string, AddOnPricingRow>();
     termMap.set(row.term, row);
@@ -433,8 +437,10 @@ export default function ProductCoveragePage() {
 
   const quoteUrl = () => {
     const params = new URLSearchParams({ productId: product.id });
-    if (selectedBaseRow) params.set("pricingKey", pricingRowKey(selectedBaseRow));
-    selectedAddOns.forEach((name) => params.append("addOn", name));
+    if (selectedBaseRow) {
+      params.set("pricingKey", pricingRowKey(selectedBaseRow));
+      selectedAddOns.forEach((name) => params.append("addOn", name));
+    }
     return `/dealership/contracts/new?${params.toString()}`;
   };
 
@@ -592,35 +598,45 @@ export default function ProductCoveragePage() {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h2 className="font-display text-xl font-bold text-foreground">Available Options</h2>
-                    <p className="text-sm text-muted-foreground mt-1">{uniqueTiers.length} claim tier{uniqueTiers.length !== 1 ? "s" : ""} available</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {activeTier
+                        ? `${tierRows.length} term option${tierRows.length !== 1 ? "s" : ""} for ${activeTier}`
+                        : `${pricingRows.length} pricing option${pricingRows.length !== 1 ? "s" : ""} available`}
+                    </p>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => setActiveSection("pricing")}>View Full Pricing</Button>
                 </div>
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {tierRows.slice(0, 4).map((row, i) => (
-                    <div
-                      key={i}
-                      className="rounded-xl border bg-card p-5 cursor-pointer hover:border-primary/30 hover:shadow-md transition-all group"
-                      onClick={() => setActiveSection("pricing")}
-                    >
-                      <div className="flex items-center justify-between mb-3">
-                        <Badge variant="secondary" className="text-xs">{row.vehicleClass || "Standard"}</Badge>
-                        <DollarSign className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                      </div>
-                      <p className="font-display font-bold text-2xl text-foreground">${getDisplayPrice(row).toLocaleString()}</p>
-                      <p className="text-xs text-muted-foreground">Price</p>
-                      <div className="border-t mt-3 pt-3 space-y-1.5">
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Clock className="h-3 w-3" />{row.term}
+                  {tierRows.slice(0, 4).map((row, i) => {
+                    const parsedClass = parseSharedVehicleClass(row.vehicleClass || "");
+                    const tierLabel = parsedClass.tierKey || row.vehicleClass || "Standard";
+                    const bandLabel = parsedClass.bandKey || row.mileageBracket;
+
+                    return (
+                      <div
+                        key={pricingRowKey(row) || i}
+                        className="rounded-xl border bg-card p-5 cursor-pointer hover:border-primary/30 hover:shadow-md transition-all group"
+                        onClick={() => setActiveSection("pricing")}
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <Badge variant="secondary" className="text-xs">{row.term || "Term option"}</Badge>
+                          <DollarSign className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
                         </div>
-                        {row.mileageBracket && (
+                        <p className="font-display font-bold text-2xl text-foreground">${getDisplayPrice(row).toLocaleString()}</p>
+                        <p className="text-xs text-muted-foreground">Customer price</p>
+                        <div className="border-t mt-3 pt-3 space-y-1.5">
                           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <Gauge className="h-3 w-3" />{row.mileageBracket}
+                            <Shield className="h-3 w-3" />{tierLabel}
                           </div>
-                        )}
+                          {bandLabel && (
+                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                              <Gauge className="h-3 w-3" />{bandLabel}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

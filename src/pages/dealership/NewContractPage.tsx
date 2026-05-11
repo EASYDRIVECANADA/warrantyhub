@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import DashboardLayout, { dealershipNavItems } from "../../components/dashboard/DashboardLayout";
 import { Card, CardContent } from "../../components/ui/card";
@@ -142,13 +142,43 @@ function checkEligibility(
   const er = product.eligibility_rules || {};
   if (year && er.maxAge) {
     const age = new Date().getFullYear() - year;
-    if (age > Number(er.maxAge))
+    const maxAge = Number.parseInt(String(er.maxAge).replace(/[^0-9]/g, ""), 10);
+    if (Number.isFinite(maxAge) && age > maxAge)
       return { eligible: false, reason: `Vehicles ${er.maxAge} yrs or newer only` };
   }
-  if (mileageKm && er.maxMileage) {
-    if (mileageKm > Number(er.maxMileage))
-      return { eligible: false, reason: `Under ${Number(er.maxMileage).toLocaleString()} km only` };
+  if (mileageKm !== null && er.maxMileage) {
+    const maxMileage = Number.parseInt(String(er.maxMileage).replace(/[^0-9]/g, ""), 10);
+    if (Number.isFinite(maxMileage) && mileageKm > maxMileage)
+      return { eligible: false, reason: `Under ${maxMileage.toLocaleString()} km only` };
   }
+  return { eligible: true, reason: "" };
+}
+
+function checkVehicleEligibility(
+  product: ProductOption,
+  vehicle: VehicleInfo | null,
+  mileageKm: number | null,
+): { eligible: boolean; reason: string } {
+  const basic = checkEligibility(product, vehicle?.year ?? null, mileageKm);
+  if (!basic.eligible) return basic;
+
+  const er = product.eligibility_rules || {};
+  if (Array.isArray(er.makes) && er.makes.length > 0 && vehicle?.make) {
+    const make = vehicle.make.toLowerCase();
+    const allowed = er.makes.map((m: string) => String(m).toLowerCase());
+    if (!allowed.some((m: string) => make.includes(m) || m.includes(make))) {
+      return { eligible: false, reason: "Vehicle make is not eligible" };
+    }
+  }
+
+  if (Array.isArray(er.models) && er.models.length > 0 && vehicle?.model) {
+    const model = vehicle.model.toLowerCase();
+    const allowed = er.models.map((m: string) => String(m).toLowerCase());
+    if (!allowed.some((m: string) => model.includes(m) || m.includes(model))) {
+      return { eligible: false, reason: "Vehicle model is not eligible" };
+    }
+  }
+
   return { eligible: true, reason: "" };
 }
 
@@ -171,7 +201,8 @@ function parseTermSnapshot(term: string): { months?: number; km?: number | null 
 
 const fmt = (value: number) => `$${value.toLocaleString("en-CA", { maximumFractionDigits: 0 })}`;
 
-const STEP_LABELS = ["Vehicle", "Product", "Quote", "Customer", "Review"];
+const STEP_LABELS = ["Vehicle", "Product & Quote", "Customer", "Review"];
+const FINAL_STEP = STEP_LABELS.length;
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -198,6 +229,7 @@ export default function NewContractPage() {
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [selectedProductId, setSelectedProductId] = useState("");
+  const [showProductPicker, setShowProductPicker] = useState(false);
   const [dealerProductOrder, setDealerProductOrder] = useState<DealerProductOrder>({});
 
   // Step 3 — Pricing
@@ -220,6 +252,7 @@ export default function NewContractPage() {
   const [saving, setSaving] = useState(false);
   const [providerName, setProviderName] = useState("");
   const [dealershipName, setDealershipName] = useState("");
+  const lastSelectedProductIdRef = useRef("");
 
   // ── Load products ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -281,6 +314,9 @@ export default function NewContractPage() {
 
   // When product changes, reset tier / add-ons and set provider name
   useEffect(() => {
+    const productChanged = lastSelectedProductIdRef.current !== selectedProductId;
+    lastSelectedProductIdRef.current = selectedProductId;
+
     const p = products.find(p => p.id === selectedProductId);
     if (p) {
       const rows = buildBasePricingRows(p.pricing_json);
@@ -292,6 +328,11 @@ export default function NewContractPage() {
       const prefillRow = prefillPricingKey ? rows.find((row) => pricingRowKey(row) === prefillPricingKey) : null;
       const shouldApplyPrefill = !quotePrefillApplied && prefillProductId === p.id && Boolean(prefillRow);
       const nextSelectedRow = shouldApplyPrefill && prefillRow ? prefillRow : rows.length === 1 ? rows[0] : null;
+
+      if (!productChanged && quotePrefillApplied && prefillProductId === p.id) {
+        setProviderName(p.providerName);
+        return;
+      }
 
       setSelectedPricingKey(nextSelectedRow ? pricingRowKey(nextSelectedRow) : "");
       if (shouldApplyPrefill && nextSelectedRow) {
@@ -319,7 +360,7 @@ export default function NewContractPage() {
       setActiveQuoteBand(0);
       setProviderName("");
     }
-  }, [selectedProductId, products, searchParams]);
+  }, [selectedProductId, products, searchParams, quotePrefillApplied]);
 
   useEffect(() => {
     if (!dealershipId || !selectedProductId) {
@@ -347,6 +388,10 @@ export default function NewContractPage() {
     return [...products].sort((a, b) => compareProductsByConfiguredOrder(a, b, dealerProductOrder));
   }, [products, dealerProductOrder]);
   const selectedProduct = products.find(p => p.id === selectedProductId) ?? null;
+  const vehicleMileageKm = mileage ? Number.parseInt(mileage, 10) : null;
+  const selectedProductEligibility = selectedProduct
+    ? checkVehicleEligibility(selectedProduct, vehicleInfo, Number.isFinite(vehicleMileageKm) ? vehicleMileageKm : null)
+    : { eligible: true, reason: "" };
   const quoteMatrix = useMemo(() => selectedProduct ? buildQuotePricingMatrix(selectedProduct.pricing_json) : { tiers: [] }, [selectedProduct]);
   const quoteTierIndex = quoteMatrix.tiers.length ? Math.min(activeQuoteTier, quoteMatrix.tiers.length - 1) : 0;
   const quoteTier = quoteMatrix.tiers[quoteTierIndex];
@@ -360,6 +405,8 @@ export default function NewContractPage() {
         ]
       : quoteTier.rows
     : [];
+  const quoteBaseRows = quoteRows.filter((row) => row.isBase);
+  const quoteAddOnRows = quoteRows.filter((row) => !row.isBase);
   const pricingRows: NormalizedPricingRow[] = selectedProduct ? buildBasePricingRows(selectedProduct.pricing_json) : [];
   const chosenRow = pricingRows.find(r => pricingRowKey(r) === selectedPricingKey) ?? (pricingRows.length === 1 ? pricingRows[0] : null);
   const addOns: NormalizedAddOnRow[] = selectedProduct && chosenRow
@@ -432,11 +479,13 @@ export default function NewContractPage() {
         return true;
       case 2:
         if (!selectedProductId) { toast({ title: "Select a product to continue", variant: "destructive" }); return false; }
-        return true;
-      case 3:
+        if (!selectedProductEligibility.eligible) {
+          toast({ title: "Selected product is not eligible", description: selectedProductEligibility.reason, variant: "destructive" });
+          return false;
+        }
         if (!chosenRow) { toast({ title: "Select a base quote option to continue", variant: "destructive" }); return false; }
         return true;
-      case 4:
+      case 3:
         if (!firstName.trim() || !lastName.trim()) { toast({ title: "First and last name are required", variant: "destructive" }); return false; }
         return true;
       default: return true;
@@ -446,7 +495,7 @@ export default function NewContractPage() {
   const goNext = () => {
     if (!validateStep()) return;
     setCompletedSteps(prev => new Set([...prev, currentStep]));
-    setCurrentStep(s => Math.min(s + 1, 5));
+    setCurrentStep(s => Math.min(s + 1, FINAL_STEP));
   };
 
   const goBack = () => setCurrentStep(s => Math.max(s - 1, 1));
@@ -510,7 +559,7 @@ export default function NewContractPage() {
 
   return (
     <DashboardLayout navItems={dealershipNavItems} title="New Contract">
-      <div className="max-w-3xl mx-auto space-y-6">
+      <div className="max-w-5xl mx-auto space-y-6">
 
         {/* ── Header + Progress Bar (hidden on print) ── */}
         <div className="print:hidden">
@@ -618,7 +667,37 @@ export default function NewContractPage() {
         )}
 
         {/* ── Step 2: Product ── */}
-        {currentStep === 2 && (
+        {currentStep === 2 && selectedProduct && !showProductPicker && (
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                    <Badge variant="secondary" className="text-xs">{productTypeBadgeLabel(selectedProduct.product_type)}</Badge>
+                    <span className="text-xs bg-accent/10 text-accent border border-accent/20 rounded-full px-2 py-0.5">{selectedProduct.providerName}</span>
+                    {!selectedProductEligibility.eligible && <Badge variant="destructive" className="text-xs">{selectedProductEligibility.reason}</Badge>}
+                  </div>
+                  <p className="font-semibold text-sm">{selectedProduct.name}</p>
+                  {categories.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {categories.slice(0, 5).map(c => <span key={c} className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{c}</span>)}
+                    </div>
+                  )}
+                  {!selectedProductEligibility.eligible && (
+                    <p className="mt-3 text-xs text-destructive">
+                      This preselected product is not eligible for the vehicle entered. Choose another product before continuing.
+                    </p>
+                  )}
+                </div>
+                <Button variant="outline" size="sm" onClick={() => setShowProductPicker(true)}>
+                  Change Product
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {currentStep === 2 && (!selectedProductId || showProductPicker) && (
           <div className="space-y-3">
             <div className="flex items-center gap-2 mb-4">
               <Shield className="w-5 h-5 text-primary" />
@@ -631,7 +710,7 @@ export default function NewContractPage() {
             ) : (
               <div className="grid gap-3">
                 {orderedProducts.map(p => {
-                  const elig = checkEligibility(p, vehicleInfo?.year ?? null, mileage ? parseInt(mileage) : null);
+                  const elig = checkVehicleEligibility(p, vehicleInfo, Number.isFinite(vehicleMileageKm) ? vehicleMileageKm : null);
                   const cats: string[] = (p.coverage_details_json?.categories || []).map((c: any) => c.name).slice(0, 4);
                   const rows = buildBasePricingRows(p.pricing_json);
                   const minRetail = rows.length ? Math.min(...rows.map(r => r.suggestedRetail).filter(Boolean)) : 0;
@@ -640,7 +719,10 @@ export default function NewContractPage() {
                     <button
                       key={p.id}
                       disabled={!elig.eligible}
-                      onClick={() => setSelectedProductId(p.id)}
+                      onClick={() => {
+                        setSelectedProductId(p.id);
+                        setShowProductPicker(false);
+                      }}
                       className={cn(
                         "w-full text-left rounded-xl border p-4 transition-all",
                         isSelected ? "border-primary bg-primary/5 ring-1 ring-primary" :
@@ -678,7 +760,7 @@ export default function NewContractPage() {
         )}
 
         {/* ── Step 3: Pricing Tiers ── */}
-        {currentStep === 3 && (
+        {currentStep === 2 && selectedProductId && selectedProductEligibility.eligible && (
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-4">
               <DollarSign className="w-5 h-5 text-primary" />
@@ -731,7 +813,133 @@ export default function NewContractPage() {
                       </div>
                     ) : null}
 
-                    <div className="overflow-x-auto border rounded-lg bg-background">
+                    <div className="space-y-3">
+                      <h4 className="font-semibold text-sm">Base Pricing</h4>
+                      <div className="overflow-x-auto border rounded-lg bg-background">
+                        <table className="w-max min-w-full border-separate border-spacing-0 text-sm">
+                          <thead className="bg-muted">
+                            <tr>
+                              <th className="sticky left-0 z-30 w-[220px] min-w-[220px] max-w-[220px] border-b border-r bg-muted px-3 py-2.5 text-left font-semibold shadow-[6px_0_10px_-8px_rgba(15,23,42,0.35)]">
+                                Coverage
+                              </th>
+                              {quoteTier?.terms.map((term) => (
+                                <th key={term.label} className="min-w-[150px] whitespace-nowrap border-b px-3 py-2.5 text-left font-semibold text-primary">
+                                  <div className="text-xs">{term.label}</div>
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {quoteBaseRows.map((row) => (
+                              <tr key={`${row.label}-${row.bandIdx ?? "x"}-${row.rowIdx}`}>
+                                <td className="sticky left-0 z-20 w-[220px] min-w-[220px] max-w-[220px] border-r border-t bg-background px-3 py-2.5 font-medium shadow-[6px_0_10px_-8px_rgba(15,23,42,0.35)]">
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <Badge className="h-4 shrink-0 bg-primary/15 px-1 py-0 text-[9px] text-primary hover:bg-primary/15">BASE</Badge>
+                                    <span className="min-w-0 whitespace-normal break-words leading-tight font-bold">{row.label}</span>
+                                  </div>
+                                </td>
+                                {row.values.map((cell, termIdx) => {
+                                  if (!cell) return <td key={termIdx} className="border-t px-3 py-2.5 text-muted-foreground/40">-</td>;
+                                  const retailValue = resolveCustomerRetail(cell, dealerPricingConfig);
+                                  const retailAmount = numericPrice(retailValue);
+                                  const isSelectedBase = chosenRow && pricingRowKey(chosenRow) === pricingRowKey({ term: cell.term, vehicleClass: cell.vehicleClass });
+                                  return (
+                                    <td key={cell.retailKey || termIdx} className="border-t px-3 py-2.5 align-top">
+                                      <button
+                                        type="button"
+                                        onClick={() => selectBaseQuoteCell(cell)}
+                                        className={cn(
+                                          "w-full min-h-12 rounded-lg border px-3 py-2 text-left font-semibold transition-all",
+                                          isSelectedBase ? "border-primary bg-primary/10 ring-1 ring-primary" : "border-border hover:border-primary/40 hover:bg-muted/20",
+                                        )}
+                                      >
+                                        {retailAmount > 0 ? fmt(retailAmount) : quoteCellPrice(cell)}
+                                      </button>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {quoteAddOnRows.length > 0 ? (
+                      <div className="space-y-3">
+                        <div>
+                          <h4 className="font-semibold text-sm">Optional Add-ons</h4>
+                          <p className="text-xs text-muted-foreground">Add-ons activate after selecting a matching base term.</p>
+                        </div>
+                        <div className="overflow-x-auto border rounded-lg bg-background">
+                          <table className="w-max min-w-full border-separate border-spacing-0 text-sm">
+                            <thead className="bg-muted">
+                              <tr>
+                                <th className="sticky left-0 z-30 w-[220px] min-w-[220px] max-w-[220px] border-b border-r bg-muted px-3 py-2.5 text-left font-semibold shadow-[6px_0_10px_-8px_rgba(15,23,42,0.35)]">
+                                  Add-on
+                                </th>
+                                {quoteTier?.terms.map((term) => (
+                                  <th key={term.label} className="min-w-[150px] whitespace-nowrap border-b px-3 py-2.5 text-left font-semibold text-primary">
+                                    <div className="text-xs">{term.label}</div>
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {quoteAddOnRows.map((row) => (
+                                <tr key={`${row.label}-${row.bandIdx ?? "x"}-${row.rowIdx}`}>
+                                  <td className="sticky left-0 z-20 w-[220px] min-w-[220px] max-w-[220px] border-r border-t bg-background px-3 py-2.5 font-medium shadow-[6px_0_10px_-8px_rgba(15,23,42,0.35)]">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                      <Checkbox
+                                        checked={row.values.some((cell) => Boolean(cell && selectedAddOns.has(cell.label)))}
+                                        disabled
+                                        className="h-3.5 w-3.5 shrink-0"
+                                      />
+                                      <span className="min-w-0 whitespace-normal break-words leading-tight">{row.label}</span>
+                                    </div>
+                                  </td>
+                                  {row.values.map((cell, termIdx) => {
+                                    if (!cell) return <td key={termIdx} className="border-t px-3 py-2.5 text-muted-foreground/40">-</td>;
+                                    const retailValue = resolveCustomerRetail(cell, dealerPricingConfig);
+                                    const retailAmount = numericPrice(retailValue);
+                                    const isEnabledAddon = chosenRow?.term === cell.term && chosenRow?.tierKey === cell.tierKey;
+                                    const isSelectedAddon = selectedAddOns.has(cell.label) && isEnabledAddon;
+                                    const isIncluded = retailValue === "Included";
+                                    return (
+                                      <td key={cell.retailKey || termIdx} className="border-t px-3 py-2.5 align-top">
+                                        <button
+                                          type="button"
+                                          disabled={!isEnabledAddon}
+                                          onClick={() => toggleAddOnQuoteCell(cell)}
+                                          className={cn(
+                                            "w-full min-h-12 rounded-lg border px-3 py-2 text-left transition-all",
+                                            isSelectedAddon ? "border-primary bg-primary/10" : "border-border hover:border-primary/30 hover:bg-muted/20",
+                                            !isEnabledAddon && "opacity-40 cursor-not-allowed hover:bg-transparent hover:border-border",
+                                          )}
+                                        >
+                                          <div className="flex items-center justify-between gap-2">
+                                            <span className={cn("font-semibold", isIncluded ? "text-primary" : "text-foreground")}>
+                                              {isIncluded ? "Included" : retailAmount > 0 ? fmt(retailAmount) : quoteCellPrice(cell)}
+                                            </span>
+                                            {isEnabledAddon ? <Checkbox checked={isSelectedAddon} className="pointer-events-none h-4 w-4" /> : null}
+                                          </div>
+                                        </button>
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                        No optional add-ons are configured for this product and tier.
+                      </div>
+                    )}
+
+                    <div className="hidden">
                       <table className="w-max min-w-full border-separate border-spacing-0 text-sm">
                         <thead className="bg-muted">
                           <tr>
@@ -942,7 +1150,7 @@ export default function NewContractPage() {
         )}
 
         {/* ── Step 5: Customer ── */}
-        {currentStep === 4 && (
+        {currentStep === 3 && (
           <Card>
             <CardContent className="p-6 space-y-4">
               <div className="flex items-center gap-2 mb-2">
@@ -974,7 +1182,7 @@ export default function NewContractPage() {
         )}
 
         {/* ── Step 6: Review & Sign ── */}
-        {currentStep === 5 && (
+        {currentStep === 4 && (
           <>
             {/* Printable contract document */}
             <div className="print-contract-root bg-white">
@@ -1120,7 +1328,7 @@ export default function NewContractPage() {
         )}
 
         {/* ── Next / Back navigation (steps 1–5) — hidden on print ── */}
-        {currentStep < 5 && (
+        {currentStep < FINAL_STEP && (
           <div className="print:hidden flex justify-between pb-6">
             <Button variant="outline" onClick={goBack} disabled={currentStep === 1}>
               ← Back
