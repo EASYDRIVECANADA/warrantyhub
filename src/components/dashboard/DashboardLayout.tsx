@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
+import { SupportWidget } from "../SupportWidget";
 
 export interface NavItem {
   label: string;
@@ -212,6 +213,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, t
 
         <main className="flex-1 p-6 overflow-auto">{children}</main>
       </div>
+      <SupportWidget />
     </div>
   );
 };
