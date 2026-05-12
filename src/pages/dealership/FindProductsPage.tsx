@@ -48,8 +48,6 @@ const typeLabel = (type: string) => {
   return map[type] || type;
 };
 
-const isAddonPricingRow = (row: any) => row?.kind === "addon" || row?.type === "addon" || !!row?.addonName;
-
 const getMinPrice = (pricing: any): number | null => {
   if (!pricing) return null;
   const retails = buildBasePricingRows(pricing).map((row) => row.suggestedRetail).filter((value) => value > 0);
@@ -67,8 +65,8 @@ const getUniqueTierNames = (pricing: any): string[] => {
   if (!pricing) return [];
   const seen = new Set<string>();
   const chips: string[] = [];
-  for (const r of (pricing.rows || []).filter((row: any) => !isAddonPricingRow(row))) {
-    const vc: string = (r.vehicleClass ?? r.vehicle_class ?? "").trim();
+  for (const r of buildBasePricingRows(pricing)) {
+    const vc: string = r.tierKey;
     // Extract short name: "Bronze - $750 Per Claim" → "Bronze"
     const short = vc.split(" - ")[0].trim();
     if (short && !seen.has(short)) { seen.add(short); chips.push(short); }

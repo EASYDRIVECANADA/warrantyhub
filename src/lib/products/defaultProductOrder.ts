@@ -10,6 +10,8 @@ type OrderedProduct = {
 };
 
 const APROTECT_PROVIDER_ENTITY_ID = "01c7fc25-cc8a-4814-b4e0-ae80f66d865b";
+const GLOBAL_WARRANTY_PROVIDER_ENTITY_ID = "9ca091d9-9f15-426e-88ea-d034a85d3114";
+const GVC_PREMIUM_WARRANTY_PROVIDER_ENTITY_ID = "a2b7619d-d1bb-4317-9680-30756e330634";
 
 const APROTECT_PRODUCT_ORDER = [
   "Powertrain Warranty",
@@ -22,8 +24,30 @@ const APROTECT_PRODUCT_ORDER = [
   "Tire and Rim Protection",
 ];
 
+const GLOBAL_WARRANTY_PRODUCT_ORDER = [
+  "Ultimate Automotive Protection",
+  "Ultimate Tire & Rim Protection",
+];
+
+const GVC_PREMIUM_WARRANTY_PRODUCT_ORDER = [
+  "Essential Bronze",
+  "Essential Silver",
+  "Essential Gold",
+  "Essential Platinum",
+  "Diamond",
+  "Roadside Assistance",
+];
+
 const APROTECT_PRODUCT_ORDER_BY_NAME = new Map(
   APROTECT_PRODUCT_ORDER.map((name, index) => [name.toLowerCase(), index]),
+);
+
+const GLOBAL_WARRANTY_PRODUCT_ORDER_BY_NAME = new Map(
+  GLOBAL_WARRANTY_PRODUCT_ORDER.map((name, index) => [name.toLowerCase(), index]),
+);
+
+const GVC_PREMIUM_WARRANTY_PRODUCT_ORDER_BY_NAME = new Map(
+  GVC_PREMIUM_WARRANTY_PRODUCT_ORDER.map((name, index) => [name.toLowerCase(), index]),
 );
 
 function configuredSortOrder(product: OrderedProduct, configs: Record<string, ProductOrderConfig | undefined>): number | null {
@@ -33,8 +57,16 @@ function configuredSortOrder(product: OrderedProduct, configs: Record<string, Pr
 
 function defaultProductSortOrder(product: OrderedProduct): number {
   const providerId = product.provider_entity_id ?? product.provider_id;
-  if (providerId !== APROTECT_PROVIDER_ENTITY_ID) return Number.POSITIVE_INFINITY;
-  return APROTECT_PRODUCT_ORDER_BY_NAME.get(product.name.toLowerCase()) ?? Number.POSITIVE_INFINITY;
+  if (providerId === APROTECT_PROVIDER_ENTITY_ID) {
+    return APROTECT_PRODUCT_ORDER_BY_NAME.get(product.name.toLowerCase()) ?? Number.POSITIVE_INFINITY;
+  }
+  if (providerId === GLOBAL_WARRANTY_PROVIDER_ENTITY_ID) {
+    return GLOBAL_WARRANTY_PRODUCT_ORDER_BY_NAME.get(product.name.toLowerCase()) ?? Number.POSITIVE_INFINITY;
+  }
+  if (providerId === GVC_PREMIUM_WARRANTY_PROVIDER_ENTITY_ID) {
+    return GVC_PREMIUM_WARRANTY_PRODUCT_ORDER_BY_NAME.get(product.name.toLowerCase()) ?? Number.POSITIVE_INFINITY;
+  }
+  return Number.POSITIVE_INFINITY;
 }
 
 export function compareProductsByConfiguredOrder<T extends OrderedProduct>(
