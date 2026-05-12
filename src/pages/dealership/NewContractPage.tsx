@@ -12,6 +12,7 @@ import { useToast } from "../../hooks/use-toast";
 import { useDealership } from "../../hooks/useDealership";
 import { supabase } from "../../integrations/supabase/client";
 import { getContractsV2Api } from "../../lib/contracts/contractsV2";
+import { BRAND } from "../../lib/brand";
 import { compareProductsByConfiguredOrder, type ProductOrderConfig } from "../../lib/products/defaultProductOrder";
 import { cn } from "../../lib/utils";
 import {
@@ -72,6 +73,9 @@ interface AddOn {
 }
 
 type DealerProductOrder = Record<string, ProductOrderConfig>;
+
+const CONTRACT_BRAND_SUBTITLE = "Extended Warranty";
+const CONTRACT_NUMBER_PREFIX = "BW";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -413,9 +417,14 @@ export default function NewContractPage() {
     ? buildAddOnPricingRows(selectedProduct.pricing_json, chosenRow.vehicleClass)
         .filter((row) => row.term === chosenRow.term && row.tierKey === chosenRow.tierKey)
     : [];
-  const selectedAddOnRows = Array.from(selectedAddOns)
+  const explicitlySelectedAddOnRows = Array.from(selectedAddOns)
     .map((name) => addOns.find(a => a.name === name))
     .filter((row): row is NormalizedAddOnRow => Boolean(row));
+  const includedAddOnRows = addOns.filter((row) => resolveCustomerRetail(row, dealerPricingConfig) === "Included");
+  const selectedAddOnRows = [
+    ...includedAddOnRows,
+    ...explicitlySelectedAddOnRows.filter((row) => !includedAddOnRows.some((included) => included.name === row.name)),
+  ];
   const baseRetail = chosenRow ? resolveCustomerRetailNumber(chosenRow, dealerPricingConfig) : 0;
   const baseDealerCost = chosenRow ? resolveDealerCostNumber(chosenRow, dealerPricingConfig) : 0;
   const addOnDealerTotal = selectedAddOnRows.reduce((sum, row) => sum + numericPrice(resolveDealerCost(row, dealerPricingConfig)), 0);
@@ -428,6 +437,7 @@ export default function NewContractPage() {
     vehicleClass: row.vehicleClass,
     dealerCost: numericPrice(resolveDealerCost(row, dealerPricingConfig)),
     retail: numericPrice(resolveCustomerRetail(row, dealerPricingConfig)),
+    retailDisplay: resolveCustomerRetail(row, dealerPricingConfig) === "Included" ? "Included" : undefined,
     retailKey: row.retailKey,
   }));
   const pricingTermSnapshot = chosenRow ? parseTermSnapshot(chosenRow.term) : {};
@@ -549,7 +559,7 @@ export default function NewContractPage() {
   const categories: string[] = (cd.categories || []).map((c: any) => c.name);
   const termsSections: Array<{ title: string; content: string }> = cd.termsSections || [];
   const exclusions: string[] = cd.exclusions || [];
-  const previewContractNumber = `WH-${Date.now().toString(36).toUpperCase()}`;
+  const previewContractNumber = `${CONTRACT_NUMBER_PREFIX}-${Date.now().toString(36).toUpperCase()}`;
 
   if (dLoading) return (
     <DashboardLayout navItems={dealershipNavItems} title="New Contract">
@@ -891,7 +901,7 @@ export default function NewContractPage() {
                                   <td className="sticky left-0 z-20 w-[220px] min-w-[220px] max-w-[220px] border-r border-t bg-background px-3 py-2.5 font-medium shadow-[6px_0_10px_-8px_rgba(15,23,42,0.35)]">
                                     <div className="flex min-w-0 items-center gap-2">
                                       <Checkbox
-                                        checked={row.values.some((cell) => Boolean(cell && selectedAddOns.has(cell.label)))}
+                                        checked={row.values.some((cell) => Boolean(cell && (selectedAddOns.has(cell.label) || resolveCustomerRetail(cell, dealerPricingConfig) === "Included")))}
                                         disabled
                                         className="h-3.5 w-3.5 shrink-0"
                                       />
@@ -903,18 +913,19 @@ export default function NewContractPage() {
                                     const retailValue = resolveCustomerRetail(cell, dealerPricingConfig);
                                     const retailAmount = numericPrice(retailValue);
                                     const isEnabledAddon = chosenRow?.term === cell.term && chosenRow?.tierKey === cell.tierKey;
-                                    const isSelectedAddon = selectedAddOns.has(cell.label) && isEnabledAddon;
                                     const isIncluded = retailValue === "Included";
+                                    const isSelectedAddon = isEnabledAddon && (selectedAddOns.has(cell.label) || isIncluded);
                                     return (
                                       <td key={cell.retailKey || termIdx} className="border-t px-3 py-2.5 align-top">
                                         <button
                                           type="button"
-                                          disabled={!isEnabledAddon}
+                                          disabled={!isEnabledAddon || isIncluded}
                                           onClick={() => toggleAddOnQuoteCell(cell)}
                                           className={cn(
                                             "w-full min-h-12 rounded-lg border px-3 py-2 text-left transition-all",
                                             isSelectedAddon ? "border-primary bg-primary/10" : "border-border hover:border-primary/30 hover:bg-muted/20",
-                                            !isEnabledAddon && "opacity-40 cursor-not-allowed hover:bg-transparent hover:border-border",
+                                            (!isEnabledAddon || isIncluded) && "cursor-not-allowed",
+                                            !isEnabledAddon && "opacity-40 hover:bg-transparent hover:border-border",
                                           )}
                                         >
                                           <div className="flex items-center justify-between gap-2">
@@ -962,7 +973,7 @@ export default function NewContractPage() {
                                     <Badge className="h-4 shrink-0 bg-primary/15 px-1 py-0 text-[9px] text-primary hover:bg-primary/15">BASE</Badge>
                                   ) : (
                                     <Checkbox
-                                      checked={row.values.some((cell) => Boolean(cell && selectedAddOns.has(cell.label)))}
+                                      checked={row.values.some((cell) => Boolean(cell && (selectedAddOns.has(cell.label) || resolveCustomerRetail(cell, dealerPricingConfig) === "Included")))}
                                       disabled
                                       className="h-3.5 w-3.5 shrink-0"
                                     />
@@ -978,20 +989,21 @@ export default function NewContractPage() {
                                 const retailAmount = numericPrice(retailValue);
                                 const isSelectedBase = row.isBase && chosenRow && pricingRowKey(chosenRow) === pricingRowKey({ term: cell.term, vehicleClass: cell.vehicleClass });
                                 const isEnabledAddon = !row.isBase && chosenRow?.term === cell.term && chosenRow?.tierKey === cell.tierKey;
-                                const isSelectedAddon = !row.isBase && selectedAddOns.has(cell.label) && isEnabledAddon;
                                 const isIncluded = retailValue === "Included";
+                                const isSelectedAddon = !row.isBase && isEnabledAddon && (selectedAddOns.has(cell.label) || isIncluded);
                                 return (
                                   <td key={cell.retailKey || termIdx} className="border-t px-3 py-2.5 align-top">
                                     <button
                                       type="button"
-                                      disabled={!row.isBase && !isEnabledAddon}
+                                      disabled={!row.isBase && (!isEnabledAddon || isIncluded)}
                                       onClick={() => row.isBase ? selectBaseQuoteCell(cell) : toggleAddOnQuoteCell(cell)}
                                       className={cn(
                                         "w-full min-h-14 rounded-lg border px-3 py-2 text-left transition-all",
                                         row.isBase
                                           ? isSelectedBase ? "border-primary bg-primary/10 ring-1 ring-primary" : "border-border hover:border-primary/40 hover:bg-muted/20"
                                           : isSelectedAddon ? "border-primary bg-primary/10" : "border-border hover:border-primary/30 hover:bg-muted/20",
-                                        !row.isBase && !isEnabledAddon && "opacity-40 cursor-not-allowed hover:bg-transparent hover:border-border",
+                                        !row.isBase && (!isEnabledAddon || isIncluded) && "cursor-not-allowed",
+                                        !row.isBase && !isEnabledAddon && "opacity-40 hover:bg-transparent hover:border-border",
                                       )}
                                     >
                                       <div className="flex items-center justify-between gap-2">
@@ -1019,15 +1031,19 @@ export default function NewContractPage() {
 
                 <div className="rounded-xl bg-muted/40 border p-4 space-y-1.5">
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Base retail</span>
+                    <span className="text-muted-foreground">Base price</span>
                     <span className="font-semibold">{baseRetail > 0 ? fmt(baseRetail) : "—"}</span>
                   </div>
-                  {addOnRetailTotal > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Add-ons</span>
-                      <span className="font-semibold">+{fmt(addOnRetailTotal)}</span>
-                    </div>
-                  )}
+                  {selectedAddOnRows.map((row) => {
+                    const retailValue = resolveCustomerRetail(row, dealerPricingConfig);
+                    const retailAmount = numericPrice(retailValue);
+                    return (
+                      <div key={row.name} className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">{row.name}</span>
+                        <span className="font-semibold">{retailValue === "Included" ? "Included" : `+${fmt(retailAmount)}`}</span>
+                      </div>
+                    );
+                  })}
                   <div className="flex justify-between text-sm font-bold border-t pt-2">
                     <span>Total customer price</span>
                     <span>{totalRetail > 0 ? fmt(totalRetail) : "—"}</span>
@@ -1130,7 +1146,7 @@ export default function NewContractPage() {
                 })}
                 <div className="rounded-xl bg-muted/40 border p-4 space-y-1.5">
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Base retail</span>
+                    <span className="text-muted-foreground">Base price</span>
                     <span className="font-semibold">${baseRetail.toLocaleString()}</span>
                   </div>
                   {addOnRetailTotal > 0 && (
@@ -1192,11 +1208,11 @@ export default function NewContractPage() {
                 <div className="flex items-start justify-between pb-5 border-b-2 border-primary">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center shrink-0">
-                      <span className="text-primary-foreground font-bold text-sm">WH</span>
+                      <span className="text-primary-foreground font-bold text-sm">BW</span>
                     </div>
                     <div>
-                      <p className="font-bold text-lg leading-tight">WarrantyHub</p>
-                      <p className="text-xs text-muted-foreground">Vehicle Protection Services</p>
+                      <p className="font-bold text-lg leading-tight">{BRAND.name}</p>
+                      <p className="text-xs text-muted-foreground">{CONTRACT_BRAND_SUBTITLE}</p>
                     </div>
                   </div>
                   <div className="text-right">
@@ -1240,19 +1256,18 @@ export default function NewContractPage() {
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Pricing Breakdown</p>
                   <div className="space-y-1.5">
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Base Coverage</span>
+                      <span className="text-muted-foreground">Base Price</span>
                       <span className="font-semibold">${baseRetail.toLocaleString()}</span>
                     </div>
-                    {Array.from(selectedAddOns).map(name => {
-                      const ao = addOns.find(a => a.name === name);
-                      const retailValue = ao ? resolveCustomerRetail(ao, dealerPricingConfig) : 0;
+                    {selectedAddOnRows.map(ao => {
+                      const retailValue = resolveCustomerRetail(ao, dealerPricingConfig);
                       const retailAmount = numericPrice(retailValue);
-                      return ao ? (
-                        <div key={name} className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">{name}</span>
+                      return (
+                        <div key={ao.name} className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">{ao.name}</span>
                           <span className="font-semibold">{retailValue === "Included" ? "Included" : `+$${retailAmount.toLocaleString()}`}</span>
                         </div>
-                      ) : null;
+                      );
                     })}
                     <div className="flex justify-between font-bold pt-2 border-t">
                       <span>Total Contract Price</span>
@@ -1309,7 +1324,7 @@ export default function NewContractPage() {
                 </div>
 
                 <p className="text-[9px] text-muted-foreground text-center pt-3 border-t">
-                  WarrantyHub acts as a marketplace platform. This contract is issued by {providerName || "the named provider"} and is subject to full terms and conditions. Contract #{previewContractNumber}.
+                  {BRAND.name} acts as a marketplace platform. This contract is issued by {providerName || "the named provider"} and is subject to full terms and conditions. Contract #{previewContractNumber}.
                 </p>
               </div>
             </div>

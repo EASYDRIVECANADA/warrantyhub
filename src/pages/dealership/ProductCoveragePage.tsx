@@ -373,9 +373,14 @@ export default function ProductCoveragePage() {
   const selectableAddOns = selectedBaseRow
     ? addOnRows.filter((row) => row.term === selectedBaseRow.term)
     : [];
-  const selectedAddOnRows = Array.from(selectedAddOns)
+  const explicitlySelectedAddOnRows = Array.from(selectedAddOns)
     .map((name) => selectableAddOns.find((row) => row.name === name))
     .filter((row): row is AddOnPricingRow => Boolean(row));
+  const includedAddOnRows = selectableAddOns.filter((row) => getAddOnDisplayPrice(row) === "Included");
+  const selectedAddOnRows = [
+    ...includedAddOnRows,
+    ...explicitlySelectedAddOnRows.filter((row) => !includedAddOnRows.some((included) => included.name === row.name)),
+  ];
   const selectedBaseRetail = selectedBaseRow ? getDisplayPrice(selectedBaseRow) : 0;
   const selectedAddOnRetail = selectedAddOnRows.reduce((sum, row) => sum + numericPrice(getAddOnDisplayPrice(row)), 0);
   const selectedQuoteTotal = selectedBaseRetail + selectedAddOnRetail;
@@ -439,7 +444,7 @@ export default function ProductCoveragePage() {
     const params = new URLSearchParams({ productId: product.id });
     if (selectedBaseRow) {
       params.set("pricingKey", pricingRowKey(selectedBaseRow));
-      selectedAddOns.forEach((name) => params.append("addOn", name));
+      selectedAddOnRows.forEach((row) => params.append("addOn", row.name));
     }
     return `/dealership/contracts/new?${params.toString()}`;
   };
@@ -907,7 +912,8 @@ export default function ProductCoveragePage() {
                             const row = terms.get(term);
                             const price = row ? getAddOnDisplayPrice(row) : null;
                             const isEnabled = Boolean(row && selectedBaseRow && row.term === selectedBaseRow.term);
-                            const isSelected = Boolean(row && isEnabled && selectedAddOns.has(row.name));
+                            const isIncluded = price === "Included";
+                            const isSelected = Boolean(row && isEnabled && (selectedAddOns.has(row.name) || isIncluded));
                             return (
                               <td key={term} className="px-3 py-2 text-right">
                                 {price == null ? (
@@ -915,14 +921,15 @@ export default function ProductCoveragePage() {
                                 ) : (
                                   <button
                                     type="button"
-                                    disabled={!isEnabled || !row}
+                                    disabled={!isEnabled || !row || isIncluded}
                                     onClick={() => row && toggleAddOn(row)}
                                     className={cn(
                                       "w-full rounded-lg border px-3 py-2 text-right font-semibold transition-all",
                                       isSelected
                                         ? "border-primary bg-primary/10 text-primary ring-1 ring-primary"
                                         : "border-transparent text-primary hover:border-primary/40 hover:bg-muted/30",
-                                      !isEnabled && "cursor-not-allowed opacity-40 hover:border-transparent hover:bg-transparent"
+                                      (!isEnabled || isIncluded) && "cursor-not-allowed",
+                                      !isEnabled && "opacity-40 hover:border-transparent hover:bg-transparent"
                                     )}
                                   >
                                     <span className="inline-flex items-center justify-end gap-2">

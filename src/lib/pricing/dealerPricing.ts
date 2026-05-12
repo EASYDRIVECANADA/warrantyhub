@@ -34,6 +34,7 @@ export type ContractAddonSnapshot = {
   vehicleClass: string;
   dealerCost: number;
   retail: number;
+  retailDisplay?: string;
   retailKey: string;
 };
 

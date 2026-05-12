@@ -5,6 +5,7 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { useToast } from "../../hooks/use-toast";
 import { supabase } from "../../integrations/supabase/client";
+import { BRAND } from "../../lib/brand";
 import { cn } from "../../lib/utils";
 import { ArrowLeft, Printer, Loader2, FileText } from "lucide-react";
 import { format } from "date-fns";
@@ -33,6 +34,7 @@ interface ContractRow {
     vehicleClass?: string;
     dealerCost?: number;
     retail?: number;
+    retailDisplay?: string;
     retailKey?: string;
   }> | null;
   addon_total_retail_cents: number | null;
@@ -64,6 +66,9 @@ const statusColors: Record<string, string> = {
   expired: "bg-red-100 text-red-800",
   cancelled: "bg-destructive/10 text-destructive",
 };
+
+const CONTRACT_BRAND_SUBTITLE = "Extended Warranty";
+const CONTRACT_NUMBER_PREFIX = "BW";
 
 function centsToDollars(value: number | null | undefined): number | null {
   return typeof value === "number" ? value / 100 : null;
@@ -191,7 +196,7 @@ export default function ContractDetailPage() {
   const addonCostDollars = centsToDollars(contract.addon_total_cost_cents);
   const hasPricingSnapshot = baseRetailDollars != null || baseDealerDollars != null || addonSnapshot.length > 0;
   const pricingTermLabel = formatPricingTerm(contract.pricing_term_months, contract.pricing_term_km);
-  const contractNumber = `WH-${contract.id.substring(0, 8).toUpperCase()}`;
+  const contractNumber = `${CONTRACT_NUMBER_PREFIX}-${contract.id.substring(0, 8).toUpperCase()}`;
 
   return (
     <DashboardLayout navItems={dealershipNavItems} title="Contract">
@@ -228,11 +233,11 @@ export default function ContractDetailPage() {
             <div className="flex items-start justify-between pb-5 border-b-2 border-primary">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center shrink-0">
-                  <span className="text-primary-foreground font-bold text-sm">WH</span>
+                  <span className="text-primary-foreground font-bold text-sm">BW</span>
                 </div>
                 <div>
-                  <p className="font-bold text-lg leading-tight">WarrantyHub</p>
-                  <p className="text-xs text-muted-foreground">Vehicle Protection Services</p>
+                  <p className="font-bold text-lg leading-tight">{BRAND.name}</p>
+                  <p className="text-xs text-muted-foreground">{CONTRACT_BRAND_SUBTITLE}</p>
                 </div>
               </div>
               <div className="text-right">
@@ -305,13 +310,13 @@ export default function ContractDetailPage() {
 
             {/* Pricing */}
             <div className="rounded-lg border p-4">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Pricing</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Pricing Breakdown</p>
               <div className="space-y-1.5">
                 {hasPricingSnapshot ? (
                   <>
                     {baseRetailDollars != null && (
                       <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Base Coverage</span>
+                        <span className="text-muted-foreground">Base Price</span>
                         <span className="font-semibold">${baseRetailDollars.toLocaleString()}</span>
                       </div>
                     )}
@@ -321,7 +326,9 @@ export default function ContractDetailPage() {
                           {addon.name || "Add-on"}
                           {addon.term ? <span className="text-[10px]"> ({addon.term})</span> : null}
                         </span>
-                        <span className="font-semibold">+${Number(addon.retail || 0).toLocaleString()}</span>
+                        <span className="font-semibold">
+                          {addon.retailDisplay === "Included" ? "Included" : `+$${Number(addon.retail || 0).toLocaleString()}`}
+                        </span>
                       </div>
                     ))}
                     {addonRetailDollars != null && addonRetailDollars > 0 && addonSnapshot.length === 0 && (
@@ -405,7 +412,7 @@ export default function ContractDetailPage() {
             </div>
 
             <p className="text-[9px] text-muted-foreground text-center pt-3 border-t">
-              WarrantyHub acts as a marketplace platform. This contract is issued by {providerName || "the named provider"} and is subject to full terms and conditions. Contract #{contractNumber}.
+              {BRAND.name} acts as a marketplace platform. This contract is issued by {providerName || "the named provider"} and is subject to full terms and conditions. Contract #{contractNumber}.
             </p>
           </div>
         </div>

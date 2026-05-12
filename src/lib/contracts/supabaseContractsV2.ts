@@ -3,6 +3,8 @@ import { getSupabaseClient } from "../supabase/client";
 import type { ContractsV2Api } from "./apiV2";
 import type { ContractV2, ContractStatusV2, CreateContractV2Input } from "./typesV2";
 
+const CONTRACT_NUMBER_PREFIX = "BW";
+
 function toContract(r: any): ContractV2 {
   return {
     id: r.id,
@@ -109,7 +111,7 @@ export const supabaseContractsV2Api: ContractsV2Api = {
     if (!supabase) throw new Error("Supabase is not configured");
 
     const uid = await currentUserId();
-    const contractNumber = `WH-${Date.now().toString(36).toUpperCase()}`;
+    const contractNumber = `${CONTRACT_NUMBER_PREFIX}-${Date.now().toString(36).toUpperCase()}`;
 
     const { data, error } = await supabase
       .from("contracts")
