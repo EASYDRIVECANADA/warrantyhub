@@ -12,6 +12,7 @@ type OrderedProduct = {
 const APROTECT_PROVIDER_ENTITY_ID = "01c7fc25-cc8a-4814-b4e0-ae80f66d865b";
 const GLOBAL_WARRANTY_PROVIDER_ENTITY_ID = "9ca091d9-9f15-426e-88ea-d034a85d3114";
 const GVC_PREMIUM_WARRANTY_PROVIDER_ENTITY_ID = "a2b7619d-d1bb-4317-9680-30756e330634";
+const LIONS_AUTO_PROTECTION_PROVIDER_ENTITY_ID = "66654576-3669-463e-bf93-7da79de325c6";
 
 const APROTECT_PRODUCT_ORDER = [
   "Powertrain Warranty",
@@ -38,6 +39,17 @@ const GVC_PREMIUM_WARRANTY_PRODUCT_ORDER = [
   "Roadside Assistance",
 ];
 
+const LIONS_AUTO_PROTECTION_PRODUCT_ORDER = [
+  "1 Star Auto",
+  "2 Star Auto",
+  "2 Star Electric Auto",
+  "3 Star Auto",
+  "4 Star Top Up Auto",
+  "5 Star Auto",
+  "Electric Auto",
+  "Hybrid Auto",
+];
+
 const APROTECT_PRODUCT_ORDER_BY_NAME = new Map(
   APROTECT_PRODUCT_ORDER.map((name, index) => [name.toLowerCase(), index]),
 );
@@ -48,6 +60,10 @@ const GLOBAL_WARRANTY_PRODUCT_ORDER_BY_NAME = new Map(
 
 const GVC_PREMIUM_WARRANTY_PRODUCT_ORDER_BY_NAME = new Map(
   GVC_PREMIUM_WARRANTY_PRODUCT_ORDER.map((name, index) => [name.toLowerCase(), index]),
+);
+
+const LIONS_AUTO_PROTECTION_PRODUCT_ORDER_BY_NAME = new Map(
+  LIONS_AUTO_PROTECTION_PRODUCT_ORDER.map((name, index) => [name.toLowerCase(), index]),
 );
 
 function configuredSortOrder(product: OrderedProduct, configs: Record<string, ProductOrderConfig | undefined>): number | null {
@@ -65,6 +81,9 @@ function defaultProductSortOrder(product: OrderedProduct): number {
   }
   if (providerId === GVC_PREMIUM_WARRANTY_PROVIDER_ENTITY_ID) {
     return GVC_PREMIUM_WARRANTY_PRODUCT_ORDER_BY_NAME.get(product.name.toLowerCase()) ?? Number.POSITIVE_INFINITY;
+  }
+  if (providerId === LIONS_AUTO_PROTECTION_PROVIDER_ENTITY_ID) {
+    return LIONS_AUTO_PROTECTION_PRODUCT_ORDER_BY_NAME.get(product.name.toLowerCase()) ?? Number.POSITIVE_INFINITY;
   }
   return Number.POSITIVE_INFINITY;
 }
