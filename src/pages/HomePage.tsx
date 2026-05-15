@@ -232,7 +232,7 @@ function FeaturesSection() {
       icon: Users,
       title: "Built for Dealerships",
       description:
-        "Manage your entire F&I portfolio &mdash; from VSCs to GAP insurance, Tire & Rim, PPF, ceramic coating, and more &mdash; all from one dashboard.",
+        "Manage your entire F&I portfolio &mdash; from extended warranties to Gap insurance, Tire & Rim, PPF, ceramic coating, and more &mdash; all from one dashboard.",
     },
     {
       icon: Zap,
@@ -301,8 +301,8 @@ function FeaturesSection() {
 
 function ProductsSection() {
   const products = [
-    { name: "Vehicle Service Contracts (VSC)", icon: Car },
-    { name: "GAP Insurance", icon: Shield },
+    { name: "Extended Warranty", icon: Car },
+    { name: "Gap Insurance", icon: Shield },
     { name: "Tire & Rim Protection", icon: CheckCircle2 },
     { name: "Paint Protection Film (PPF)", icon: Shield },
     { name: "Ceramic Coating", icon: Zap },

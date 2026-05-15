@@ -67,7 +67,7 @@ function ProviderTermsSections(props: {
   return (
     <div className="text-slate-800">
       <div className="text-[12px] font-semibold">BRIDGE WARRANTY</div>
-      <div className="text-[13px]">Vehicle Service Contract</div>
+      <div className="text-[13px]">Extended Warranty</div>
 
       <Section title="Contract Schedule (Provider Copy)">
         <div className="space-y-1">
@@ -103,7 +103,7 @@ function ProviderTermsSections(props: {
       })()}
 
       <Section title="Platform Disclaimer">
-        {props.platformName} is a technology platform that markets and facilitates the sale of products and services on behalf of independent providers. Unless expressly stated otherwise in writing, {props.platformName} is not the obligor, administrator, insurer, or underwriter of any vehicle service contract.
+        {props.platformName} is a technology platform that markets and facilitates the sale of products and services on behalf of independent providers. Unless expressly stated otherwise in writing, {props.platformName} is not the obligor, administrator, insurer, or underwriter of any extended warranty.
       </Section>
 
       {(() => {
@@ -136,11 +136,11 @@ function renderProviderTerms(input: {
   coverageDetailsText: string;
   exclusionsText: string;
 }) {
-  const defaultCoverageDetails = `This Vehicle Service Contract provides coverage for specified mechanical and electrical components of the registered vehicle, subject to the terms, conditions, exclusions, and limitations outlined herein.\n\nCovered Components may include:\n• Engine (internally lubricated parts)\n• Transmission / Transaxle\n• Drive Axle\n• Electrical Systems\n• Cooling System\n• Fuel System\n• Steering Components\n• Suspension Components\n• Air Conditioning System`;
+  const defaultCoverageDetails = `This Extended Warranty provides coverage for specified mechanical and electrical components of the registered vehicle, subject to the terms, conditions, exclusions, and limitations outlined herein.\n\nCovered Components may include:\n• Engine (internally lubricated parts)\n• Transmission / Transaxle\n• Drive Axle\n• Electrical Systems\n• Cooling System\n• Fuel System\n• Steering Components\n• Suspension Components\n• Air Conditioning System`;
 
   const defaultExclusions = `This Contract does not provide coverage for normal wear and tear, routine maintenance services, brake components, tires, cosmetic items, or damage resulting from misuse, neglect, accidents, or unauthorized modifications.`;
 
-  const fallback = `BRIDGE WARRANTY\nVehicle Service Contract\n\nCoverage Details\n{{coverage_details}}\n\nExclusions\n{{exclusions}}\n\nDuration and Mileage Limits\nCoverage remains valid for the Term and Mileage limits specified in the Contract Schedule, whichever occurs first. Coverage automatically expires upon reaching either limit.\n\nDeductible Amount\nThe Contract Holder agrees to pay the deductible amount specified in the Contract Schedule per approved repair claim.\n\nClaim Process\nTo obtain benefits, the Contract Holder must contact the Administrator prior to any repair work. All repairs must receive authorization. Failure to follow this process may result in denial of coverage.\n\nService Provider Information\nRepairs must be performed by the Selling Dealership or a licensed repair facility approved by the Administrator.\n\nPayment Terms\nApproved repair costs may be paid directly to the repair facility or reimbursed to the Contract Holder following review and approval of documentation.\n\nTransferability\nThis Contract may be transferred to a subsequent private owner subject to Administrator approval and applicable transfer fees.\n\nDispute Resolution\nAny disputes arising under this Contract shall be resolved through the Administrator’s internal review process and, where applicable, binding arbitration.\n\nCancellation and Refund Policy\nThe Contract Holder may cancel this Contract subject to the cancellation provisions outlined in the Contract Schedule. Refunds, where applicable, will be calculated on a prorated basis`;
+  const fallback = `BRIDGE WARRANTY\nExtended Warranty\n\nCoverage Details\n{{coverage_details}}\n\nExclusions\n{{exclusions}}\n\nDuration and Mileage Limits\nCoverage remains valid for the Term and Mileage limits specified in the Contract Schedule, whichever occurs first. Coverage automatically expires upon reaching either limit.\n\nDeductible Amount\nThe Contract Holder agrees to pay the deductible amount specified in the Contract Schedule per approved repair claim.\n\nClaim Process\nTo obtain benefits, the Contract Holder must contact the Administrator prior to any repair work. All repairs must receive authorization. Failure to follow this process may result in denial of coverage.\n\nService Provider Information\nRepairs must be performed by the Selling Dealership or a licensed repair facility approved by the Administrator.\n\nPayment Terms\nApproved repair costs may be paid directly to the repair facility or reimbursed to the Contract Holder following review and approval of documentation.\n\nTransferability\nThis Contract may be transferred to a subsequent private owner subject to Administrator approval and applicable transfer fees.\n\nDispute Resolution\nAny disputes arising under this Contract shall be resolved through the Administrator’s internal review process and, where applicable, binding arbitration.\n\nCancellation and Refund Policy\nThe Contract Holder may cancel this Contract subject to the cancellation provisions outlined in the Contract Schedule. Refunds, where applicable, will be calculated on a prorated basis`;
 
   const raw = (input.providerTermsText ?? "").trim() || fallback;
 

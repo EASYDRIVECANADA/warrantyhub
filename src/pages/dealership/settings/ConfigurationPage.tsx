@@ -308,11 +308,11 @@ function cellKey(tierIdx: number, bandIdx: number | null, rowIdx: number, termId
 
 const typeLabel = (type: string) => {
   const map: Record<string, string> = {
-    VSC: "Vehicle Service Contract",
-    "Tire & Rim": "Tire & Rim Protection",
-    GAP: "GAP Insurance",
-    warranty: "Vehicle Service Contract",
-    tire_rim: "Tire & Rim Protection",
+    VSC: "Extended Warranty",
+    "Tire & Rim": "Tire and Rim",
+    GAP: "Gap Insurance",
+    warranty: "Extended Warranty",
+    tire_rim: "Tire and Rim",
   };
   return map[type] || type;
 };

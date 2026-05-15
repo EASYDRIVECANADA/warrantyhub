@@ -78,7 +78,7 @@ function productTypeLabel(t: ProductType) {
   if (t === "EXTENDED_WARRANTY") return "Extended Warranty";
   if (t === "TIRE_RIM") return "Tire & Rim";
   if (t === "APPEARANCE") return "Appearance";
-  if (t === "GAP") return "GAP";
+  if (t === "GAP") return "Gap Insurance";
   return "Other";
 }
 

@@ -46,9 +46,9 @@ interface ProductForm {
 }
 
 const TYPE_LABELS: Record<string, string> = {
-  VSC: "Vehicle Service Contract",
-  GAP: "GAP Insurance",
-  "Tire & Rim": "Tire & Rim Protection",
+  VSC: "Extended Warranty",
+  GAP: "Gap Insurance",
+  "Tire & Rim": "Tire and Rim",
   PPF: "Paint Protection Film",
   "Ceramic Coating": "Ceramic Coating",
   Undercoating: "Undercoating",

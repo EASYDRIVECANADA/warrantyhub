@@ -12,9 +12,9 @@ import { getProductsV2Api } from "../../lib/products/productsV2";
 import type { ProductV2 } from "../../lib/products/typesV2";
 
 const TYPE_LABELS: Record<string, string> = {
-  VSC: "Vehicle Service Contract",
-  GAP: "GAP Insurance",
-  "Tire & Rim": "Tire & Rim Protection",
+  VSC: "Extended Warranty",
+  GAP: "Gap Insurance",
+  "Tire & Rim": "Tire and Rim",
   PPF: "Paint Protection Film",
   "Ceramic Coating": "Ceramic Coating",
   Undercoating: "Undercoating",
@@ -24,11 +24,9 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const TYPE_FILTER_LABELS: Record<string, string> = {
-  all: "All Types",
-  VSC: "Vehicle Service Contract",
-  "Tire & Rim": "Tire & Rim",
-  GAP: "GAP Insurance",
-  Other: "Other",
+  VSC: "Extended Warranty",
+  GAP: "Gap Insurance",
+  "Tire & Rim": "Tire and Rim",
 };
 
 const STATUS_FILTER_LABELS: Record<string, string> = {
@@ -40,7 +38,7 @@ const STATUS_FILTER_LABELS: Record<string, string> = {
 
 export default function ProviderProductsPage2() {
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("VSC");
   const [statusFilter, setStatusFilter] = useState("all");
   const [products, setProducts] = useState<ProductV2[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,7 +65,7 @@ export default function ProviderProductsPage2() {
   const filtered = useMemo(() => {
     return products.filter((p) => {
       const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase());
-      const matchType = typeFilter === "all" || p.type === typeFilter;
+      const matchType = p.type === typeFilter;
       const matchStatus = statusFilter === "all" || p.status === statusFilter;
       return matchSearch && matchType && matchStatus;
     });
@@ -152,13 +150,11 @@ export default function ProviderProductsPage2() {
             <Input placeholder="Search products..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="All Types" labels={TYPE_FILTER_LABELS} /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Extended Warranty" labels={TYPE_FILTER_LABELS} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="VSC">Vehicle Service Contract</SelectItem>
-              <SelectItem value="Tire & Rim">Tire & Rim</SelectItem>
-              <SelectItem value="GAP">GAP Insurance</SelectItem>
-              <SelectItem value="Other">Other</SelectItem>
+              <SelectItem value="VSC">Extended Warranty</SelectItem>
+              <SelectItem value="GAP">Gap Insurance</SelectItem>
+              <SelectItem value="Tire & Rim">Tire and Rim</SelectItem>
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -176,7 +172,7 @@ export default function ProviderProductsPage2() {
           <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Total Products</p><p className="text-2xl font-bold">{products.length}</p></CardContent></Card>
           <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Active</p><p className="text-2xl font-bold text-green-600">{products.filter(p => p.status === "active").length}</p></CardContent></Card>
           <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Draft</p><p className="text-2xl font-bold text-muted-foreground">{products.filter(p => p.status === "draft").length}</p></CardContent></Card>
-          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">VSC Plans</p><p className="text-2xl font-bold">{products.filter(p => p.type === "VSC").length}</p></CardContent></Card>
+          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Extended Warranty Plans</p><p className="text-2xl font-bold">{products.filter(p => p.type === "VSC").length}</p></CardContent></Card>
         </div>
 
         {loading ? (

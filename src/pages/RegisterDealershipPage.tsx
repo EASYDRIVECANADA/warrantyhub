@@ -404,8 +404,8 @@ export function RegisterDealershipPage() {
                         <div className="mt-4 font-semibold">1. Platform Overview</div>
                         <div className="mt-1">Bridge Warranty Inc. operates a technology platform that connects dealerships with independent providers offering vehicle protection products, including but not limited to:</div>
                         <div className="mt-2 pl-4">
-                          <div>Vehicle Service Contracts (Warranty Products)</div>
-                          <div>Guaranteed Asset Protection (GAP) Products</div>
+                          <div>Extended Warranty Products</div>
+                          <div>Guaranteed Asset Protection (Gap) Products</div>
                           <div>Other vehicle protection services offered by participating providers.</div>
                         </div>
                         <div className="mt-2">

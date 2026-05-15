@@ -37,7 +37,7 @@ function productTypeLabel(t: ProductType) {
   if (t === "EXTENDED_WARRANTY") return "Extended Warranty";
   if (t === "TIRE_RIM") return "Tire & Rim";
   if (t === "APPEARANCE") return "Appearance / Rust / Key";
-  if (t === "GAP") return "GAP Insurance";
+  if (t === "GAP") return "Gap Insurance";
   return "Other";
 }
 
@@ -2341,7 +2341,7 @@ export function ProviderProductsPage() {
                           disabled={busy}
                         >
                           <option value="EXTENDED_WARRANTY">Extended Warranty</option>
-                          <option value="GAP">GAP Insurance</option>
+                          <option value="GAP">Gap Insurance</option>
                           <option value="TIRE_RIM">Tire & Rim</option>
                           <option value="APPEARANCE">Appearance / Rust / Key</option>
                           <option value="OTHER">Other</option>

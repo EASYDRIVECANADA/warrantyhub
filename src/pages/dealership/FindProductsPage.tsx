@@ -35,17 +35,15 @@ interface Product {
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-const typeLabel = (type: string) => {
-  const map: Record<string, string> = {
-    VSC: "Vehicle Service Contract",
-    EXTENDED_WARRANTY: "Vehicle Service Contract",
-    "Tire & Rim": "Tire & Rim Protection",
-    TIRE_RIM: "Tire & Rim Protection",
-    GAP: "GAP Insurance",
-    warranty: "Vehicle Service Contract",
-    tire_rim: "Tire & Rim Protection",
-  };
-  return map[type] || type;
+const PRODUCT_TYPE_FILTERS = [
+  { value: "VSC", label: "Extended Warranty", aliases: ["VSC", "EXTENDED_WARRANTY", "warranty"] },
+  { value: "GAP", label: "Gap Insurance", aliases: ["GAP"] },
+  { value: "Tire & Rim", label: "Tire and Rim", aliases: ["Tire & Rim", "TIRE_RIM", "tire_rim"] },
+];
+
+const matchesProductTypeFilter = (productType: string, selectedType: string) => {
+  const filter = PRODUCT_TYPE_FILTERS.find((item) => item.value === selectedType);
+  return filter ? filter.aliases.includes(productType) : true;
 };
 
 const getMinPrice = (pricing: any): number | null => {
@@ -134,7 +132,7 @@ export default function FindProductsPage() {
   const [loading, setLoading] = useState(true);
   const [providers, setProviders] = useState<string[]>([]);
   const [selectedProvider, setSelectedProvider] = useState("all");
-  const [selectedType, setSelectedType] = useState("all");
+  const [selectedType, setSelectedType] = useState(PRODUCT_TYPE_FILTERS[0].value);
   const [dealerPricing, setDealerPricing] = useState<Record<string, { retail_price: Record<string, number>; confidentiality_enabled: boolean; sort_order?: number | null }>>({});
 
   // ── load products (real data) ──────────────────────────────────────────
@@ -281,7 +279,7 @@ export default function FindProductsPage() {
     if (selectedProvider !== "all") list = list.filter((p) => p.providerName === selectedProvider);
 
     // Type filter
-    if (selectedType !== "all") list = list.filter((p) => p.product_type === selectedType);
+    list = list.filter((p) => matchesProductTypeFilter(p.product_type, selectedType));
 
     // Text search
     if (searchQuery.trim()) {
@@ -296,8 +294,6 @@ export default function FindProductsPage() {
 
     return list.sort((a, b) => compareProductsByConfiguredOrder(a, b, dealerPricing));
   }, [products, selectedProvider, selectedType, searchQuery, vehicleInfo, mileageKm, dealerPricing]);
-
-  const productTypes = useMemo(() => [...new Set(products.map((p) => p.product_type))].sort(), [products]);
 
   const eligibleCount = vehicleInfo ? filteredProducts.length : null;
   const ineligibleCount = vehicleInfo ? products.filter((p) => !isEligible(p.eligibility_rules, vehicleInfo, mileageKm)).length : null;
@@ -457,19 +453,13 @@ export default function FindProductsPage() {
 
             <div className="flex items-center gap-2 ml-auto">
               <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setSelectedType("all")}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${selectedType === "all" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                >
-                  All Types
-                </button>
-                {productTypes.map((t) => (
+                {PRODUCT_TYPE_FILTERS.map((type) => (
                   <button
-                    key={t}
-                    onClick={() => setSelectedType(t)}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${selectedType === t ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                    key={type.value}
+                    onClick={() => setSelectedType(type.value)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${selectedType === type.value ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                   >
-                    {typeLabel(t)}
+                    {type.label}
                   </button>
                 ))}
               </div>

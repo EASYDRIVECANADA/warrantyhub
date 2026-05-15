@@ -78,7 +78,7 @@ function renderProviderTerms(input: {
 
 }) {
 
-  const fallback = `Vehicle Service Contract\n\nContract Schedule\nProduct: {{product_name}}\nTerm: {{term_months}} / {{term_km}}\nDeductible: {{deductible}}\n\nCoverage Details\n{{coverage_details}}\n\nExclusions\n{{exclusions}}\n\nClaims Process\nFor any covered failure, contact the Provider (or the Provider's administrator) for instructions and authorization before repairs are performed. Unauthorized repairs may not be covered.\n\nRepair Facility\nRepairs must be performed by a licensed repair facility and may require pre-approval by the Provider.\n\nLimitations\nThis Contract is subject to limitations, conditions, and procedures set by the Provider. The Provider's final contract language governs in the event of any conflict.\n\nCancellation\nCancellation and refund rules (if any) are determined by the Provider and the selling dealership, subject to applicable law.`;
+  const fallback = `Extended Warranty\n\nContract Schedule\nProduct: {{product_name}}\nTerm: {{term_months}} / {{term_km}}\nDeductible: {{deductible}}\n\nCoverage Details\n{{coverage_details}}\n\nExclusions\n{{exclusions}}\n\nClaims Process\nFor any covered failure, contact the Provider (or the Provider's administrator) for instructions and authorization before repairs are performed. Unauthorized repairs may not be covered.\n\nRepair Facility\nRepairs must be performed by a licensed repair facility and may require pre-approval by the Provider.\n\nLimitations\nThis Contract is subject to limitations, conditions, and procedures set by the Provider. The Provider's final contract language governs in the event of any conflict.\n\nCancellation\nCancellation and refund rules (if any) are determined by the Provider and the selling dealership, subject to applicable law.`;
 
 
 
@@ -204,7 +204,7 @@ function CustomerCopyTerms(props: {
 
       <div className="text-[12px] font-semibold">BRIDGE WARRANTY</div>
 
-      <div className="text-[13px]">Vehicle Service Contract</div>
+      <div className="text-[13px]">Extended Warranty</div>
 
       <div className="mt-2 text-[12px] leading-relaxed text-slate-600">
 

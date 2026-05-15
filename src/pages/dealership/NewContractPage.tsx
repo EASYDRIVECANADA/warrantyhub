@@ -1216,7 +1216,7 @@ export default function NewContractPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-base">Vehicle Service Contract</p>
+                    <p className="font-bold text-base">Extended Warranty</p>
                     <p className="text-xs text-muted-foreground mt-1">Contract #: {previewContractNumber}</p>
                     <p className="text-xs text-muted-foreground">Date: {format(new Date(), "MMMM d, yyyy")}</p>
                     {dealershipName && <p className="text-xs text-muted-foreground">Dealer: {dealershipName}</p>}
