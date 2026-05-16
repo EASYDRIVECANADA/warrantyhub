@@ -9,7 +9,6 @@ import { invokeEdgeFunction } from "../lib/supabase/functions";
 
 const toast = vi.fn();
 const dealershipMembersUpsert = vi.fn(() => Promise.resolve({ data: null, error: null as Error | null }));
-const resetPasswordForEmail = vi.hoisted(() => vi.fn(() => Promise.resolve({ data: {}, error: null })));
 let existingProfileByEmail: { id: string } | null = null;
 let dealershipById: { legacy_dealer_id: string | null } | null = null;
 let legacyMembers: any[] = [];
@@ -85,9 +84,6 @@ function makeSupabaseChain(table: string) {
 
 vi.mock("../integrations/supabase/client", () => ({
   supabase: {
-    auth: {
-      resetPasswordForEmail,
-    },
     from: vi.fn((table: string) => makeSupabaseChain(table)),
   },
 }));
@@ -96,7 +92,6 @@ describe("dealership settings team creation", () => {
   beforeEach(() => {
     toast.mockClear();
     dealershipMembersUpsert.mockClear();
-    resetPasswordForEmail.mockClear();
     existingProfileByEmail = null;
     dealershipById = null;
     legacyMembers = [];
@@ -344,7 +339,7 @@ describe("dealership settings team creation", () => {
     expect(screen.getByDisplayValue("NewTempPass123!")).toBeInTheDocument();
   });
 
-  it("sends a reset email when deployed function does not support password generation yet", async () => {
+  it("shows a copyable temporary code when deployed function does not support password generation yet", async () => {
     dealershipById = { legacy_dealer_id: "dealer-1" };
     legacyMembers = [
       {
@@ -385,11 +380,10 @@ describe("dealership settings team creation", () => {
     await user.click(screen.getByRole("button", { name: /new password/i }));
 
     await waitFor(() => {
-      expect(resetPasswordForEmail).toHaveBeenCalledWith("elaidelossantos05@gmail.com", {
-        redirectTo: "http://localhost:3000/reset-password",
-      });
+      expect(screen.getByText("Temporary password created")).toBeInTheDocument();
     });
-    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Password Reset Email Sent" }));
+    expect(screen.getByDisplayValue(/^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[!@#$%^&*]).{16}$/)).toBeInTheDocument();
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Temporary Code Created" }));
   });
 
   it("links an existing profile when the account was already created without a dealership membership", async () => {

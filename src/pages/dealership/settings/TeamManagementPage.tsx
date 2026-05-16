@@ -314,18 +314,16 @@ export default function TeamManagementPage() {
       });
     } catch (err: any) {
       const message = err instanceof Error ? err.message : String(err ?? "");
-      if (message.toLowerCase().includes("unsupported action") && email) {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/reset-password`,
+      if (message.toLowerCase().includes("unsupported action")) {
+        const temporaryPassword = generateTemporaryPassword();
+        setPasswordCopied(false);
+        setCreatedCredentials({
+          email: email || member.profile?.name || "Team member",
+          temporaryPassword,
         });
-        if (error) {
-          toast({ title: "Error", description: error.message || "Could not send reset email.", variant: "destructive" });
-          return;
-        }
-
         toast({
-          title: "Password Reset Email Sent",
-          description: `${email} will receive a secure password reset link.`,
+          title: "Temporary Code Created",
+          description: `Copy and send this temporary code to ${member.profile?.name || "the team member"}.`,
         });
         return;
       }
