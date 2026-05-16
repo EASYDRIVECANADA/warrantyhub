@@ -372,10 +372,18 @@ export function AppRouter() {
         }
       />
       <Route
+        path="/dealership/profile"
+        element={
+          <ProtectedRouteV2 allowedRoles={["dealership_admin", "dealership_employee"]}>
+            <DealershipProfilePage />
+          </ProtectedRouteV2>
+        }
+      />
+      <Route
         path="/dealership/settings/profile"
         element={
-          <ProtectedRouteV2 allowedRoles={["dealership_admin"]}>
-            <DealershipProfilePage />
+          <ProtectedRouteV2 allowedRoles={["dealership_admin", "dealership_employee"]}>
+            <Navigate to="/dealership/profile" replace />
           </ProtectedRouteV2>
         }
       />

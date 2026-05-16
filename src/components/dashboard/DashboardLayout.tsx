@@ -15,6 +15,7 @@ import {
   ChevronDown,
   ChevronUp,
   BarChart3,
+  UserCircle,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
@@ -25,6 +26,7 @@ export interface NavItem {
   href: string;
   icon: React.ElementType;
   children?: NavItem[];
+  allowedRoles?: string[];
 }
 
 interface DashboardLayoutProps {
@@ -38,9 +40,31 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, t
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const roleMatches = (allowedRoles?: string[]) => {
+    if (!allowedRoles?.length) return true;
+    const role = user?.role ?? "";
+    const aliases: Record<string, string[]> = {
+      dealership_admin: ["DEALER_ADMIN", "dealership_admin"],
+      dealership_employee: ["DEALER_EMPLOYEE", "dealership_employee"],
+      provider: ["PROVIDER", "provider"],
+      super_admin: ["SUPER_ADMIN", "ADMIN", "super_admin"],
+    };
+    return allowedRoles.some((allowed) => role === allowed || aliases[allowed]?.includes(role));
+  };
+  const visibleNavItems = navItems
+    .filter((item) => roleMatches(item.allowedRoles))
+    .map((item) => {
+      if (!item.children) return item;
+      return {
+        ...item,
+        children: item.children.filter((child) => roleMatches(child.allowedRoles)),
+      };
+    })
+    .filter((item) => !item.children || item.children.length > 0);
+
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
     const map: Record<string, boolean> = {};
-    navItems.forEach((item) => {
+    visibleNavItems.forEach((item) => {
       if (item.children) {
         const isChildActive = item.children.some((c) => location.pathname === c.href);
         if (isChildActive) map[item.label] = true;
@@ -95,7 +119,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, t
           </div>
 
           <nav className="p-4 space-y-1 shrink-0">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               if (item.children) {
                 const isExpanded = expandedGroups[item.label] ?? false;
                 const isChildActive = item.children.some((c) => location.pathname === c.href);
@@ -237,14 +261,15 @@ export const dealershipNavItems: NavItem[] = [
   { label: "Contracts", href: "/dealership/contracts", icon: FileText },
   { label: "Remittances", href: "/dealership/remittances", icon: DollarSign },
   { label: "Reporting", href: "/dealership/reporting", icon: BarChart3 },
+  { label: "Profile", href: "/dealership/profile", icon: UserCircle },
   {
     label: "Settings",
     href: "#",
     icon: Settings,
+    allowedRoles: ["dealership_admin"],
     children: [
       { label: "Configuration", href: "/dealership/settings/configuration", icon: Settings },
       { label: "Team", href: "/dealership/settings/team", icon: Users },
-      { label: "Profile", href: "/dealership/settings/profile", icon: Shield },
     ],
   },
 ];
