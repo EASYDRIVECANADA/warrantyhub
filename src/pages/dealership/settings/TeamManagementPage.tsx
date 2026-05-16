@@ -324,7 +324,6 @@ export default function TeamManagementPage() {
 
   const handleGenerateTemporaryPassword = async (member: TeamMember) => {
     if (!member.user_id) return;
-    const email = member.profile?.email;
     setResettingPasswordUserId(member.user_id);
     try {
       const response = await invokeEdgeFunction<GenerateTemporaryPasswordResponse>("dealer-team-tools", {
@@ -345,15 +344,10 @@ export default function TeamManagementPage() {
       const message = err instanceof Error ? err.message : String(err ?? "");
       const lowerMessage = message.toLowerCase();
       if (lowerMessage.includes("unsupported action") || lowerMessage.includes("password is required")) {
-        const temporaryPassword = generateTemporaryPassword();
-        setPasswordCopied(false);
-        setCreatedCredentials({
-          email: email || member.profile?.name || "Team member",
-          temporaryPassword,
-        });
         toast({
-          title: "Temporary Code Created",
-          description: `Copy and send this temporary code to ${member.profile?.name || "the team member"}.`,
+          title: "Backend Update Required",
+          description: "A working temporary password can only be generated after the updated dealer-team-tools function is deployed.",
+          variant: "destructive",
         });
         return;
       }
@@ -371,12 +365,33 @@ export default function TeamManagementPage() {
 
     setDeletingUserId(member.user_id);
     try {
-      await invokeEdgeFunction<{ ok: true; deletedUser?: boolean }>("dealer-team-tools", {
-        action: "delete_employee",
-        userId: member.user_id,
-        dealerMemberId: member.source === "legacy" ? member.id.replace(/^legacy:/, "") : undefined,
-        dealershipMemberId: member.source === "dealership" && !member.id.startsWith("pending:") ? member.id : undefined,
-      });
+      const dealerMemberId = member.source === "legacy" ? member.id.replace(/^legacy:/, "") : undefined;
+      const dealershipMemberId = member.source === "dealership" && !member.id.startsWith("pending:") ? member.id : undefined;
+
+      try {
+        await invokeEdgeFunction<{ ok: true; deletedUser?: boolean }>("dealer-team-tools", {
+          action: "delete_employee",
+          userId: member.user_id,
+          dealerMemberId,
+          dealershipMemberId,
+        });
+      } catch (err: any) {
+        const message = err instanceof Error ? err.message : String(err ?? "");
+        if (!message.toLowerCase().includes("unsupported action")) throw err;
+
+        if (dealerMemberId) {
+          await invokeEdgeFunction<{ ok: true }>("dealer-team-tools", {
+            action: "set_employee_status",
+            dealerMemberId,
+            status: "DISABLED",
+          });
+        } else if (dealershipMemberId) {
+          const { error } = await supabase.from("dealership_members").delete().eq("id", dealershipMemberId);
+          if (error) throw error;
+        } else {
+          throw new Error("Delete is not available for this unsynced member yet.");
+        }
+      }
 
       setMembers((prev) => prev.filter((m) => m.user_id !== member.user_id));
       if (selectedMember?.user_id === member.user_id) setSelectedMember(null);

@@ -503,7 +503,7 @@ describe("dealership settings team creation", () => {
   });
 
   it.each(["Unsupported action", "password is required"])(
-    "shows a copyable temporary code when deployed function returns %s",
+    "does not show a fake temporary password when deployed function returns %s",
     async (edgeErrorMessage) => {
     dealershipById = { legacy_dealer_id: "dealer-1" };
     legacyMembers = [
@@ -545,10 +545,61 @@ describe("dealership settings team creation", () => {
     await user.click(screen.getByRole("button", { name: /new password/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("Temporary password created")).toBeInTheDocument();
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Backend Update Required" }));
     });
-    expect(screen.getByDisplayValue(/^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[!@#$%^&*]).{16}$/)).toBeInTheDocument();
-    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Temporary Code Created" }));
+    expect(screen.queryByText("Temporary password created")).not.toBeInTheDocument();
+  });
+
+  it("falls back to disabling a legacy team member when hard delete is not deployed yet", async () => {
+    dealershipById = { legacy_dealer_id: "dealer-1" };
+    legacyMembers = [
+      {
+        id: "50ae05bf-5ed0-4202-beb9-782f1b437648",
+        user_id: "employee-legacy-1",
+        role: "DEALER_EMPLOYEE",
+        created_at: "2026-05-17T00:00:00.000Z",
+      },
+    ];
+    profilesById = [
+      {
+        id: "employee-legacy-1",
+        email: "elaidelossantos05@gmail.com",
+        display_name: "Elaide Lossantos",
+        first_name: "Elaide",
+        last_name: "Lossantos",
+        phone: "123123",
+      },
+    ];
+    vi.mocked(invokeEdgeFunction)
+      .mockRejectedValueOnce(new Error("Unsupported action"))
+      .mockResolvedValueOnce({ ok: true });
+
+    const user = userEvent.setup();
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <TeamManagementPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Elaide Lossantos")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^delete$/i }));
+
+    await waitFor(() => {
+      expect(invokeEdgeFunction).toHaveBeenNthCalledWith(2, "dealer-team-tools", {
+        action: "set_employee_status",
+        dealerMemberId: "50ae05bf-5ed0-4202-beb9-782f1b437648",
+        status: "DISABLED",
+      });
+    });
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "User Deleted" }));
   });
 
   it("links an existing profile when the account was already created without a dealership membership", async () => {
