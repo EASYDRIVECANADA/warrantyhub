@@ -102,6 +102,7 @@ describe("dealership settings team creation", () => {
           lastName: "Employee",
           phone: "555-111-2222",
           email: "employee@example.com",
+          password: expect.any(String),
           role: "DEALER_EMPLOYEE",
         },
       });
@@ -109,5 +110,44 @@ describe("dealership settings team creation", () => {
 
     expect(toast).not.toHaveBeenCalledWith(expect.objectContaining({ title: "User Not Found" }));
     expect(screen.getByText("Temporary password created")).toBeInTheDocument();
+  });
+
+  it("sends a temporary password for older deployed employee-create functions", async () => {
+    vi.mocked(invokeEdgeFunction).mockResolvedValueOnce({
+      dealerMemberId: "member-1",
+      userId: "employee-1",
+    });
+
+    const user = userEvent.setup();
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <TeamManagementPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /add member/i }));
+    await user.type(screen.getByPlaceholderText("team@example.com"), "legacy@example.com");
+    await user.type(screen.getByPlaceholderText("John Doe"), "Legacy Employee");
+    await user.click(screen.getByRole("button", { name: /create employee/i }));
+
+    await waitFor(() => {
+      expect(invokeEdgeFunction).toHaveBeenCalled();
+    });
+
+    const payload = vi.mocked(invokeEdgeFunction).mock.calls[0]?.[1] as {
+      employee?: { password?: string };
+    };
+    const fallbackPassword = payload.employee?.password;
+
+    expect(fallbackPassword).toMatch(/^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[!@#$%^&*]).{16}$/);
+    expect(screen.getByDisplayValue(fallbackPassword!)).toBeInTheDocument();
   });
 });

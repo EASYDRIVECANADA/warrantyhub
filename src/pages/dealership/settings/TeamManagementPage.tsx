@@ -12,6 +12,7 @@ import { supabase } from "../../../integrations/supabase/client";
 import { useDealership } from "../../../hooks/useDealership";
 import { useAuth } from "../../../providers/AuthProvider";
 import { useToast } from "../../../hooks/use-toast";
+import { generateTemporaryPassword } from "../../../lib/auth/temporaryPassword";
 import { invokeEdgeFunction } from "../../../lib/supabase/functions";
 import { format } from "date-fns";
 import { Check, Copy, Plus, Users, Shield, UserCog } from "lucide-react";
@@ -27,7 +28,7 @@ interface TeamMember {
 type CreateEmployeeResponse = {
   dealerMemberId: string | null;
   userId: string;
-  temporaryPassword: string;
+  temporaryPassword?: string;
 };
 
 type CreatedEmployeeCredentials = {
@@ -109,6 +110,7 @@ export default function TeamManagementPage() {
       if (!lastName) throw new Error("Please enter first and last name");
 
       const role = newMember.role === "admin" ? "DEALER_ADMIN" : "DEALER_EMPLOYEE";
+      const fallbackTemporaryPassword = generateTemporaryPassword();
       const response = await invokeEdgeFunction<CreateEmployeeResponse>("dealer-team-tools", {
         action: "create_employee",
         employee: {
@@ -116,12 +118,13 @@ export default function TeamManagementPage() {
           lastName,
           phone: newMember.phone.trim() || undefined,
           email,
+          password: fallbackTemporaryPassword,
           role,
         },
       });
 
       toast({ title: "Member Added", description: `${email} has been added to the team.` });
-      setCreatedCredentials({ email, temporaryPassword: response.temporaryPassword });
+      setCreatedCredentials({ email, temporaryPassword: response.temporaryPassword || fallbackTemporaryPassword });
       setPasswordCopied(false);
       setDialogOpen(false);
       setNewMember({ email: "", full_name: "", phone: "", role: "employee" });

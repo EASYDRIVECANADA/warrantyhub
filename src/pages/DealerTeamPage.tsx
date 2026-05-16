@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "../components/ui/input";
 import { PageShell } from "../components/PageShell";
 import { logAuditEvent } from "../lib/auditLog";
+import { generateTemporaryPassword } from "../lib/auth/temporaryPassword";
 import { getAppMode } from "../lib/runtime";
 import { getSupabaseClient } from "../lib/supabase/client";
 import { invokeEdgeFunction } from "../lib/supabase/functions";
@@ -80,7 +81,7 @@ type CreatedEmployeeCredentials = {
 type CreateEmployeeResponse = {
   dealerMemberId: string | null;
   userId: string;
-  temporaryPassword: string;
+  temporaryPassword?: string;
 };
 
 function read(): DealerTeamMember[] {
@@ -137,29 +138,6 @@ function statusLabel(s: DealerTeamStatus) {
   if (s === "ACTIVE") return "Active";
   if (s === "DISABLED") return "Disabled";
   return "Invited";
-}
-
-function generateLocalTemporaryPassword() {
-  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-  const lower = "abcdefghijkmnopqrstuvwxyz";
-  const digits = "23456789";
-  const symbols = "!@#$%^&*";
-  const all = `${upper}${lower}${digits}${symbols}`;
-  const pick = (chars: string) => chars[Math.floor(Math.random() * chars.length)]!;
-  const chars = [pick(upper), pick(lower), pick(digits), pick(symbols)];
-
-  while (chars.length < 16) {
-    chars.push(pick(all));
-  }
-
-  for (let i = chars.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const tmp = chars[i]!;
-    chars[i] = chars[j]!;
-    chars[j] = tmp;
-  }
-
-  return chars.join("");
 }
 
 export function DealerTeamPage() {
@@ -286,8 +264,9 @@ export function DealerTeamPage() {
       if (!lastName) throw new Error("Last Name is required");
       if (!email) throw new Error("Email is required");
 
+      const fallbackTemporaryPassword = generateTemporaryPassword();
+
       if (mode === "local") {
-        const temporaryPassword = generateLocalTemporaryPassword();
         const items = read();
         const next: DealerTeamMember = {
           id: crypto.randomUUID(),
@@ -304,7 +283,7 @@ export function DealerTeamPage() {
           {
             id: crypto.randomUUID(),
             email,
-            password: temporaryPassword,
+            password: fallbackTemporaryPassword,
             role: draft.role,
             dealerId,
             companyName: "",
@@ -324,7 +303,7 @@ export function DealerTeamPage() {
           message: `Added ${email}`,
         });
 
-        return { email, temporaryPassword };
+        return { email, temporaryPassword: fallbackTemporaryPassword };
       }
 
       const response = await invokeEdgeFunction<CreateEmployeeResponse>("dealer-team-tools", {
@@ -334,6 +313,7 @@ export function DealerTeamPage() {
           lastName,
           phone: phone || undefined,
           email,
+          password: fallbackTemporaryPassword,
           role: draft.role,
         },
       });
@@ -349,7 +329,7 @@ export function DealerTeamPage() {
         message: `Added ${email}`,
       });
 
-      return { email, temporaryPassword: response.temporaryPassword };
+      return { email, temporaryPassword: response.temporaryPassword || fallbackTemporaryPassword };
     },
     onSuccess: async (result) => {
       setEditingDealerMemberId(null);
