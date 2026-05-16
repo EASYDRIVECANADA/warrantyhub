@@ -15,7 +15,7 @@ import { useToast } from "../../../hooks/use-toast";
 import { generateTemporaryPassword } from "../../../lib/auth/temporaryPassword";
 import { invokeEdgeFunction } from "../../../lib/supabase/functions";
 import { format } from "date-fns";
-import { Check, Copy, KeyRound, Plus, Users, Shield, UserCog } from "lucide-react";
+import { Check, Copy, Eye, KeyRound, Plus, Trash2, Users, Shield, UserCog } from "lucide-react";
 
 interface TeamMember {
   id: string;
@@ -74,6 +74,8 @@ export default function TeamManagementPage() {
   const [newMember, setNewMember] = useState({ email: "", full_name: "", phone: "", role: "employee" });
   const [submitting, setSubmitting] = useState(false);
   const [resettingPasswordUserId, setResettingPasswordUserId] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [createdCredentials, setCreatedCredentials] = useState<CreatedEmployeeCredentials | null>(null);
   const [passwordCopied, setPasswordCopied] = useState(false);
 
@@ -360,6 +362,31 @@ export default function TeamManagementPage() {
     }
   };
 
+  const handleDeleteMember = async (member: TeamMember) => {
+    if (!member.user_id) return;
+    const label = member.profile?.email || member.profile?.name || "this user";
+    const confirmed = window.confirm(`Delete ${label}? This removes their team access and may delete their user account if they do not belong to another dealership.`);
+    if (!confirmed) return;
+
+    setDeletingUserId(member.user_id);
+    try {
+      await invokeEdgeFunction<{ ok: true; deletedUser?: boolean }>("dealer-team-tools", {
+        action: "delete_employee",
+        userId: member.user_id,
+        dealerMemberId: member.source === "legacy" ? member.id.replace(/^legacy:/, "") : undefined,
+        dealershipMemberId: member.source === "dealership" && !member.id.startsWith("pending:") ? member.id : undefined,
+      });
+
+      setMembers((prev) => prev.filter((m) => m.user_id !== member.user_id));
+      if (selectedMember?.user_id === member.user_id) setSelectedMember(null);
+      toast({ title: "User Deleted", description: `${label} has been removed from the team.` });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Could not delete user.", variant: "destructive" });
+    } finally {
+      setDeletingUserId(null);
+    }
+  };
+
   const adminCount = members.filter((m) => m.role === "admin").length;
 
   if (dLoading) {
@@ -473,14 +500,14 @@ export default function TeamManagementPage() {
               </div>
             ) : (
               <div className="overflow-visible">
-                <Table className="min-w-[980px]">
+                <Table className="min-w-[1120px]">
                 <TableHeader className="bg-muted/40">
                   <TableRow>
-                    <TableHead className="w-[34%] px-4">Name</TableHead>
-                    <TableHead className="w-[14%] px-4">Role</TableHead>
-                    <TableHead className="w-[17%] px-4">Phone</TableHead>
-                    <TableHead className="w-[15%] px-4">Joined</TableHead>
-                    {isAdmin && <TableHead className="w-[20%] px-4 text-right">Actions</TableHead>}
+                    <TableHead className="w-[32%] px-4">Profile</TableHead>
+                    <TableHead className="w-[12%] px-4">Role</TableHead>
+                    <TableHead className="w-[15%] px-4">Phone</TableHead>
+                    <TableHead className="w-[13%] px-4">Joined</TableHead>
+                    {isAdmin && <TableHead className="w-[28%] px-4 text-right">Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -495,9 +522,12 @@ export default function TeamManagementPage() {
                           </div>
                           <div className="min-w-0">
                             <div className="truncate font-medium">{m.profile?.name || "Unknown"}</div>
-                            {m.source === "legacy" && (
-                              <div className="mt-0.5 text-xs text-muted-foreground">Synced from dealer account</div>
-                            )}
+                            <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                              {m.profile?.email || "No email on profile"}
+                            </div>
+                            <div className="mt-0.5 text-xs text-muted-foreground">
+                              {m.source === "legacy" ? "Synced from dealer account" : "Dealership account"}
+                            </div>
                           </div>
                         </div>
                       </TableCell>
@@ -521,11 +551,32 @@ export default function TeamManagementPage() {
                               variant="outline"
                               size="sm"
                               className="h-9 gap-2"
+                              onClick={() => setSelectedMember(m)}
+                            >
+                              <Eye className="h-4 w-4" />
+                              View
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-9 gap-2"
                               disabled={resettingPasswordUserId === m.user_id}
                               onClick={() => handleGenerateTemporaryPassword(m)}
                             >
                               <KeyRound className="h-4 w-4" />
                               {resettingPasswordUserId === m.user_id ? "Generating..." : "New password"}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-9 gap-2 text-destructive hover:text-destructive"
+                              disabled={deletingUserId === m.user_id}
+                              onClick={() => handleDeleteMember(m)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              {deletingUserId === m.user_id ? "Deleting..." : "Delete"}
                             </Button>
                             <Select value={m.role} onValueChange={(v) => handleRoleChange(m, v)}>
                               <SelectTrigger className="h-9 w-32 bg-background">
@@ -547,6 +598,87 @@ export default function TeamManagementPage() {
             )}
           </CardContent>
         </Card>
+
+        <Dialog open={Boolean(selectedMember)} onOpenChange={(open) => { if (!open) setSelectedMember(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Team member profile</DialogTitle>
+              <DialogDescription>
+                Review account details and dealership access.
+              </DialogDescription>
+            </DialogHeader>
+
+            {selectedMember && (
+              <div className="space-y-5">
+                <div className="flex items-center gap-3 rounded-lg border bg-muted/30 p-4">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    <span className="text-sm font-bold text-primary">
+                      {(selectedMember.profile?.name || "?").charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{selectedMember.profile?.name || "Unknown"}</div>
+                    <div className="truncate text-sm text-muted-foreground">{selectedMember.profile?.email || "No email on profile"}</div>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border p-3">
+                    <div className="text-xs font-medium text-muted-foreground">Email</div>
+                    <div className="mt-1 break-all text-sm font-medium">{selectedMember.profile?.email || "Not provided"}</div>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <div className="text-xs font-medium text-muted-foreground">Phone</div>
+                    <div className="mt-1 text-sm font-medium">{selectedMember.profile?.phone || "Not provided"}</div>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <div className="text-xs font-medium text-muted-foreground">Role</div>
+                    <div className="mt-1 text-sm font-medium">{formatMemberRole(selectedMember.role)}</div>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <div className="text-xs font-medium text-muted-foreground">Joined</div>
+                    <div className="mt-1 text-sm font-medium">{format(new Date(selectedMember.created_at), "MMM d, yyyy")}</div>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <div className="text-xs font-medium text-muted-foreground">Source</div>
+                    <div className="mt-1 text-sm font-medium">
+                      {selectedMember.source === "legacy" ? "Legacy dealer account" : "Dealership account"}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <div className="text-xs font-medium text-muted-foreground">User ID</div>
+                    <div className="mt-1 break-all font-mono text-xs">{selectedMember.user_id}</div>
+                  </div>
+                </div>
+
+                {isAdmin && (
+                  <div className="flex justify-end gap-2 border-t pt-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="gap-2"
+                      disabled={resettingPasswordUserId === selectedMember.user_id}
+                      onClick={() => handleGenerateTemporaryPassword(selectedMember)}
+                    >
+                      <KeyRound className="h-4 w-4" />
+                      New password
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="gap-2 text-destructive hover:text-destructive"
+                      disabled={deletingUserId === selectedMember.user_id}
+                      onClick={() => handleDeleteMember(selectedMember)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Delete user
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
         <Dialog
           open={Boolean(createdCredentials)}

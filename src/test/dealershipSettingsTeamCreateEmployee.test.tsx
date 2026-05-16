@@ -92,6 +92,7 @@ describe("dealership settings team creation", () => {
   beforeEach(() => {
     toast.mockClear();
     dealershipMembersUpsert.mockClear();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     existingProfileByEmail = null;
     dealershipById = null;
     legacyMembers = [];
@@ -344,6 +345,111 @@ describe("dealership settings team creation", () => {
       });
     });
     expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Role Updated" }));
+  });
+
+  it("shows a team member profile with email, phone, role, joined date, and source", async () => {
+    dealershipById = { legacy_dealer_id: "dealer-1" };
+    legacyMembers = [
+      {
+        id: "legacy-member-1",
+        user_id: "employee-legacy-1",
+        role: "DEALER_EMPLOYEE",
+        created_at: "2026-05-17T00:00:00.000Z",
+      },
+    ];
+    profilesById = [
+      {
+        id: "employee-legacy-1",
+        email: "elaidelossantos05@gmail.com",
+        display_name: "Elaide Lossantos",
+        first_name: "Elaide",
+        last_name: "Lossantos",
+        phone: "123123",
+      },
+    ];
+
+    const user = userEvent.setup();
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <TeamManagementPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Elaide Lossantos")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^view$/i }));
+
+    expect(screen.getByRole("heading", { name: /team member profile/i })).toBeInTheDocument();
+    expect(screen.getAllByText("elaidelossantos05@gmail.com").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("123123").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Employee").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("May 17, 2026").length).toBeGreaterThan(0);
+    expect(screen.getByText("Legacy dealer account")).toBeInTheDocument();
+    expect(screen.getByText("employee-legacy-1")).toBeInTheDocument();
+  });
+
+  it("deletes a legacy team member through the edge function", async () => {
+    dealershipById = { legacy_dealer_id: "dealer-1" };
+    legacyMembers = [
+      {
+        id: "50ae05bf-5ed0-4202-beb9-782f1b437648",
+        user_id: "employee-legacy-1",
+        role: "DEALER_EMPLOYEE",
+        created_at: "2026-05-17T00:00:00.000Z",
+      },
+    ];
+    profilesById = [
+      {
+        id: "employee-legacy-1",
+        email: "elaidelossantos05@gmail.com",
+        display_name: "Elaide Lossantos",
+        first_name: "Elaide",
+        last_name: "Lossantos",
+        phone: "123123",
+      },
+    ];
+    vi.mocked(invokeEdgeFunction).mockImplementationOnce(async () => {
+      legacyMembers = [];
+      return { ok: true, deletedUser: true };
+    });
+
+    const user = userEvent.setup();
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <TeamManagementPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Elaide Lossantos")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^delete$/i }));
+
+    await waitFor(() => {
+      expect(invokeEdgeFunction).toHaveBeenCalledWith("dealer-team-tools", {
+        action: "delete_employee",
+        userId: "employee-legacy-1",
+        dealerMemberId: "50ae05bf-5ed0-4202-beb9-782f1b437648",
+        dealershipMemberId: undefined,
+      });
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("Elaide Lossantos")).not.toBeInTheDocument();
+    });
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "User Deleted" }));
   });
 
   it("generates a new temporary password for an existing team member", async () => {

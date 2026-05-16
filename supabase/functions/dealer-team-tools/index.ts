@@ -11,7 +11,12 @@ class HttpError extends Error {
   }
 }
 
-type Action = "create_employee" | "update_employee" | "set_employee_status" | "generate_temporary_password";
+type Action =
+  | "create_employee"
+  | "update_employee"
+  | "set_employee_status"
+  | "generate_temporary_password"
+  | "delete_employee";
 
 type Body =
   | {
@@ -43,6 +48,12 @@ type Body =
   | {
       action: "generate_temporary_password";
       userId: string;
+    }
+  | {
+      action: "delete_employee";
+      userId: string;
+      dealerMemberId?: string;
+      dealershipMemberId?: string;
     };
 
 function json(status: number, body: unknown) {
@@ -167,7 +178,7 @@ Deno.serve(async (req: Request) => {
     const jwt = getJwt(req);
     if (!jwt) return json(401, { error: "Missing Authorization bearer token" });
 
-    const { svc, dealerId, dealershipId } = await assertDealerAdmin(jwt);
+    const { svc, dealerId, dealershipId, userId: actorUserId } = await assertDealerAdmin(jwt);
 
     const body = (await req.json()) as Partial<Body>;
     const action = (body as any)?.action as Action | undefined;
@@ -407,6 +418,100 @@ Deno.serve(async (req: Request) => {
       if (updUser.error) return json(400, { error: updUser.error.message });
 
       return json(200, { temporaryPassword });
+    }
+
+    if (action === "delete_employee") {
+      const targetUserId = safeTrim((body as any)?.userId);
+      const dealerMemberId = safeTrim((body as any)?.dealerMemberId);
+      const dealershipMemberId = safeTrim((body as any)?.dealershipMemberId);
+
+      if (!targetUserId) return json(400, { error: "userId is required" });
+      if (targetUserId === actorUserId) return json(400, { error: "You cannot delete your own account." });
+
+      let foundMembership = false;
+
+      if (dealerMemberId) {
+        const currentMember = await svc
+          .from("dealer_members")
+          .select("id, dealer_id, user_id")
+          .eq("id", dealerMemberId)
+          .maybeSingle();
+
+        if (currentMember.error) return json(400, { error: currentMember.error.message });
+        const member = currentMember.data as any;
+        if (!member) return json(404, { error: "Member not found" });
+        if (safeTrim(member.dealer_id) !== dealerId || safeTrim(member.user_id) !== targetUserId) {
+          return json(403, { error: "Forbidden" });
+        }
+
+        const del = await svc.from("dealer_members").delete().eq("id", dealerMemberId);
+        if (del.error) return json(400, { error: del.error.message });
+        foundMembership = true;
+      }
+
+      if (dealershipMemberId) {
+        const currentMember = await svc
+          .from("dealership_members")
+          .select("id, dealership_id, user_id")
+          .eq("id", dealershipMemberId)
+          .maybeSingle();
+
+        if (currentMember.error) return json(400, { error: currentMember.error.message });
+        const member = currentMember.data as any;
+        if (!member) return json(404, { error: "Member not found" });
+        if (safeTrim(member.dealership_id) !== dealershipId || safeTrim(member.user_id) !== targetUserId) {
+          return json(403, { error: "Forbidden" });
+        }
+
+        const del = await svc.from("dealership_members").delete().eq("id", dealershipMemberId);
+        if (del.error) return json(400, { error: del.error.message });
+        foundMembership = true;
+      }
+
+      if (!foundMembership && dealerId) {
+        const del = await svc
+          .from("dealer_members")
+          .delete()
+          .eq("dealer_id", dealerId)
+          .eq("user_id", targetUserId)
+          .select("id");
+        if (del.error) return json(400, { error: del.error.message });
+        foundMembership = Array.isArray(del.data) && del.data.length > 0;
+      }
+
+      if (dealershipId) {
+        const del = await svc
+          .from("dealership_members")
+          .delete()
+          .eq("dealership_id", dealershipId)
+          .eq("user_id", targetUserId)
+          .select("id");
+        if (del.error) return json(400, { error: del.error.message });
+        foundMembership = foundMembership || (Array.isArray(del.data) && del.data.length > 0);
+      }
+
+      if (!foundMembership) return json(404, { error: "Member not found" });
+
+      const remainingDealerMemberships = await svc.from("dealer_members").select("id").eq("user_id", targetUserId);
+      if (remainingDealerMemberships.error) return json(500, { error: remainingDealerMemberships.error.message });
+      const remainingDealershipMemberships = await svc.from("dealership_members").select("id").eq("user_id", targetUserId);
+      if (remainingDealershipMemberships.error) return json(500, { error: remainingDealershipMemberships.error.message });
+
+      const hasRemainingMemberships =
+        (Array.isArray(remainingDealerMemberships.data) && remainingDealerMemberships.data.length > 0) ||
+        (Array.isArray(remainingDealershipMemberships.data) && remainingDealershipMemberships.data.length > 0);
+
+      await svc.from("user_roles").delete().eq("user_id", targetUserId).in("role", ["dealership_admin", "dealership_employee"]);
+
+      if (!hasRemainingMemberships) {
+        const delProfile = await svc.from("profiles").delete().eq("id", targetUserId);
+        if (delProfile.error) return json(500, { error: delProfile.error.message });
+
+        const delUser = await svc.auth.admin.deleteUser(targetUserId);
+        if (delUser.error) return json(400, { error: delUser.error.message });
+      }
+
+      return json(200, { ok: true, deletedUser: !hasRemainingMemberships });
     }
 
     return json(400, { error: "Unsupported action" });
