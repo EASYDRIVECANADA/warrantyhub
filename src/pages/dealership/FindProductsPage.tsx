@@ -8,6 +8,7 @@ import { Badge } from "../../components/ui/badge";
 import { Search, RotateCcw, Car, Shield, Check, Loader2, AlertCircle, LayoutGrid, FileText, DollarSign } from "lucide-react";
 import { supabase } from "../../integrations/supabase/client";
 import { useDealership } from "../../hooks/useDealership";
+import { cn } from "../../lib/utils";
 import { buildBasePricingRows, resolveCustomerRetailNumber } from "../../lib/pricing/dealerPricing";
 import { compareProductsByConfiguredOrder } from "../../lib/products/defaultProductOrder";
 import { PRODUCT_TYPE_FILTERS, matchesProductTypeFilter } from "../../lib/products/productTypeFilters";
@@ -421,24 +422,46 @@ export default function FindProductsPage() {
         )}
 
         {/* Filters */}
-        <div className="border-b bg-card/50 sticky top-0 z-40">
-          <div className="px-6 md:px-8 py-3 flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-1 overflow-x-auto">
+        <div className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85">
+          <div className="px-6 md:px-8 py-4 space-y-3">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-center">
+              <div className="flex min-w-0 items-center gap-2 overflow-x-auto rounded-lg border bg-card p-1.5 shadow-sm">
               {PRODUCT_TYPE_FILTERS.map((type) => (
                 <button
                   key={type.value}
                   onClick={() => setSelectedType(type.value)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${selectedType === type.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+                  className={cn(
+                    "h-8 rounded-md px-3 text-sm font-medium transition-colors whitespace-nowrap",
+                    selectedType === type.value
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
                 >
                   {type.label}
                 </button>
               ))}
+              </div>
+
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search plans..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-10 w-full rounded-lg bg-card pl-9 text-sm shadow-sm"
+                />
+              </div>
             </div>
 
-            <div className="flex items-center gap-1 overflow-x-auto">
+            <div className="flex min-w-0 items-center gap-2 overflow-x-auto rounded-lg border bg-card p-2 shadow-sm">
               <button
                 onClick={() => setSelectedProvider("all")}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${selectedProvider === "all" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+                className={cn(
+                  "h-8 shrink-0 rounded-md px-3 text-sm font-medium transition-colors whitespace-nowrap",
+                  selectedProvider === "all"
+                    ? "bg-slate-900 text-white shadow-sm"
+                    : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
               >
                 All Providers
               </button>
@@ -446,16 +469,16 @@ export default function FindProductsPage() {
                 <button
                   key={prov}
                   onClick={() => setSelectedProvider(prov)}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${selectedProvider === prov ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+                  className={cn(
+                    "h-8 shrink-0 rounded-md px-3 text-sm font-medium transition-colors whitespace-nowrap",
+                    selectedProvider === prov
+                      ? "bg-slate-900 text-white shadow-sm"
+                      : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
                 >
                   {prov}
                 </button>
               ))}
-            </div>
-
-            <div className="relative ml-auto">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input placeholder="Search plans..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-44 h-8 pl-8 text-sm" />
             </div>
           </div>
         </div>
