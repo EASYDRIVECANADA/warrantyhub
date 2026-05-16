@@ -111,46 +111,90 @@ export default function TeamManagementPage() {
 
       const role = newMember.role === "admin" ? "DEALER_ADMIN" : "DEALER_EMPLOYEE";
       const fallbackTemporaryPassword = generateTemporaryPassword();
-      const response = await invokeEdgeFunction<CreateEmployeeResponse>("dealer-team-tools", {
-        action: "create_employee",
-        employee: {
-          firstName,
-          lastName,
-          phone: newMember.phone.trim() || undefined,
-          email,
-          password: fallbackTemporaryPassword,
-          role,
-        },
-      });
+      const linkDealershipMembership = async (userId: string) => {
+        const dealershipRole = role === "DEALER_ADMIN" ? "admin" : "employee";
+        const { error: membershipError } = await supabase
+          .from("dealership_members")
+          .upsert(
+            {
+              dealership_id: dealershipId,
+              user_id: userId,
+              role: dealershipRole,
+            },
+            { onConflict: "user_id,dealership_id" },
+          );
+        if (membershipError) throw membershipError;
+      };
+
+      const refreshMembers = async () => {
+        const { data: updatedMembers } = await supabase
+          .from("dealership_members")
+          .select("id, user_id, role, created_at")
+          .eq("dealership_id", dealershipId)
+          .order("created_at");
+        if (updatedMembers) {
+          const userIds = updatedMembers.map((m: any) => m.user_id);
+          const { data: profiles } = await supabase.from("profiles").select("id, email, display_name, first_name, last_name, phone").in("id", userIds);
+          const profileMap: Record<string, any> = {};
+          (profiles || []).forEach((p: any) => { profileMap[p.id] = p; });
+          setMembers(updatedMembers.map((m: any) => ({
+            ...m,
+            profile: {
+              name:
+                profileMap[m.user_id]?.display_name ||
+                [profileMap[m.user_id]?.first_name, profileMap[m.user_id]?.last_name].filter(Boolean).join(" ") ||
+                profileMap[m.user_id]?.email ||
+                "Unknown",
+              phone: profileMap[m.user_id]?.phone ?? null,
+            },
+          })));
+        }
+      };
+
+      let response: CreateEmployeeResponse;
+      try {
+        response = await invokeEdgeFunction<CreateEmployeeResponse>("dealer-team-tools", {
+          action: "create_employee",
+          employee: {
+            firstName,
+            lastName,
+            phone: newMember.phone.trim() || undefined,
+            email,
+            password: fallbackTemporaryPassword,
+            role,
+          },
+        });
+      } catch (err: any) {
+        const message = err instanceof Error ? err.message : String(err ?? "");
+        if (!message.toLowerCase().includes("already exists")) throw err;
+
+        const { data: existingProfile, error: profileError } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("email", email)
+          .maybeSingle();
+        if (profileError) throw profileError;
+        const existingUserId = (existingProfile as any)?.id;
+        if (!existingUserId) throw err;
+
+        await linkDealershipMembership(existingUserId);
+        toast({ title: "Member Linked", description: `${email} has been linked to this dealership.` });
+        setDialogOpen(false);
+        setNewMember({ email: "", full_name: "", phone: "", role: "employee" });
+        await refreshMembers();
+        return;
+      }
+
+      if (response.userId) {
+        await linkDealershipMembership(response.userId);
+      }
 
       toast({ title: "Member Added", description: `${email} has been added to the team.` });
       setCreatedCredentials({ email, temporaryPassword: response.temporaryPassword || fallbackTemporaryPassword });
       setPasswordCopied(false);
       setDialogOpen(false);
       setNewMember({ email: "", full_name: "", phone: "", role: "employee" });
-      // Refresh members list
-      const { data: updatedMembers } = await supabase
-        .from("dealership_members")
-        .select("id, user_id, role, created_at")
-        .eq("dealership_id", dealershipId)
-        .order("created_at");
-      if (updatedMembers) {
-        const userIds = updatedMembers.map((m: any) => m.user_id);
-        const { data: profiles } = await supabase.from("profiles").select("id, email, display_name, first_name, last_name, phone").in("id", userIds);
-        const profileMap: Record<string, any> = {};
-        (profiles || []).forEach((p: any) => { profileMap[p.id] = p; });
-        setMembers(updatedMembers.map((m: any) => ({
-          ...m,
-          profile: {
-            name:
-              profileMap[m.user_id]?.display_name ||
-              [profileMap[m.user_id]?.first_name, profileMap[m.user_id]?.last_name].filter(Boolean).join(" ") ||
-              profileMap[m.user_id]?.email ||
-              "Unknown",
-            phone: profileMap[m.user_id]?.phone ?? null,
-          },
-        })));
-      }
+      await refreshMembers();
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Could not add member.", variant: "destructive" });
     } finally {

@@ -8,6 +8,8 @@ import TeamManagementPage from "../pages/dealership/settings/TeamManagementPage"
 import { invokeEdgeFunction } from "../lib/supabase/functions";
 
 const toast = vi.fn();
+const dealershipMembersUpsert = vi.fn(() => Promise.resolve({ data: null, error: null }));
+let existingProfileByEmail: { id: string } | null = null;
 
 vi.mock("../hooks/useDealership", () => ({
   useDealership: () => ({
@@ -54,7 +56,13 @@ function makeSupabaseChain(table: string) {
   chain.delete = vi.fn(() => chain);
 
   if (table === "dealership_members") {
+    chain.upsert = dealershipMembersUpsert;
     chain.order = vi.fn(() => Promise.resolve({ data: [], error: null }));
+  }
+
+  if (table === "profiles") {
+    chain.eq = vi.fn(() => chain);
+    chain.maybeSingle = vi.fn(() => Promise.resolve({ data: existingProfileByEmail, error: null }));
   }
 
   return chain;
@@ -69,6 +77,8 @@ vi.mock("../integrations/supabase/client", () => ({
 describe("dealership settings team creation", () => {
   beforeEach(() => {
     toast.mockClear();
+    dealershipMembersUpsert.mockClear();
+    existingProfileByEmail = null;
     vi.mocked(invokeEdgeFunction).mockClear();
   });
 
@@ -149,5 +159,80 @@ describe("dealership settings team creation", () => {
 
     expect(fallbackPassword).toMatch(/^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[!@#$%^&*]).{16}$/);
     expect(screen.getByDisplayValue(fallbackPassword!)).toBeInTheDocument();
+  });
+
+  it("links the created auth user to the current dealership for older deployed functions", async () => {
+    vi.mocked(invokeEdgeFunction).mockResolvedValueOnce({
+      dealerMemberId: "legacy-member-1",
+      userId: "employee-legacy-1",
+    });
+
+    const user = userEvent.setup();
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <TeamManagementPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /add member/i }));
+    await user.type(screen.getByPlaceholderText("team@example.com"), "elaidelossantos05@gmail.com");
+    await user.type(screen.getByPlaceholderText("John Doe"), "Elaide Lossantos");
+    await user.click(screen.getByRole("button", { name: /create employee/i }));
+
+    await waitFor(() => {
+      expect(dealershipMembersUpsert).toHaveBeenCalledWith(
+        {
+          dealership_id: "dealership-1",
+          user_id: "employee-legacy-1",
+          role: "employee",
+        },
+        { onConflict: "user_id,dealership_id" },
+      );
+    });
+  });
+
+  it("links an existing profile when the account was already created without a dealership membership", async () => {
+    existingProfileByEmail = { id: "employee-existing-1" };
+    vi.mocked(invokeEdgeFunction).mockRejectedValueOnce(new Error("An account with this email already exists."));
+
+    const user = userEvent.setup();
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <TeamManagementPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /add member/i }));
+    await user.type(screen.getByPlaceholderText("team@example.com"), "elaidelossantos05@gmail.com");
+    await user.type(screen.getByPlaceholderText("John Doe"), "Elaide Lossantos");
+    await user.click(screen.getByRole("button", { name: /create employee/i }));
+
+    await waitFor(() => {
+      expect(dealershipMembersUpsert).toHaveBeenCalledWith(
+        {
+          dealership_id: "dealership-1",
+          user_id: "employee-existing-1",
+          role: "employee",
+        },
+        { onConflict: "user_id,dealership_id" },
+      );
+    });
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Member Linked" }));
   });
 });
