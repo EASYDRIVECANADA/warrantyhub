@@ -12,7 +12,7 @@ import { useDealership } from "../../../hooks/useDealership";
 import { useToast } from "../../../hooks/use-toast";
 import {
   Settings2, DollarSign, Pencil, Check, X, ChevronRight, ChevronLeft,
-  Search, Package, Zap, Building2, Shield, GripVertical,
+  Search, Package, Zap, Building2, Shield, GripVertical, Sparkles,
 } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import { compareProductsByConfiguredOrder } from "../../../lib/products/defaultProductOrder";
@@ -69,7 +69,106 @@ interface Structured {
   tiers: StructuredTier[];
 }
 
+type RecommendationStrategy = "conservative" | "standard" | "aggressive";
+
+type Recommendation = {
+  retail: number;
+  markupPct: number;
+  grossProfit: number;
+  confidence: "High" | "Medium" | "Low";
+  reason: string;
+};
+
 const fmt = (v: number) => `$${v.toLocaleString("en-CA", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+
+const RECOMMENDATION_STRATEGIES: Record<RecommendationStrategy, { label: string; description: string }> = {
+  conservative: {
+    label: "Conservative",
+    description: "Lower retail target for price-sensitive quotes.",
+  },
+  standard: {
+    label: "Standard",
+    description: "Balanced retail target for normal warranty sales.",
+  },
+  aggressive: {
+    label: "Aggressive",
+    description: "Higher margin target for stronger gross profit.",
+  },
+};
+
+function retailEnding(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.max(9, Math.ceil((value - 9) / 10) * 10 + 9);
+}
+
+function recommendRetail(input: {
+  cost: number;
+  isBase: boolean;
+  termMonths?: number;
+  claimLimit?: number;
+  strategy: RecommendationStrategy;
+}): Recommendation | null {
+  const { cost, isBase, termMonths = 0, claimLimit = 0, strategy } = input;
+  if (!Number.isFinite(cost) || cost <= 0) return null;
+
+  if (!isBase) {
+    const addonProfiles: Record<RecommendationStrategy, { multiplier: number; minProfit: number }> = {
+      conservative: { multiplier: 1.5, minProfit: 75 },
+      standard: { multiplier: 1.8, minProfit: 100 },
+      aggressive: { multiplier: 2.1, minProfit: 150 },
+    };
+    const profile = addonProfiles[strategy];
+    const raw = Math.max(cost * profile.multiplier, cost + profile.minProfit);
+    const retail = retailEnding(raw);
+    return {
+      retail,
+      markupPct: ((retail - cost) / cost) * 100,
+      grossProfit: retail - cost,
+      confidence: "Medium",
+      reason: `${RECOMMENDATION_STRATEGIES[strategy].label} add-on target uses ${profile.multiplier.toFixed(1)}x cost with a ${fmt(profile.minProfit)} minimum gross profit.`,
+    };
+  }
+
+  const baseProfiles: Record<RecommendationStrategy, Array<{ maxCost: number; multiplier: number; minProfit: number }>> = {
+    conservative: [
+      { maxCost: 199, multiplier: 2.6, minProfit: 500 },
+      { maxCost: 499, multiplier: 2.2, minProfit: 550 },
+      { maxCost: 999, multiplier: 1.9, minProfit: 650 },
+      { maxCost: 1999, multiplier: 1.65, minProfit: 800 },
+      { maxCost: Infinity, multiplier: 1.45, minProfit: 1000 },
+    ],
+    standard: [
+      { maxCost: 199, multiplier: 3.4, minProfit: 700 },
+      { maxCost: 499, multiplier: 2.5, minProfit: 700 },
+      { maxCost: 999, multiplier: 2.2, minProfit: 850 },
+      { maxCost: 1999, multiplier: 1.9, minProfit: 1100 },
+      { maxCost: Infinity, multiplier: 1.6, minProfit: 1400 },
+    ],
+    aggressive: [
+      { maxCost: 199, multiplier: 4.2, minProfit: 900 },
+      { maxCost: 499, multiplier: 2.8, minProfit: 850 },
+      { maxCost: 999, multiplier: 2.5, minProfit: 1050 },
+      { maxCost: 1999, multiplier: 2.15, minProfit: 1400 },
+      { maxCost: Infinity, multiplier: 1.8, minProfit: 1800 },
+    ],
+  };
+
+  const profile = baseProfiles[strategy].find((p) => cost <= p.maxCost) ?? baseProfiles[strategy][baseProfiles[strategy].length - 1];
+  const termLift = termMonths >= 48 ? 0.08 : termMonths >= 36 ? 0.05 : termMonths >= 24 ? 0.03 : 0;
+  const claimLift = claimLimit >= 20000 ? 0.08 : claimLimit >= 10000 ? 0.06 : claimLimit >= 5000 ? 0.04 : 0;
+  const multiplier = profile.multiplier + termLift + claimLift;
+  const raw = Math.max(cost * multiplier, cost + profile.minProfit);
+  const retail = retailEnding(raw);
+  const confidence: Recommendation["confidence"] = claimLimit > 0 && termMonths > 0 ? "High" : "Medium";
+
+  return {
+    retail,
+    markupPct: ((retail - cost) / cost) * 100,
+    grossProfit: retail - cost,
+    confidence,
+    reason: `${RECOMMENDATION_STRATEGIES[strategy].label} target uses ${multiplier.toFixed(2)}x cost with a ${fmt(profile.minProfit)} minimum gross profit${claimLimit ? ` for a ${fmt(claimLimit)} claim tier` : ""}.`,
+  };
+}
 
 // ─────────────────────── V2 parsing ───────────────────────
 
@@ -346,6 +445,7 @@ export default function ConfigurationPage() {
   const [editingCell, setEditingCell] = useState<{ kind: "cost" | "retail"; key: string } | null>(null);
   const [draftValue, setDraftValue] = useState("");
   const [bulkPercent, setBulkPercent] = useState("40");
+  const [recommendationStrategy, setRecommendationStrategy] = useState<RecommendationStrategy>("standard");
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
   const isAdmin = memberRole === "admin";
@@ -584,7 +684,7 @@ export default function ConfigurationPage() {
       return;
     }
     const factor = 1 + pct / 100;
-    const newRetail = overwriteAll ? {} : { ...retailMap };
+    const newRetail = { ...retailMap };
     let count = 0;
 
     const fill = (cost: any, key: string) => {
@@ -618,6 +718,55 @@ export default function ConfigurationPage() {
     toast({
       title: overwriteAll ? "All prices updated" : "Bulk markup applied",
       description: `${overwriteAll ? "Set" : "Filled"} ${count} cell${count !== 1 ? "s" : ""} to +${pct}% markup.`,
+    });
+  };
+
+  const applyRecommendedPricing = async (overwriteAll = false) => {
+    if (!currentTier || !selectedProductId) return;
+    const newRetail = { ...retailMap };
+    let count = 0;
+
+    const fill = (costValue: any, key: string, isBase: boolean, termIdx: number) => {
+      const effectiveCost = costMap[key] ?? costValue;
+      if (!isNumericCost(effectiveCost)) return;
+      if (!overwriteAll && newRetail[key] != null) return;
+
+      const rec = recommendRetail({
+        cost: effectiveCost,
+        isBase,
+        termMonths: currentTier.terms[termIdx]?.months,
+        claimLimit: isBase ? currentTier.perClaimAmount : undefined,
+        strategy: recommendationStrategy,
+      });
+      if (!rec) return;
+
+      newRetail[key] = rec.retail;
+      count++;
+    };
+
+    if (hasBands && currentTier.mileageBands) {
+      currentTier.mileageBands.forEach((band, bIdx) => {
+        currentTier.terms.forEach((_t, tIdx) => {
+          fill(band.values[tIdx], storageKey(bIdx, -1, tIdx), true, tIdx);
+        });
+      });
+      currentTier.rows.forEach((row, rIdx) => {
+        currentTier.terms.forEach((_t, tIdx) => {
+          fill(row.values[tIdx], storageKey(null, rIdx, tIdx), false, tIdx);
+        });
+      });
+    } else {
+      currentTier.rows.forEach((row, rIdx) => {
+        currentTier.terms.forEach((_t, tIdx) => {
+          fill(row.values[tIdx], storageKey(null, rIdx, tIdx), row.label === "Base Price", tIdx);
+        });
+      });
+    }
+
+    await persistRetail(selectedProductId, newRetail);
+    toast({
+      title: overwriteAll ? "Recommended prices applied" : "Empty prices filled",
+      description: `${RECOMMENDATION_STRATEGIES[recommendationStrategy].label} recommendations ${overwriteAll ? "updated" : "filled"} ${count} retail cell${count !== 1 ? "s" : ""}.`,
     });
   };
 
@@ -684,6 +833,13 @@ export default function ConfigurationPage() {
     const hasCustomCost = customCost != null;
     const hasCustom = customRetail != null;
     const markupPct = cost > 0 ? ((suggested - cost) / cost) * 100 : 0;
+    const recommendation = recommendRetail({
+      cost,
+      isBase: mr.isBase,
+      termMonths: currentTier?.terms[termIdx]?.months,
+      claimLimit: mr.isBase ? currentTier?.perClaimAmount : undefined,
+      strategy: recommendationStrategy,
+    });
     const isEditingCost = editingCell?.kind === "cost" && editingCell.key === key;
     const isEditingRetail = editingCell?.kind === "retail" && editingCell.key === key;
     const renderEditor = (kind: "cost" | "retail") => (
@@ -763,6 +919,16 @@ export default function ConfigurationPage() {
               </Button>
             )}
           </div>
+        )}
+        {isAdmin && recommendation && !hasCustom && !isEditingRetail && (
+          <button
+            type="button"
+            title={recommendation.reason}
+            className="w-fit rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 hover:bg-amber-100"
+            onClick={() => saveCell("retail", key, recommendation.retail)}
+          >
+            Rec {fmt(recommendation.retail)} · {recommendation.confidence}
+          </button>
         )}
       </div>
     );
@@ -1075,28 +1241,59 @@ export default function ConfigurationPage() {
                               )}
                             </div>
 
-                            {/* Bulk markup */}
+                            {/* Suggested retail + bulk markup */}
                             {isAdmin && (
-                              <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-sm flex-wrap">
-                                <Zap className="w-4 h-4 text-primary shrink-0" />
-                                <span className="text-sm font-semibold text-slate-700 whitespace-nowrap">Bulk markup</span>
-                                <div className="flex items-center gap-1.5">
-                                  <Input
-                                    type="number"
-                                    value={bulkPercent}
-                                    onChange={(e) => setBulkPercent(e.target.value)}
-                                    className="w-20 h-8 text-sm font-bold text-center border-slate-300"
-                                    min="0"
-                                    max="999"
-                                  />
-                                  <span className="text-sm font-bold text-slate-600">%</span>
+                              <div className="flex flex-wrap items-center justify-end gap-2">
+                                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 shadow-sm flex-wrap">
+                                  <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                                  <span className="text-sm font-semibold text-slate-700 whitespace-nowrap">Suggested retail</span>
+                                  <div className="flex items-center gap-1 rounded-md bg-white p-0.5 border border-amber-100">
+                                    {(Object.keys(RECOMMENDATION_STRATEGIES) as RecommendationStrategy[]).map((strategy) => (
+                                      <button
+                                        key={strategy}
+                                        type="button"
+                                        title={RECOMMENDATION_STRATEGIES[strategy].description}
+                                        onClick={() => setRecommendationStrategy(strategy)}
+                                        className={cn(
+                                          "h-7 rounded px-2 text-[11px] font-semibold transition-colors",
+                                          recommendationStrategy === strategy
+                                            ? "bg-amber-500 text-white"
+                                            : "text-slate-600 hover:bg-amber-100"
+                                        )}
+                                      >
+                                        {RECOMMENDATION_STRATEGIES[strategy].label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap bg-white" onClick={() => applyRecommendedPricing(false)}>
+                                    Fill empty
+                                  </Button>
+                                  <Button size="sm" className="h-8 text-xs px-3 whitespace-nowrap bg-amber-600 hover:bg-amber-700" onClick={() => applyRecommendedPricing(true)}>
+                                    Apply to all
+                                  </Button>
                                 </div>
-                                <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap" onClick={() => applyBulkMarkup(false)}>
-                                  Fill empty
-                                </Button>
-                                <Button size="sm" variant="default" className="h-8 text-xs px-3 whitespace-nowrap bg-primary hover:bg-primary/90" onClick={() => applyBulkMarkup(true)}>
-                                  Apply to all
-                                </Button>
+
+                                <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-sm flex-wrap">
+                                  <Zap className="w-4 h-4 text-primary shrink-0" />
+                                  <span className="text-sm font-semibold text-slate-700 whitespace-nowrap">Bulk markup</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <Input
+                                      type="number"
+                                      value={bulkPercent}
+                                      onChange={(e) => setBulkPercent(e.target.value)}
+                                      className="w-20 h-8 text-sm font-bold text-center border-slate-300"
+                                      min="0"
+                                      max="999"
+                                    />
+                                    <span className="text-sm font-bold text-slate-600">%</span>
+                                  </div>
+                                  <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap" onClick={() => applyBulkMarkup(false)}>
+                                    Fill empty
+                                  </Button>
+                                  <Button size="sm" variant="default" className="h-8 text-xs px-3 whitespace-nowrap bg-primary hover:bg-primary/90" onClick={() => applyBulkMarkup(true)}>
+                                    Apply to all
+                                  </Button>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -1166,7 +1363,7 @@ export default function ConfigurationPage() {
                           </div>
 
                           <p className="text-xs text-muted-foreground">
-                            Click either pencil to edit dealer cost or customer retail. Grey italic retail values show provider suggested retail until you save a custom price.
+                            Click either pencil to edit dealer cost or customer retail. Grey italic retail values show provider suggested retail until you save a custom price. Rec values are generated from dealer cost, term length, claim tier, and the selected margin profile.
                           </p>
                         </>
                       )}
