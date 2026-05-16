@@ -22,6 +22,7 @@ interface TeamMember {
   user_id: string;
   role: string;
   created_at: string;
+  source?: "dealership" | "legacy";
   profile?: { name: string; phone: string | null };
 }
 
@@ -43,6 +44,10 @@ function splitFullName(fullName: string) {
   return { firstName, lastName };
 }
 
+function normalizeMemberRole(role: string) {
+  return role === "DEALER_ADMIN" || role === "admin" ? "admin" : "employee";
+}
+
 export default function TeamManagementPage() {
   const { dealershipId, memberRole, loading: dLoading } = useDealership();
   const { user } = useAuth();
@@ -57,6 +62,83 @@ export default function TeamManagementPage() {
 
   const isAdmin = memberRole === "admin";
 
+  const enrichMembers = async (rows: TeamMember[]) => {
+    if (rows.length === 0) {
+      setMembers([]);
+      return;
+    }
+
+    const userIds = rows.map((m) => m.user_id).filter(Boolean);
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, email, display_name, first_name, last_name, phone")
+      .in("id", userIds);
+
+    const profileMap: Record<string, any> = {};
+    (profiles || []).forEach((p: any) => { profileMap[p.id] = p; });
+
+    setMembers(rows.map((m) => ({
+      ...m,
+      profile: {
+        name:
+          profileMap[m.user_id]?.display_name ||
+          [profileMap[m.user_id]?.first_name, profileMap[m.user_id]?.last_name].filter(Boolean).join(" ") ||
+          profileMap[m.user_id]?.email ||
+          "Unknown",
+        phone: profileMap[m.user_id]?.phone ?? null,
+      },
+    })));
+  };
+
+  const fetchMembers = async () => {
+    if (!dealershipId) return;
+
+    const { data: dealershipRows } = await supabase
+      .from("dealership_members")
+      .select("id, user_id, role, created_at")
+      .eq("dealership_id", dealershipId)
+      .order("created_at");
+
+    const rows: TeamMember[] = ((dealershipRows || []) as any[]).map((m) => ({
+      id: m.id,
+      user_id: m.user_id,
+      role: normalizeMemberRole(m.role),
+      created_at: m.created_at,
+      source: "dealership",
+    }));
+    const seenUserIds = new Set(rows.map((m) => m.user_id));
+
+    const { data: dealership } = await supabase
+      .from("dealerships")
+      .select("legacy_dealer_id")
+      .eq("id", dealershipId)
+      .maybeSingle();
+    const legacyDealerId = (dealership as any)?.legacy_dealer_id;
+
+    if (legacyDealerId) {
+      const { data: legacyRows } = await supabase
+        .from("dealer_members")
+        .select("id, user_id, role, created_at")
+        .eq("dealer_id", legacyDealerId)
+        .order("created_at");
+
+      ((legacyRows || []) as any[]).forEach((m) => {
+        if (!m.user_id || seenUserIds.has(m.user_id)) return;
+        rows.push({
+          id: `legacy:${m.id}`,
+          user_id: m.user_id,
+          role: normalizeMemberRole(m.role),
+          created_at: m.created_at,
+          source: "legacy",
+        });
+        seenUserIds.add(m.user_id);
+      });
+    }
+
+    await enrichMembers(rows);
+    setLoading(false);
+  };
+
   useEffect(() => {
     if (!dealershipId) return;
 
@@ -65,38 +147,6 @@ export default function TeamManagementPage() {
       return;
     }
 
-    const fetchMembers = async () => {
-      const { data } = await supabase
-        .from("dealership_members")
-        .select("id, user_id, role, created_at")
-        .eq("dealership_id", dealershipId)
-        .order("created_at");
-
-      if (data && data.length > 0) {
-        const userIds = data.map((m: any) => m.user_id);
-        const { data: profiles } = await supabase
-          .from("profiles")
-          .select("id, email, display_name, first_name, last_name, phone")
-          .in("id", userIds);
-
-        const profileMap: Record<string, any> = {};
-        (profiles || []).forEach((p: any) => { profileMap[p.id] = p; });
-
-        const enriched = data.map((m: any) => ({
-          ...m,
-          profile: {
-            name:
-              profileMap[m.user_id]?.display_name ||
-              [profileMap[m.user_id]?.first_name, profileMap[m.user_id]?.last_name].filter(Boolean).join(" ") ||
-              profileMap[m.user_id]?.email ||
-              "Unknown",
-            phone: profileMap[m.user_id]?.phone ?? null,
-          },
-        }));
-        setMembers(enriched);
-      }
-      setLoading(false);
-    };
     fetchMembers();
   }, [dealershipId, user]);
 
@@ -106,6 +156,7 @@ export default function TeamManagementPage() {
     try {
       const email = newMember.email.trim().toLowerCase();
       const { firstName, lastName } = splitFullName(newMember.full_name);
+      const phone = newMember.phone.trim();
       if (!firstName) throw new Error("Full name is required");
       if (!lastName) throw new Error("Please enter first and last name");
 
@@ -123,31 +174,8 @@ export default function TeamManagementPage() {
             },
             { onConflict: "user_id,dealership_id" },
           );
-        if (membershipError) throw membershipError;
-      };
-
-      const refreshMembers = async () => {
-        const { data: updatedMembers } = await supabase
-          .from("dealership_members")
-          .select("id, user_id, role, created_at")
-          .eq("dealership_id", dealershipId)
-          .order("created_at");
-        if (updatedMembers) {
-          const userIds = updatedMembers.map((m: any) => m.user_id);
-          const { data: profiles } = await supabase.from("profiles").select("id, email, display_name, first_name, last_name, phone").in("id", userIds);
-          const profileMap: Record<string, any> = {};
-          (profiles || []).forEach((p: any) => { profileMap[p.id] = p; });
-          setMembers(updatedMembers.map((m: any) => ({
-            ...m,
-            profile: {
-              name:
-                profileMap[m.user_id]?.display_name ||
-                [profileMap[m.user_id]?.first_name, profileMap[m.user_id]?.last_name].filter(Boolean).join(" ") ||
-                profileMap[m.user_id]?.email ||
-                "Unknown",
-              phone: profileMap[m.user_id]?.phone ?? null,
-            },
-          })));
+        if (membershipError) {
+          console.warn("Could not create dealership_members compatibility link", membershipError);
         }
       };
 
@@ -158,7 +186,7 @@ export default function TeamManagementPage() {
           employee: {
             firstName,
             lastName,
-            phone: newMember.phone.trim() || undefined,
+            phone: phone || undefined,
             email,
             password: fallbackTemporaryPassword,
             role,
@@ -181,12 +209,8 @@ export default function TeamManagementPage() {
         toast({ title: "Member Linked", description: `${email} has been linked to this dealership.` });
         setDialogOpen(false);
         setNewMember({ email: "", full_name: "", phone: "", role: "employee" });
-        await refreshMembers();
+        await fetchMembers();
         return;
-      }
-
-      if (response.userId) {
-        await linkDealershipMembership(response.userId);
       }
 
       toast({ title: "Member Added", description: `${email} has been added to the team.` });
@@ -194,7 +218,35 @@ export default function TeamManagementPage() {
       setPasswordCopied(false);
       setDialogOpen(false);
       setNewMember({ email: "", full_name: "", phone: "", role: "employee" });
-      await refreshMembers();
+
+      if (response.userId) {
+        const appendPendingMember = () => {
+          setMembers((prev) => {
+            if (prev.some((member) => member.user_id === response.userId)) return prev;
+            return [
+              ...prev,
+              {
+                id: `pending:${response.userId}`,
+                user_id: response.userId,
+                role: normalizeMemberRole(role),
+                created_at: new Date().toISOString(),
+                source: "dealership",
+                profile: {
+                  name: `${firstName} ${lastName}`.trim() || email,
+                  phone: phone || null,
+                },
+              },
+            ];
+          });
+        };
+
+        appendPendingMember();
+        await linkDealershipMembership(response.userId);
+        await fetchMembers();
+        appendPendingMember();
+      } else {
+        await fetchMembers();
+      }
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Could not add member.", variant: "destructive" });
     } finally {

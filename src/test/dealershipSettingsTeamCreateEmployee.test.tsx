@@ -8,8 +8,11 @@ import TeamManagementPage from "../pages/dealership/settings/TeamManagementPage"
 import { invokeEdgeFunction } from "../lib/supabase/functions";
 
 const toast = vi.fn();
-const dealershipMembersUpsert = vi.fn(() => Promise.resolve({ data: null, error: null }));
+const dealershipMembersUpsert = vi.fn(() => Promise.resolve({ data: null, error: null as Error | null }));
 let existingProfileByEmail: { id: string } | null = null;
+let dealershipById: { legacy_dealer_id: string | null } | null = null;
+let legacyMembers: any[] = [];
+let profilesById: any[] = [];
 
 vi.mock("../hooks/useDealership", () => ({
   useDealership: () => ({
@@ -62,7 +65,18 @@ function makeSupabaseChain(table: string) {
 
   if (table === "profiles") {
     chain.eq = vi.fn(() => chain);
+    chain.in = vi.fn(() => Promise.resolve({ data: profilesById, error: null }));
     chain.maybeSingle = vi.fn(() => Promise.resolve({ data: existingProfileByEmail, error: null }));
+  }
+
+  if (table === "dealerships") {
+    chain.eq = vi.fn(() => chain);
+    chain.maybeSingle = vi.fn(() => Promise.resolve({ data: dealershipById, error: null }));
+  }
+
+  if (table === "dealer_members") {
+    chain.eq = vi.fn(() => chain);
+    chain.order = vi.fn(() => Promise.resolve({ data: legacyMembers, error: null }));
   }
 
   return chain;
@@ -79,6 +93,9 @@ describe("dealership settings team creation", () => {
     toast.mockClear();
     dealershipMembersUpsert.mockClear();
     existingProfileByEmail = null;
+    dealershipById = null;
+    legacyMembers = [];
+    profilesById = [];
     vi.mocked(invokeEdgeFunction).mockClear();
   });
 
@@ -197,6 +214,79 @@ describe("dealership settings team creation", () => {
         { onConflict: "user_id,dealership_id" },
       );
     });
+  });
+
+  it("still shows the temporary password when browser membership linking is blocked", async () => {
+    dealershipMembersUpsert.mockResolvedValueOnce({ data: null, error: new Error("RLS denied") });
+    vi.mocked(invokeEdgeFunction).mockResolvedValueOnce({
+      dealerMemberId: "legacy-member-1",
+      userId: "employee-legacy-1",
+    });
+
+    const user = userEvent.setup();
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <TeamManagementPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /add member/i }));
+    await user.type(screen.getByPlaceholderText("team@example.com"), "blocked-link@example.com");
+    await user.type(screen.getByPlaceholderText("John Doe"), "Blocked Link");
+    await user.click(screen.getByRole("button", { name: /create employee/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Temporary password created")).toBeInTheDocument();
+    });
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Member Added" }));
+    expect(toast).not.toHaveBeenCalledWith(expect.objectContaining({ title: "Error" }));
+  });
+
+  it("shows legacy dealer members created by older deployed functions", async () => {
+    dealershipById = { legacy_dealer_id: "dealer-1" };
+    legacyMembers = [
+      {
+        id: "legacy-member-1",
+        user_id: "employee-legacy-1",
+        role: "DEALER_EMPLOYEE",
+        created_at: "2026-05-17T00:00:00.000Z",
+      },
+    ];
+    profilesById = [
+      {
+        id: "employee-legacy-1",
+        email: "elaidelossantos05@gmail.com",
+        display_name: "Elaide Lossantos",
+        first_name: "Elaide",
+        last_name: "Lossantos",
+        phone: null,
+      },
+    ];
+
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <TeamManagementPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Elaide Lossantos")).toBeInTheDocument();
+    expect(screen.getAllByText(/employee/i).length).toBeGreaterThan(0);
   });
 
   it("links an existing profile when the account was already created without a dealership membership", async () => {
