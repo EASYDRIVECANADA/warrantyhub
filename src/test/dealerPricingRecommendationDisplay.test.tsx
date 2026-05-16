@@ -55,7 +55,7 @@ const productRows = [
   },
 ];
 
-const pricingRows = [
+const defaultPricingRows = [
   {
     product_id: "product-1",
     dealer_cost: {},
@@ -64,6 +64,8 @@ const pricingRows = [
     sort_order: null,
   },
 ];
+
+let pricingRows = defaultPricingRows;
 
 function makeSupabaseChain(table: string) {
   const chain: Record<string, unknown> = {};
@@ -131,6 +133,8 @@ function renderPage() {
 describe("dealer pricing recommendation display", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    pricingRows = defaultPricingRows;
+    delete (window as any).__warrantyhub_confirm__;
   });
 
   it("keeps REC visible after a retail price has been applied", async () => {
@@ -156,5 +160,39 @@ describe("dealer pricing recommendation display", () => {
       expect(screen.getByText("$1,089")).toBeInTheDocument();
     });
     expect(screen.queryByText("$889")).not.toBeInTheDocument();
+  });
+
+  it("resets selected plan retail back to provider suggested retail", async () => {
+    pricingRows = [
+      {
+        product_id: "product-1",
+        dealer_cost: { "t0|m-|r0|term0": 199 },
+        retail_price: { "t0|m-|r0|term0": 999 },
+        confidentiality_enabled: true,
+        sort_order: null,
+      },
+    ];
+    (window as any).__warrantyhub_confirm__ = vi.fn().mockResolvedValue(true);
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: /provider one/i }));
+    await user.click(await screen.findByRole("button", { name: /test warranty/i }));
+
+    expect(await screen.findByText("$999")).toBeInTheDocument();
+    expect(screen.getByText("Cost $199")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /reset retail/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("$889")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("$999")).not.toBeInTheDocument();
+    expect(screen.getByText("Cost $199")).toBeInTheDocument();
+    expect((window as any).__warrantyhub_confirm__).toHaveBeenCalledWith(
+      "Reset retail prices for this plan back to provider suggested retail?",
+      "Reset retail pricing",
+    );
   });
 });

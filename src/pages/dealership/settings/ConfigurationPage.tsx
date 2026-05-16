@@ -12,9 +12,9 @@ import { useDealership } from "../../../hooks/useDealership";
 import { useToast } from "../../../hooks/use-toast";
 import {
   Settings2, DollarSign, Pencil, Check, X, ChevronRight, ChevronLeft,
-  Search, Package, Zap, Building2, Shield, GripVertical, Sparkles,
+  Search, Package, Zap, Building2, Shield, GripVertical, Sparkles, RotateCcw,
 } from "lucide-react";
-import { cn } from "../../../lib/utils";
+import { cn, confirmProceed } from "../../../lib/utils";
 import { compareProductsByConfiguredOrder } from "../../../lib/products/defaultProductOrder";
 import {
   cellKey as sharedCellKey,
@@ -770,6 +770,30 @@ export default function ConfigurationPage() {
     });
   };
 
+  const resetSelectedPlanRetail = async () => {
+    if (!selectedProductId) return;
+
+    const confirmed = await confirmProceed(
+      "Reset retail prices for this plan back to provider suggested retail?",
+      "Reset retail pricing",
+    );
+    if (!confirmed) return;
+
+    try {
+      await persistRetail(selectedProductId, {});
+      toast({
+        title: "Retail prices reset",
+        description: "Custom retail prices were cleared for this plan.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Could not reset retail prices",
+        description: err?.message || "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleToggleConfidentiality = async (enabled: boolean) => {
     setConfidentialityEnabled(enabled);
     if (dealershipId) {
@@ -1275,6 +1299,10 @@ export default function ConfigurationPage() {
                                   </Button>
                                   <Button size="sm" className="h-8 text-xs px-3 whitespace-nowrap bg-amber-600 hover:bg-amber-700" onClick={() => applyRecommendedPricing(true)}>
                                     Apply to all
+                                  </Button>
+                                  <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap bg-white" onClick={resetSelectedPlanRetail}>
+                                    <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                                    Reset retail
                                   </Button>
                                 </div>
 
