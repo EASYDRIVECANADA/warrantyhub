@@ -88,7 +88,12 @@ BEGIN
     status = excluded.status,
     updated_at = now();
 
-  DELETE FROM public.products WHERE provider_entity_id = v_eid;
+  DELETE FROM public.products
+  WHERE id IN (
+    '219e737e-f7d0-4362-a8ea-c1d3aedf3aeb',
+    'c8f4b556-8d68-4c8e-87dd-e3940edc6836',
+    '6d8f5c3d-0b37-46a5-b582-8d7b0d8072bb'
+  );
 
   INSERT INTO public.products (
     id,
