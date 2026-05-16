@@ -920,14 +920,19 @@ export default function ConfigurationPage() {
             )}
           </div>
         )}
-        {isAdmin && recommendation && !hasCustom && !isEditingRetail && (
+        {isAdmin && recommendation && !isEditingRetail && (
           <button
             type="button"
             title={recommendation.reason}
-            className="w-fit rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 hover:bg-amber-100"
+            className={cn(
+              "w-fit rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
+              hasCustom && recommendation.retail === suggested
+                ? "bg-green-50 text-green-700"
+                : "bg-amber-50 text-amber-700 hover:bg-amber-100"
+            )}
             onClick={() => saveCell("retail", key, recommendation.retail)}
           >
-            Rec {fmt(recommendation.retail)} · {recommendation.confidence}
+            REC {fmt(recommendation.retail)} · {recommendation.confidence}
           </button>
         )}
       </div>
@@ -1363,7 +1368,7 @@ export default function ConfigurationPage() {
                           </div>
 
                           <p className="text-xs text-muted-foreground">
-                            Click either pencil to edit dealer cost or customer retail. Grey italic retail values show provider suggested retail until you save a custom price. Rec values are generated from dealer cost, term length, claim tier, and the selected margin profile.
+                            Click either pencil to edit dealer cost or customer retail. Grey italic retail values show provider suggested retail until you save a custom price. REC values update with the selected margin profile and can be clicked to apply that suggested retail to one cell.
                           </p>
                         </>
                       )}
