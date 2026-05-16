@@ -10,6 +10,7 @@ import { supabase } from "../../integrations/supabase/client";
 import { useDealership } from "../../hooks/useDealership";
 import { buildBasePricingRows, resolveCustomerRetailNumber } from "../../lib/pricing/dealerPricing";
 import { compareProductsByConfiguredOrder } from "../../lib/products/defaultProductOrder";
+import { PRODUCT_TYPE_FILTERS, matchesProductTypeFilter } from "../../lib/products/productTypeFilters";
 
 interface VehicleInfo {
   year: number | null;
@@ -34,17 +35,6 @@ interface Product {
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────
-
-const PRODUCT_TYPE_FILTERS = [
-  { value: "VSC", label: "Extended Warranty", aliases: ["VSC", "EXTENDED_WARRANTY", "warranty"] },
-  { value: "GAP", label: "Gap Insurance", aliases: ["GAP"] },
-  { value: "Tire & Rim", label: "Tire and Rim", aliases: ["Tire & Rim", "TIRE_RIM", "tire_rim"] },
-];
-
-const matchesProductTypeFilter = (productType: string, selectedType: string) => {
-  const filter = PRODUCT_TYPE_FILTERS.find((item) => item.value === selectedType);
-  return filter ? filter.aliases.includes(productType) : true;
-};
 
 const getMinPrice = (pricing: any): number | null => {
   if (!pricing) return null;
@@ -434,9 +424,21 @@ export default function FindProductsPage() {
         <div className="border-b bg-card/50 sticky top-0 z-40">
           <div className="px-6 md:px-8 py-3 flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-1 overflow-x-auto">
+              {PRODUCT_TYPE_FILTERS.map((type) => (
+                <button
+                  key={type.value}
+                  onClick={() => setSelectedType(type.value)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${selectedType === type.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+                >
+                  {type.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-1 overflow-x-auto">
               <button
                 onClick={() => setSelectedProvider("all")}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${selectedProvider === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${selectedProvider === "all" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
               >
                 All Providers
               </button>
@@ -444,29 +446,16 @@ export default function FindProductsPage() {
                 <button
                   key={prov}
                   onClick={() => setSelectedProvider(prov)}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${selectedProvider === prov ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${selectedProvider === prov ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
                 >
                   {prov}
                 </button>
               ))}
             </div>
 
-            <div className="flex items-center gap-2 ml-auto">
-              <div className="flex items-center gap-1">
-                {PRODUCT_TYPE_FILTERS.map((type) => (
-                  <button
-                    key={type.value}
-                    onClick={() => setSelectedType(type.value)}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${selectedType === type.value ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                  >
-                    {type.label}
-                  </button>
-                ))}
-              </div>
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input placeholder="Search plans..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-44 h-8 pl-8 text-sm" />
-              </div>
+            <div className="relative ml-auto">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input placeholder="Search plans..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-44 h-8 pl-8 text-sm" />
             </div>
           </div>
         </div>
