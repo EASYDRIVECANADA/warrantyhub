@@ -343,7 +343,8 @@ export default function TeamManagementPage() {
       });
     } catch (err: any) {
       const message = err instanceof Error ? err.message : String(err ?? "");
-      if (message.toLowerCase().includes("unsupported action")) {
+      const lowerMessage = message.toLowerCase();
+      if (lowerMessage.includes("unsupported action") || lowerMessage.includes("password is required")) {
         const temporaryPassword = generateTemporaryPassword();
         setPasswordCopied(false);
         setCreatedCredentials({

@@ -502,7 +502,9 @@ describe("dealership settings team creation", () => {
     expect(screen.getByDisplayValue("NewTempPass123!")).toBeInTheDocument();
   });
 
-  it("shows a copyable temporary code when deployed function does not support password generation yet", async () => {
+  it.each(["Unsupported action", "password is required"])(
+    "shows a copyable temporary code when deployed function returns %s",
+    async (edgeErrorMessage) => {
     dealershipById = { legacy_dealer_id: "dealer-1" };
     legacyMembers = [
       {
@@ -522,7 +524,7 @@ describe("dealership settings team creation", () => {
         phone: null,
       },
     ];
-    vi.mocked(invokeEdgeFunction).mockRejectedValueOnce(new Error("Unsupported action"));
+    vi.mocked(invokeEdgeFunction).mockRejectedValueOnce(new Error(edgeErrorMessage));
 
     const user = userEvent.setup();
     const client = new QueryClient({
