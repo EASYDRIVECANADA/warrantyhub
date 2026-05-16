@@ -48,6 +48,10 @@ function normalizeMemberRole(role: string) {
   return role === "DEALER_ADMIN" || role === "admin" ? "admin" : "employee";
 }
 
+function formatMemberRole(role: string) {
+  return role === "admin" ? "Admin" : "Employee";
+}
+
 export default function TeamManagementPage() {
   const { dealershipId, memberRole, loading: dLoading } = useDealership();
   const { user } = useAuth();
@@ -329,13 +333,20 @@ export default function TeamManagementPage() {
         </div>
 
         {/* Members Table */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Team Members</CardTitle>
+        <Card className="overflow-visible rounded-lg">
+          <CardHeader className="flex flex-row items-start justify-between gap-4 border-b px-6 py-5">
+            <div className="space-y-1">
+              <CardTitle className="text-base">Team Members</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Manage dealership access and staff permissions.
+              </p>
+            </div>
             {isAdmin && (
               <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button size="sm"><Plus className="w-4 h-4 mr-1" /> Add Member</Button>
+                  <Button size="sm" className="shrink-0 gap-2">
+                    <Plus className="w-4 h-4" /> Add Member
+                  </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
@@ -375,47 +386,66 @@ export default function TeamManagementPage() {
               </Dialog>
             )}
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-6 pb-6 pt-0">
             {loading ? (
               <div className="flex justify-center py-8">
                 <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
               </div>
+            ) : members.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12 text-center">
+                <Users className="h-8 w-8 text-muted-foreground" />
+                <p className="mt-3 text-sm font-medium">No team members yet</p>
+                <p className="mt-1 text-sm text-muted-foreground">Add an employee to give them dealership access.</p>
+              </div>
             ) : (
-              <Table>
-                <TableHeader>
+              <div className="overflow-visible">
+                <Table className="min-w-[820px]">
+                <TableHeader className="bg-muted/40">
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Phone</TableHead>
-                    <TableHead>Joined</TableHead>
-                    {isAdmin && <TableHead>Actions</TableHead>}
+                    <TableHead className="w-[38%] px-4">Name</TableHead>
+                    <TableHead className="w-[16%] px-4">Role</TableHead>
+                    <TableHead className="w-[18%] px-4">Phone</TableHead>
+                    <TableHead className="w-[16%] px-4">Joined</TableHead>
+                    {isAdmin && <TableHead className="w-[12%] px-4 text-right">Access</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {members.map((m) => (
-                    <TableRow key={m.id}>
-                      <TableCell>
+                    <TableRow key={m.id} className="hover:bg-muted/30">
+                      <TableCell className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                          <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
                             <span className="text-xs font-bold text-primary">
                               {(m.profile?.name || "?").charAt(0).toUpperCase()}
                             </span>
                           </div>
-                          <span className="font-medium">{m.profile?.name || "Unknown"}</span>
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">{m.profile?.name || "Unknown"}</div>
+                            {m.source === "legacy" && (
+                              <div className="mt-0.5 text-xs text-muted-foreground">Synced from dealer account</div>
+                            )}
+                          </div>
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <Badge variant={m.role === "admin" ? "default" : "secondary"} className="capitalize">{m.role}</Badge>
+                      <TableCell className="px-4 py-3">
+                        <Badge
+                          variant={m.role === "admin" ? "default" : "secondary"}
+                          className="min-w-20 justify-center rounded-md px-2.5 py-1"
+                        >
+                          {formatMemberRole(m.role)}
+                        </Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{m.profile?.phone || "—"}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
+                      <TableCell className="px-4 py-3 text-sm text-muted-foreground">{m.profile?.phone || "Not provided"}</TableCell>
+                      <TableCell className="px-4 py-3 text-sm text-muted-foreground">
                         {format(new Date(m.created_at), "MMM d, yyyy")}
                       </TableCell>
                       {isAdmin && (
-                        <TableCell>
+                        <TableCell className="px-4 py-3">
                           <Select value={m.role} onValueChange={(v) => handleRoleChange(m.id, m.user_id, v)}>
-                            <SelectTrigger className="w-28 h-8"><SelectValue /></SelectTrigger>
-                            <SelectContent>
+                            <SelectTrigger className="ml-auto h-9 w-32 bg-background">
+                              <SelectValue labels={{ admin: "Admin", employee: "Employee" }} />
+                            </SelectTrigger>
+                            <SelectContent className="w-32">
                               <SelectItem value="admin">Admin</SelectItem>
                               <SelectItem value="employee">Employee</SelectItem>
                             </SelectContent>
@@ -425,7 +455,8 @@ export default function TeamManagementPage() {
                     </TableRow>
                   ))}
                 </TableBody>
-              </Table>
+                </Table>
+              </div>
             )}
           </CardContent>
         </Card>
