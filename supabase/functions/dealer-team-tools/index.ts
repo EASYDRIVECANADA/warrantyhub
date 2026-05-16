@@ -129,10 +129,30 @@ async function assertDealerAdmin(jwt: string) {
   const dealerId = safeTrim(m?.dealer_id);
   const role = safeTrim(m?.role);
 
-  if (!dealerId) throw new HttpError(403, "No dealership assigned");
-  if (role !== "DEALER_ADMIN") throw new HttpError(403, "Forbidden");
+  if (dealerId && role === "DEALER_ADMIN") {
+    const ds = await svc.from("dealerships").select("id").eq("legacy_dealer_id", dealerId).maybeSingle();
+    if (ds.error) throw new Error(ds.error.message);
+    return { svc, dealerId, dealershipId: safeTrim((ds.data as any)?.id), userId };
+  }
 
-  return { svc, dealerId, userId };
+  const dealershipMembership = await svc
+    .from("dealership_members")
+    .select("dealership_id, role")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (dealershipMembership.error) throw new Error(dealershipMembership.error.message);
+  const dm = dealershipMembership.data as any;
+  const dealershipId = safeTrim(dm?.dealership_id);
+  const dealershipRole = safeTrim(dm?.role);
+
+  if (!dealerId && !dealershipId) throw new HttpError(403, "No dealership assigned");
+  if (dealershipRole !== "admin") throw new HttpError(403, "Forbidden");
+
+  const ds = await svc.from("dealerships").select("legacy_dealer_id").eq("id", dealershipId).maybeSingle();
+  if (ds.error) throw new Error(ds.error.message);
+
+  return { svc, dealerId: safeTrim((ds.data as any)?.legacy_dealer_id), dealershipId, userId };
 }
 
 Deno.serve(async (req: Request) => {
@@ -143,7 +163,7 @@ Deno.serve(async (req: Request) => {
     const jwt = getJwt(req);
     if (!jwt) return json(401, { error: "Missing Authorization bearer token" });
 
-    const { svc, dealerId } = await assertDealerAdmin(jwt);
+    const { svc, dealerId, dealershipId } = await assertDealerAdmin(jwt);
 
     const body = (await req.json()) as Partial<Body>;
     const action = (body as any)?.action as Action | undefined;
@@ -179,9 +199,17 @@ Deno.serve(async (req: Request) => {
       const newUserId = (created.data as any)?.user?.id ?? "";
       if (!newUserId) return json(500, { error: "Failed to create user" });
 
-      const dealerRow = await svc.from("dealers").select("name").eq("id", dealerId).maybeSingle();
-      if (dealerRow.error) return json(500, { error: dealerRow.error.message });
-      const dealerName = safeTrim((dealerRow.data as any)?.name) || null;
+      let dealerName: string | null = null;
+      if (dealershipId) {
+        const dealershipRow = await svc.from("dealerships").select("name").eq("id", dealershipId).maybeSingle();
+        if (dealershipRow.error) return json(500, { error: dealershipRow.error.message });
+        dealerName = safeTrim((dealershipRow.data as any)?.name) || null;
+      }
+      if (!dealerName && dealerId) {
+        const dealerRow = await svc.from("dealers").select("name").eq("id", dealerId).maybeSingle();
+        if (dealerRow.error) return json(500, { error: dealerRow.error.message });
+        dealerName = safeTrim((dealerRow.data as any)?.name) || null;
+      }
 
       const profUpsert = await svc
         .from("profiles")
@@ -201,24 +229,48 @@ Deno.serve(async (req: Request) => {
         );
       if (profUpsert.error) return json(500, { error: profUpsert.error.message });
 
-      const memberUpsert = await svc
-        .from("dealer_members")
-        .upsert(
-          {
-            dealer_id: dealerId,
-            user_id: newUserId,
-            role,
-            status: "ACTIVE",
-          } as any,
-          { onConflict: "dealer_id,user_id" },
-        )
-        .select("id")
-        .single();
+      let dealerMemberId: string | null = null;
+      if (dealerId) {
+        const memberUpsert = await svc
+          .from("dealer_members")
+          .upsert(
+            {
+              dealer_id: dealerId,
+              user_id: newUserId,
+              role,
+              status: "ACTIVE",
+            } as any,
+            { onConflict: "dealer_id,user_id" },
+          )
+          .select("id")
+          .single();
 
-      if (memberUpsert.error) return json(400, { error: memberUpsert.error.message });
+        if (memberUpsert.error) return json(400, { error: memberUpsert.error.message });
+        dealerMemberId = (memberUpsert.data as any)?.id ?? null;
+      }
+
+      if (dealershipId) {
+        const dealershipRole = role === "DEALER_ADMIN" ? "admin" : "employee";
+        const dealershipMemberUpsert = await svc
+          .from("dealership_members")
+          .upsert(
+            {
+              dealership_id: dealershipId,
+              user_id: newUserId,
+              role: dealershipRole,
+            } as any,
+            { onConflict: "user_id,dealership_id" },
+          );
+
+        if (dealershipMemberUpsert.error) return json(400, { error: dealershipMemberUpsert.error.message });
+      }
+
+      const v2Role = role === "DEALER_ADMIN" ? "dealership_admin" : "dealership_employee";
+      const userRoleUpsert = await svc.from("user_roles").upsert({ user_id: newUserId, role: v2Role } as any, { onConflict: "user_id,role" });
+      if (userRoleUpsert.error) return json(400, { error: userRoleUpsert.error.message });
 
       return json(200, {
-        dealerMemberId: (memberUpsert.data as any)?.id ?? null,
+        dealerMemberId,
         userId: newUserId,
         temporaryPassword,
       });
