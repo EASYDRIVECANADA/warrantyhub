@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Users, UserPlus, Shield, UserCheck, UserX, Mail, Phone, Lock, User, Plus, Pencil, Loader2 } from "lucide-react";
+import { Check, Copy, Users, UserPlus, Shield, UserCheck, UserX, Mail, Phone, User, Plus, Pencil, Loader2 } from "lucide-react";
 
 import { Button } from "../components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { PageShell } from "../components/PageShell";
 import { logAuditEvent } from "../lib/auditLog";
@@ -68,9 +69,18 @@ type DealerTeamEmployeeDraft = {
   lastName: string;
   phone: string;
   email: string;
-  password: string;
-  password2: string;
   role: DealerTeamRole;
+};
+
+type CreatedEmployeeCredentials = {
+  email: string;
+  temporaryPassword: string;
+};
+
+type CreateEmployeeResponse = {
+  dealerMemberId: string | null;
+  userId: string;
+  temporaryPassword: string;
 };
 
 function read(): DealerTeamMember[] {
@@ -129,14 +139,27 @@ function statusLabel(s: DealerTeamStatus) {
   return "Invited";
 }
 
-function validatePassword(password: string): { valid: boolean; errors: string[] } {
-  const errors: string[] = [];
-  if (password.length < 8) errors.push("At least 8 characters");
-  if (!/[A-Z]/.test(password)) errors.push("At least 1 uppercase letter");
-  if (!/[a-z]/.test(password)) errors.push("At least 1 lowercase letter");
-  if (!/[0-9]/.test(password)) errors.push("At least 1 number");
-  if (!/[!@#$%^&*()_+=[\]{};':"\\|,.<>/?-]/.test(password)) errors.push("At least 1 special character");
-  return { valid: errors.length === 0, errors };
+function generateLocalTemporaryPassword() {
+  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const lower = "abcdefghijkmnopqrstuvwxyz";
+  const digits = "23456789";
+  const symbols = "!@#$%^&*";
+  const all = `${upper}${lower}${digits}${symbols}`;
+  const pick = (chars: string) => chars[Math.floor(Math.random() * chars.length)]!;
+  const chars = [pick(upper), pick(lower), pick(digits), pick(symbols)];
+
+  while (chars.length < 16) {
+    chars.push(pick(all));
+  }
+
+  for (let i = chars.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = chars[i]!;
+    chars[i] = chars[j]!;
+    chars[j] = tmp;
+  }
+
+  return chars.join("");
 }
 
 export function DealerTeamPage() {
@@ -200,10 +223,10 @@ export function DealerTeamPage() {
     lastName: "",
     phone: "",
     email: "",
-    password: "",
-    password2: "",
     role: "DEALER_EMPLOYEE",
   });
+  const [createdCredentials, setCreatedCredentials] = useState<CreatedEmployeeCredentials | null>(null);
+  const [passwordCopied, setPasswordCopied] = useState(false);
 
   const listQuery = useQuery({
     queryKey: ["dealer-team", mode, dealerId],
@@ -258,17 +281,13 @@ export function DealerTeamPage() {
       const lastName = draft.lastName.trim();
       const phone = draft.phone.trim();
       const email = normalizeEmail(draft.email);
-      const password = draft.password;
 
       if (!firstName) throw new Error("First Name is required");
       if (!lastName) throw new Error("Last Name is required");
       if (!email) throw new Error("Email is required");
-      if (!password) throw new Error("Password is required");
-      const pwValidation = validatePassword(password);
-      if (!pwValidation.valid) throw new Error(`Password requirements not met: ${pwValidation.errors.join(", ")}`);
-      if (password !== draft.password2) throw new Error("Passwords do not match");
 
       if (mode === "local") {
+        const temporaryPassword = generateLocalTemporaryPassword();
         const items = read();
         const next: DealerTeamMember = {
           id: crypto.randomUUID(),
@@ -285,7 +304,7 @@ export function DealerTeamPage() {
           {
             id: crypto.randomUUID(),
             email,
-            password,
+            password: temporaryPassword,
             role: draft.role,
             dealerId,
             companyName: "",
@@ -305,17 +324,16 @@ export function DealerTeamPage() {
           message: `Added ${email}`,
         });
 
-        return;
+        return { email, temporaryPassword };
       }
 
-      await invokeEdgeFunction<{ dealerMemberId: string | null; userId: string }>("dealer-team-tools", {
+      const response = await invokeEdgeFunction<CreateEmployeeResponse>("dealer-team-tools", {
         action: "create_employee",
         employee: {
           firstName,
           lastName,
           phone: phone || undefined,
           email,
-          password,
           role: draft.role,
         },
       });
@@ -330,12 +348,17 @@ export function DealerTeamPage() {
         entityId: "",
         message: `Added ${email}`,
       });
+
+      return { email, temporaryPassword: response.temporaryPassword };
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       setEditingDealerMemberId(null);
       setShowAddForm(false);
-      
-      setDraft({ firstName: "", lastName: "", phone: "", email: "", password: "", password2: "", role: "DEALER_EMPLOYEE" });
+      setDraft({ firstName: "", lastName: "", phone: "", email: "", role: "DEALER_EMPLOYEE" });
+      setPasswordCopied(false);
+      if (result?.temporaryPassword) {
+        setCreatedCredentials({ email: result.email, temporaryPassword: result.temporaryPassword });
+      }
       await qc.invalidateQueries({ queryKey: ["dealer-team"] });
     },
     onError: (e) => {
@@ -359,15 +382,10 @@ export function DealerTeamPage() {
       const lastName = draft.lastName.trim();
       const phone = draft.phone.trim();
       const email = normalizeEmail(draft.email);
-      const password = draft.password;
 
       if (!firstName) throw new Error("First Name is required");
       if (!lastName) throw new Error("Last Name is required");
       if (!email) throw new Error("Email is required");
-      if (!password) throw new Error("Password is required");
-      const pwValidation = validatePassword(password);
-      if (!pwValidation.valid) throw new Error(`Password requirements not met: ${pwValidation.errors.join(", ")}`);
-      if (password !== draft.password2) throw new Error("Passwords do not match");
 
       if (mode === "local") {
         const items = read();
@@ -388,7 +406,6 @@ export function DealerTeamPage() {
           lastName,
           phone: phone || undefined,
           email,
-          password,
           role: draft.role,
         },
       });
@@ -396,8 +413,7 @@ export function DealerTeamPage() {
     onSuccess: async () => {
       setEditingDealerMemberId(null);
       setShowAddForm(false);
-      
-      setDraft({ firstName: "", lastName: "", phone: "", email: "", password: "", password2: "", role: "DEALER_EMPLOYEE" });
+      setDraft({ firstName: "", lastName: "", phone: "", email: "", role: "DEALER_EMPLOYEE" });
       await qc.invalidateQueries({ queryKey: ["dealer-team"] });
     },
     onError: (e) => {
@@ -553,7 +569,7 @@ export function DealerTeamPage() {
   const handleCancel = () => {
     setEditingDealerMemberId(null);
     setShowAddForm(false);
-    setDraft({ firstName: "", lastName: "", phone: "", email: "", password: "", password2: "", role: "DEALER_EMPLOYEE" });
+    setDraft({ firstName: "", lastName: "", phone: "", email: "", role: "DEALER_EMPLOYEE" });
     setError(null);
     
   };
@@ -566,8 +582,6 @@ export function DealerTeamPage() {
       lastName: m.lastName ?? "",
       phone: m.phone ?? "",
       email: m.email,
-      password: "",
-      password2: "",
       role: m.role,
     });
     setError(null);
@@ -591,6 +605,54 @@ export function DealerTeamPage() {
       subtitle="Manage your dealership employees and their access"
       badge="DEALER ADMIN"
     >
+      <Dialog
+        open={Boolean(createdCredentials)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCreatedCredentials(null);
+            setPasswordCopied(false);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Temporary password created</DialogTitle>
+            <DialogDescription>
+              This password is shown once. Share it securely with the employee.
+            </DialogDescription>
+          </DialogHeader>
+
+          {createdCredentials && (
+            <div className="space-y-4">
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <div className="text-xs font-medium text-muted-foreground">Employee</div>
+                <div className="mt-1 text-sm font-medium">{createdCredentials.email}</div>
+              </div>
+
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <div className="text-xs font-medium text-muted-foreground">Temporary password</div>
+                <div className="mt-2 flex items-center gap-2">
+                  <Input readOnly value={createdCredentials.temporaryPassword} className="font-mono" />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(createdCredentials.temporaryPassword).then(() => {
+                        setPasswordCopied(true);
+                      });
+                    }}
+                  >
+                    {passwordCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    {passwordCopied ? "Copied" : "Copy password"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {error && (
         <div className="mb-6 rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/30 p-4">
           <div className="flex items-center gap-3">
@@ -743,62 +805,10 @@ export function DealerTeamPage() {
                     className="bg-background/70"
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <div className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
-                    <Lock className="w-3.5 h-3.5" />
-                    Password
-                  </div>
-                  <Input
-                    type="password"
-                    value={draft.password}
-                    onChange={(e) => setDraft((p) => ({ ...p, password: e.target.value }))}
-                    placeholder="Enter password"
-                    className="bg-background/70"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <div className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
-                    <Lock className="w-3.5 h-3.5" />
-                    Confirm
-                  </div>
-                  <Input
-                    type="password"
-                    value={draft.password2}
-                    onChange={(e) => setDraft((p) => ({ ...p, password2: e.target.value }))}
-                    placeholder="Confirm password"
-                    className="bg-background/70"
-                  />
+                <div className="sm:col-span-2 rounded-lg border bg-background/60 px-4 py-3 text-xs text-muted-foreground">
+                  A temporary password will be generated after the employee is created.
                 </div>
               </div>
-
-              {draft.password && (
-                <div className="mt-3 p-3 rounded-lg bg-muted/50">
-                  <div className="text-xs text-muted-foreground font-medium mb-2">Password Requirements:</div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {[
-                      { label: "8+ characters", valid: draft.password.length >= 8 },
-                      { label: "Uppercase letter", valid: /[A-Z]/.test(draft.password) },
-                      { label: "Lowercase letter", valid: /[a-z]/.test(draft.password) },
-                      { label: "Number", valid: /[0-9]/.test(draft.password) },
-                      { label: "Special character", valid: /[!@#$%^&*()_+=[\]{};':"\\|,.<>/?-]/.test(draft.password) },
-                      { label: "Passwords match", valid: draft.password === draft.password2 && draft.password2 !== "" },
-                    ].map((req) => (
-                      <div key={req.label} className={`flex items-center gap-2 text-xs ${req.valid ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
-                        {req.valid ? (
-                          <div className="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                            <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                          </div>
-                        ) : (
-                          <div className="w-4 h-4 rounded-full bg-muted flex items-center justify-center">
-                            <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground" />
-                          </div>
-                        )}
-                        {req.label}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               <div className="flex items-center justify-end gap-3 mt-4">
                 <Button variant="outline" onClick={handleCancel} disabled={busy}>

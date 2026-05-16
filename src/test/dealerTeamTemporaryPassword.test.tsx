@@ -71,7 +71,7 @@ describe("DealerTeamPage temporary password flow", () => {
       expect(screen.getByText("Temporary password created")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("employee@example.com")).toBeInTheDocument();
+    expect(screen.getAllByText("employee@example.com").length).toBeGreaterThan(0);
     expect(screen.getByText("This password is shown once. Share it securely with the employee.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /copy password/i })).toBeInTheDocument();
   });
