@@ -21,7 +21,6 @@ type Body =
         lastName: string;
         phone?: string;
         email: string;
-        password: string;
         role: "DEALER_ADMIN" | "DEALER_EMPLOYEE";
       };
     }
@@ -33,7 +32,6 @@ type Body =
         lastName: string;
         phone?: string;
         email: string;
-        password: string;
         role: "DEALER_ADMIN" | "DEALER_EMPLOYEE";
       };
     }
@@ -67,6 +65,48 @@ function normalizeEmail(email: string) {
 function normalizeRole(role: string) {
   if (role === "DEALER_ADMIN" || role === "DEALER_EMPLOYEE") return role;
   return null;
+}
+
+const TEMP_PASSWORD_UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+const TEMP_PASSWORD_LOWER = "abcdefghijkmnopqrstuvwxyz";
+const TEMP_PASSWORD_DIGITS = "23456789";
+const TEMP_PASSWORD_SYMBOLS = "!@#$%^&*";
+const TEMP_PASSWORD_ALL = `${TEMP_PASSWORD_UPPER}${TEMP_PASSWORD_LOWER}${TEMP_PASSWORD_DIGITS}${TEMP_PASSWORD_SYMBOLS}`;
+
+function randomIndex(max: number) {
+  const values = new Uint32Array(1);
+  crypto.getRandomValues(values);
+  return values[0] % max;
+}
+
+function pickChar(chars: string) {
+  return chars[randomIndex(chars.length)]!;
+}
+
+function shuffleChars(chars: string[]) {
+  const next = [...chars];
+  for (let i = next.length - 1; i > 0; i -= 1) {
+    const j = randomIndex(i + 1);
+    const tmp = next[i]!;
+    next[i] = next[j]!;
+    next[j] = tmp;
+  }
+  return next;
+}
+
+function generateTemporaryPassword() {
+  const chars = [
+    pickChar(TEMP_PASSWORD_UPPER),
+    pickChar(TEMP_PASSWORD_LOWER),
+    pickChar(TEMP_PASSWORD_DIGITS),
+    pickChar(TEMP_PASSWORD_SYMBOLS),
+  ];
+
+  while (chars.length < 16) {
+    chars.push(pickChar(TEMP_PASSWORD_ALL));
+  }
+
+  return shuffleChars(chars).join("");
 }
 
 async function assertDealerAdmin(jwt: string) {
@@ -115,22 +155,27 @@ Deno.serve(async (req: Request) => {
       const lastName = safeTrim(e.lastName);
       const phone = safeTrim(e.phone) || null;
       const email = normalizeEmail(e.email);
-      const password = safeTrim(e.password);
+      const temporaryPassword = generateTemporaryPassword();
       const role = normalizeRole(safeTrim(e.role));
 
       if (!firstName) return json(400, { error: "firstName is required" });
       if (!lastName) return json(400, { error: "lastName is required" });
       if (!email) return json(400, { error: "email is required" });
-      if (!password) return json(400, { error: "password is required" });
       if (!role) return json(400, { error: "role is required" });
 
       const created = await svc.auth.admin.createUser({
         email,
-        password,
+        password: temporaryPassword,
         email_confirm: true,
       } as any);
 
-      if (created.error) return json(400, { error: created.error.message });
+      if (created.error) {
+        const rawMessage = created.error.message || "Could not create employee account";
+        const message = rawMessage.toLowerCase().includes("already")
+          ? "An account with this email already exists."
+          : rawMessage;
+        return json(400, { error: message });
+      }
       const newUserId = (created.data as any)?.user?.id ?? "";
       if (!newUserId) return json(500, { error: "Failed to create user" });
 
@@ -172,7 +217,11 @@ Deno.serve(async (req: Request) => {
 
       if (memberUpsert.error) return json(400, { error: memberUpsert.error.message });
 
-      return json(200, { dealerMemberId: (memberUpsert.data as any)?.id ?? null, userId: newUserId });
+      return json(200, {
+        dealerMemberId: (memberUpsert.data as any)?.id ?? null,
+        userId: newUserId,
+        temporaryPassword,
+      });
     }
 
     if (action === "update_employee") {
@@ -182,14 +231,12 @@ Deno.serve(async (req: Request) => {
       const lastName = safeTrim(e.lastName);
       const phone = safeTrim(e.phone) || null;
       const email = normalizeEmail(e.email);
-      const password = safeTrim(e.password);
       const role = normalizeRole(safeTrim(e.role));
 
       if (!dealerMemberId) return json(400, { error: "dealerMemberId is required" });
       if (!firstName) return json(400, { error: "firstName is required" });
       if (!lastName) return json(400, { error: "lastName is required" });
       if (!email) return json(400, { error: "email is required" });
-      if (!password) return json(400, { error: "password is required" });
       if (!role) return json(400, { error: "role is required" });
 
       const currentMember = await svc
@@ -208,7 +255,6 @@ Deno.serve(async (req: Request) => {
 
       const updUser = await svc.auth.admin.updateUserById(targetUserId, {
         email,
-        password,
       } as any);
       if (updUser.error) return json(400, { error: updUser.error.message });
 
