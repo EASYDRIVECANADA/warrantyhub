@@ -56,6 +56,14 @@ function formatMemberRole(role: string) {
   return role === "admin" ? "Admin" : "Employee";
 }
 
+function getEditableNameParts(name: string | undefined, email: string | undefined | null) {
+  const fallback = email?.split("@")[0]?.replace(/[._-]+/g, " ") || "Team Member";
+  const parts = (name && name !== "Unknown" ? name : fallback).trim().split(/\s+/).filter(Boolean);
+  const firstName = parts.shift() || "Team";
+  const lastName = parts.join(" ") || "Member";
+  return { firstName, lastName };
+}
+
 export default function TeamManagementPage() {
   const { dealershipId, memberRole, loading: dLoading } = useDealership();
   const { user } = useAuth();
@@ -265,28 +273,47 @@ export default function TeamManagementPage() {
     }
   };
 
-  const handleRoleChange = async (memberId: string, userId: string, newRole: string) => {
+  const handleRoleChange = async (member: TeamMember, newRole: string) => {
     if (!dealershipId) return;
     try {
-      const { error } = await supabase
-        .from("dealership_members")
-        .update({ role: newRole })
-        .eq("id", memberId);
+      if (member.source === "legacy" && member.id.startsWith("legacy:")) {
+        const dealerMemberId = member.id.replace(/^legacy:/, "");
+        const email = member.profile?.email;
+        if (!email) throw new Error("Member email is required to update role.");
 
-      if (error) throw error;
+        const { firstName, lastName } = getEditableNameParts(member.profile?.name, email);
+        await invokeEdgeFunction<{ ok: true }>("dealer-team-tools", {
+          action: "update_employee",
+          dealerMemberId,
+          employee: {
+            firstName,
+            lastName,
+            phone: member.profile?.phone || undefined,
+            email,
+            role: newRole === "admin" ? "DEALER_ADMIN" : "DEALER_EMPLOYEE",
+          },
+        });
+      } else {
+        const { error } = await supabase
+          .from("dealership_members")
+          .update({ role: newRole })
+          .eq("id", member.id);
+
+        if (error) throw error;
+      }
 
       // Also update user_roles
       const v2Role = newRole === "admin" ? "dealership_admin" : "dealership_employee";
       const oldRole = newRole === "admin" ? "dealership_employee" : "dealership_admin";
 
       // Remove old role, add new role
-      await supabase.from("user_roles").delete().eq("user_id", userId).eq("role", oldRole);
-      await supabase.from("user_roles").upsert({ user_id: userId, role: v2Role }, { onConflict: "user_id,role" });
+      await supabase.from("user_roles").delete().eq("user_id", member.user_id).eq("role", oldRole);
+      await supabase.from("user_roles").upsert({ user_id: member.user_id, role: v2Role }, { onConflict: "user_id,role" });
 
       // Update profile role
-      await supabase.from("profiles").update({ role: newRole === "admin" ? "DEALER_ADMIN" : "DEALER_EMPLOYEE" }).eq("id", userId);
+      await supabase.from("profiles").update({ role: newRole === "admin" ? "DEALER_ADMIN" : "DEALER_EMPLOYEE" }).eq("id", member.user_id);
 
-      setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, role: newRole } : m)));
+      setMembers((prev) => prev.map((m) => (m.id === member.id ? { ...m, role: newRole } : m)));
       toast({ title: "Role Updated", description: `Member role changed to ${newRole}.` });
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Could not update role.", variant: "destructive" });
@@ -500,7 +527,7 @@ export default function TeamManagementPage() {
                               <KeyRound className="h-4 w-4" />
                               {resettingPasswordUserId === m.user_id ? "Generating..." : "New password"}
                             </Button>
-                            <Select value={m.role} onValueChange={(v) => handleRoleChange(m.id, m.user_id, v)}>
+                            <Select value={m.role} onValueChange={(v) => handleRoleChange(m, v)}>
                               <SelectTrigger className="h-9 w-32 bg-background">
                                 <SelectValue labels={{ admin: "Admin", employee: "Employee" }} />
                               </SelectTrigger>

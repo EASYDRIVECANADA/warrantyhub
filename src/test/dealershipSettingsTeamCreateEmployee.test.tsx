@@ -289,6 +289,63 @@ describe("dealership settings team creation", () => {
     expect(screen.getAllByText(/employee/i).length).toBeGreaterThan(0);
   });
 
+  it("updates legacy dealer member roles without using the prefixed row id as a uuid", async () => {
+    dealershipById = { legacy_dealer_id: "dealer-1" };
+    legacyMembers = [
+      {
+        id: "50ae05bf-5ed0-4202-beb9-782f1b437648",
+        user_id: "employee-legacy-1",
+        role: "DEALER_EMPLOYEE",
+        created_at: "2026-05-17T00:00:00.000Z",
+      },
+    ];
+    profilesById = [
+      {
+        id: "employee-legacy-1",
+        email: "elaidelossantos05@gmail.com",
+        display_name: "Elaide Lossantos",
+        first_name: "Elaide",
+        last_name: "Lossantos",
+        phone: "123123",
+      },
+    ];
+    vi.mocked(invokeEdgeFunction).mockResolvedValueOnce({ ok: true });
+
+    const user = userEvent.setup();
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <TeamManagementPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Elaide Lossantos")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^employee$/i }));
+    await user.click(screen.getByRole("option", { name: /^admin$/i }));
+
+    await waitFor(() => {
+      expect(invokeEdgeFunction).toHaveBeenCalledWith("dealer-team-tools", {
+        action: "update_employee",
+        dealerMemberId: "50ae05bf-5ed0-4202-beb9-782f1b437648",
+        employee: {
+          firstName: "Elaide",
+          lastName: "Lossantos",
+          phone: "123123",
+          email: "elaidelossantos05@gmail.com",
+          role: "DEALER_ADMIN",
+        },
+      });
+    });
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Role Updated" }));
+  });
+
   it("generates a new temporary password for an existing team member", async () => {
     dealershipById = { legacy_dealer_id: "dealer-1" };
     legacyMembers = [
