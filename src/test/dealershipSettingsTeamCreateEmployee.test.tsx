@@ -9,6 +9,7 @@ import { invokeEdgeFunction } from "../lib/supabase/functions";
 
 const toast = vi.fn();
 const dealershipMembersUpsert = vi.fn(() => Promise.resolve({ data: null, error: null as Error | null }));
+const resetPasswordForEmail = vi.hoisted(() => vi.fn(() => Promise.resolve({ data: {}, error: null })));
 let existingProfileByEmail: { id: string } | null = null;
 let dealershipById: { legacy_dealer_id: string | null } | null = null;
 let legacyMembers: any[] = [];
@@ -84,6 +85,9 @@ function makeSupabaseChain(table: string) {
 
 vi.mock("../integrations/supabase/client", () => ({
   supabase: {
+    auth: {
+      resetPasswordForEmail,
+    },
     from: vi.fn((table: string) => makeSupabaseChain(table)),
   },
 }));
@@ -92,6 +96,7 @@ describe("dealership settings team creation", () => {
   beforeEach(() => {
     toast.mockClear();
     dealershipMembersUpsert.mockClear();
+    resetPasswordForEmail.mockClear();
     existingProfileByEmail = null;
     dealershipById = null;
     legacyMembers = [];
@@ -337,6 +342,54 @@ describe("dealership settings team creation", () => {
     });
     expect(screen.getByText("Temporary password created")).toBeInTheDocument();
     expect(screen.getByDisplayValue("NewTempPass123!")).toBeInTheDocument();
+  });
+
+  it("sends a reset email when deployed function does not support password generation yet", async () => {
+    dealershipById = { legacy_dealer_id: "dealer-1" };
+    legacyMembers = [
+      {
+        id: "legacy-member-1",
+        user_id: "employee-legacy-1",
+        role: "DEALER_EMPLOYEE",
+        created_at: "2026-05-17T00:00:00.000Z",
+      },
+    ];
+    profilesById = [
+      {
+        id: "employee-legacy-1",
+        email: "elaidelossantos05@gmail.com",
+        display_name: "Elaide Lossantos",
+        first_name: "Elaide",
+        last_name: "Lossantos",
+        phone: null,
+      },
+    ];
+    vi.mocked(invokeEdgeFunction).mockRejectedValueOnce(new Error("Unsupported action"));
+
+    const user = userEvent.setup();
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <TeamManagementPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Elaide Lossantos")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /new password/i }));
+
+    await waitFor(() => {
+      expect(resetPasswordForEmail).toHaveBeenCalledWith("elaidelossantos05@gmail.com", {
+        redirectTo: "http://localhost:3000/reset-password",
+      });
+    });
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Password Reset Email Sent" }));
   });
 
   it("links an existing profile when the account was already created without a dealership membership", async () => {

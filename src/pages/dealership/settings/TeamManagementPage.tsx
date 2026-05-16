@@ -295,6 +295,7 @@ export default function TeamManagementPage() {
 
   const handleGenerateTemporaryPassword = async (member: TeamMember) => {
     if (!member.user_id) return;
+    const email = member.profile?.email;
     setResettingPasswordUserId(member.user_id);
     try {
       const response = await invokeEdgeFunction<GenerateTemporaryPasswordResponse>("dealer-team-tools", {
@@ -312,7 +313,23 @@ export default function TeamManagementPage() {
         description: `A new temporary password was generated for ${member.profile?.name || "this team member"}.`,
       });
     } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Could not generate password.", variant: "destructive" });
+      const message = err instanceof Error ? err.message : String(err ?? "");
+      if (message.toLowerCase().includes("unsupported action") && email) {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+        if (error) {
+          toast({ title: "Error", description: error.message || "Could not send reset email.", variant: "destructive" });
+          return;
+        }
+
+        toast({
+          title: "Password Reset Email Sent",
+          description: `${email} will receive a secure password reset link.`,
+        });
+        return;
+      }
+      toast({ title: "Error", description: message || "Could not generate password.", variant: "destructive" });
     } finally {
       setResettingPasswordUserId(null);
     }
