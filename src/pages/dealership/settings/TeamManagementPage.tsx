@@ -15,7 +15,7 @@ import { useToast } from "../../../hooks/use-toast";
 import { generateTemporaryPassword } from "../../../lib/auth/temporaryPassword";
 import { invokeEdgeFunction } from "../../../lib/supabase/functions";
 import { format } from "date-fns";
-import { Check, Copy, Plus, Users, Shield, UserCog } from "lucide-react";
+import { Check, Copy, KeyRound, Plus, Users, Shield, UserCog } from "lucide-react";
 
 interface TeamMember {
   id: string;
@@ -23,7 +23,7 @@ interface TeamMember {
   role: string;
   created_at: string;
   source?: "dealership" | "legacy";
-  profile?: { name: string; phone: string | null };
+  profile?: { name: string; email: string | null; phone: string | null };
 }
 
 type CreateEmployeeResponse = {
@@ -34,6 +34,10 @@ type CreateEmployeeResponse = {
 
 type CreatedEmployeeCredentials = {
   email: string;
+  temporaryPassword: string;
+};
+
+type GenerateTemporaryPasswordResponse = {
   temporaryPassword: string;
 };
 
@@ -61,6 +65,7 @@ export default function TeamManagementPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newMember, setNewMember] = useState({ email: "", full_name: "", phone: "", role: "employee" });
   const [submitting, setSubmitting] = useState(false);
+  const [resettingPasswordUserId, setResettingPasswordUserId] = useState<string | null>(null);
   const [createdCredentials, setCreatedCredentials] = useState<CreatedEmployeeCredentials | null>(null);
   const [passwordCopied, setPasswordCopied] = useState(false);
 
@@ -89,6 +94,7 @@ export default function TeamManagementPage() {
           [profileMap[m.user_id]?.first_name, profileMap[m.user_id]?.last_name].filter(Boolean).join(" ") ||
           profileMap[m.user_id]?.email ||
           "Unknown",
+        email: profileMap[m.user_id]?.email ?? null,
         phone: profileMap[m.user_id]?.phone ?? null,
       },
     })));
@@ -237,6 +243,7 @@ export default function TeamManagementPage() {
                 source: "dealership",
                 profile: {
                   name: `${firstName} ${lastName}`.trim() || email,
+                  email,
                   phone: phone || null,
                 },
               },
@@ -283,6 +290,31 @@ export default function TeamManagementPage() {
       toast({ title: "Role Updated", description: `Member role changed to ${newRole}.` });
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Could not update role.", variant: "destructive" });
+    }
+  };
+
+  const handleGenerateTemporaryPassword = async (member: TeamMember) => {
+    if (!member.user_id) return;
+    setResettingPasswordUserId(member.user_id);
+    try {
+      const response = await invokeEdgeFunction<GenerateTemporaryPasswordResponse>("dealer-team-tools", {
+        action: "generate_temporary_password",
+        userId: member.user_id,
+      });
+
+      setPasswordCopied(false);
+      setCreatedCredentials({
+        email: member.profile?.email || member.profile?.name || "Team member",
+        temporaryPassword: response.temporaryPassword,
+      });
+      toast({
+        title: "Temporary Password Created",
+        description: `A new temporary password was generated for ${member.profile?.name || "this team member"}.`,
+      });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Could not generate password.", variant: "destructive" });
+    } finally {
+      setResettingPasswordUserId(null);
     }
   };
 
@@ -399,14 +431,14 @@ export default function TeamManagementPage() {
               </div>
             ) : (
               <div className="overflow-visible">
-                <Table className="min-w-[820px]">
+                <Table className="min-w-[980px]">
                 <TableHeader className="bg-muted/40">
                   <TableRow>
-                    <TableHead className="w-[38%] px-4">Name</TableHead>
-                    <TableHead className="w-[16%] px-4">Role</TableHead>
-                    <TableHead className="w-[18%] px-4">Phone</TableHead>
-                    <TableHead className="w-[16%] px-4">Joined</TableHead>
-                    {isAdmin && <TableHead className="w-[12%] px-4 text-right">Access</TableHead>}
+                    <TableHead className="w-[34%] px-4">Name</TableHead>
+                    <TableHead className="w-[14%] px-4">Role</TableHead>
+                    <TableHead className="w-[17%] px-4">Phone</TableHead>
+                    <TableHead className="w-[15%] px-4">Joined</TableHead>
+                    {isAdmin && <TableHead className="w-[20%] px-4 text-right">Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -441,15 +473,28 @@ export default function TeamManagementPage() {
                       </TableCell>
                       {isAdmin && (
                         <TableCell className="px-4 py-3">
-                          <Select value={m.role} onValueChange={(v) => handleRoleChange(m.id, m.user_id, v)}>
-                            <SelectTrigger className="ml-auto h-9 w-32 bg-background">
-                              <SelectValue labels={{ admin: "Admin", employee: "Employee" }} />
-                            </SelectTrigger>
-                            <SelectContent className="w-32">
-                              <SelectItem value="admin">Admin</SelectItem>
-                              <SelectItem value="employee">Employee</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-9 gap-2"
+                              disabled={resettingPasswordUserId === m.user_id}
+                              onClick={() => handleGenerateTemporaryPassword(m)}
+                            >
+                              <KeyRound className="h-4 w-4" />
+                              {resettingPasswordUserId === m.user_id ? "Generating..." : "New password"}
+                            </Button>
+                            <Select value={m.role} onValueChange={(v) => handleRoleChange(m.id, m.user_id, v)}>
+                              <SelectTrigger className="h-9 w-32 bg-background">
+                                <SelectValue labels={{ admin: "Admin", employee: "Employee" }} />
+                              </SelectTrigger>
+                              <SelectContent className="w-32">
+                                <SelectItem value="admin">Admin</SelectItem>
+                                <SelectItem value="employee">Employee</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </TableCell>
                       )}
                     </TableRow>

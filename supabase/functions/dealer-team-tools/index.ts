@@ -11,7 +11,7 @@ class HttpError extends Error {
   }
 }
 
-type Action = "create_employee" | "update_employee" | "set_employee_status";
+type Action = "create_employee" | "update_employee" | "set_employee_status" | "generate_temporary_password";
 
 type Body =
   | {
@@ -39,6 +39,10 @@ type Body =
       action: "set_employee_status";
       dealerMemberId: string;
       status: "ACTIVE" | "DISABLED";
+    }
+  | {
+      action: "generate_temporary_password";
+      userId: string;
     };
 
 function json(status: number, body: unknown) {
@@ -363,6 +367,46 @@ Deno.serve(async (req: Request) => {
       }
 
       return json(200, { ok: true });
+    }
+
+    if (action === "generate_temporary_password") {
+      const targetUserId = safeTrim((body as any)?.userId);
+      if (!targetUserId) return json(400, { error: "userId is required" });
+
+      let isTeamMember = false;
+      if (dealershipId) {
+        const currentMember = await svc
+          .from("dealership_members")
+          .select("user_id")
+          .eq("dealership_id", dealershipId)
+          .eq("user_id", targetUserId)
+          .maybeSingle();
+
+        if (currentMember.error) return json(400, { error: currentMember.error.message });
+        isTeamMember = Boolean(currentMember.data);
+      }
+
+      if (!isTeamMember && dealerId) {
+        const currentMember = await svc
+          .from("dealer_members")
+          .select("user_id")
+          .eq("dealer_id", dealerId)
+          .eq("user_id", targetUserId)
+          .maybeSingle();
+
+        if (currentMember.error) return json(400, { error: currentMember.error.message });
+        isTeamMember = Boolean(currentMember.data);
+      }
+
+      if (!isTeamMember) return json(404, { error: "Member not found" });
+
+      const temporaryPassword = generateTemporaryPassword();
+      const updUser = await svc.auth.admin.updateUserById(targetUserId, {
+        password: temporaryPassword,
+      } as any);
+      if (updUser.error) return json(400, { error: updUser.error.message });
+
+      return json(200, { temporaryPassword });
     }
 
     return json(400, { error: "Unsupported action" });

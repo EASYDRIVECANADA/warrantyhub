@@ -289,6 +289,56 @@ describe("dealership settings team creation", () => {
     expect(screen.getAllByText(/employee/i).length).toBeGreaterThan(0);
   });
 
+  it("generates a new temporary password for an existing team member", async () => {
+    dealershipById = { legacy_dealer_id: "dealer-1" };
+    legacyMembers = [
+      {
+        id: "legacy-member-1",
+        user_id: "employee-legacy-1",
+        role: "DEALER_EMPLOYEE",
+        created_at: "2026-05-17T00:00:00.000Z",
+      },
+    ];
+    profilesById = [
+      {
+        id: "employee-legacy-1",
+        email: "elaidelossantos05@gmail.com",
+        display_name: "Elaide Lossantos",
+        first_name: "Elaide",
+        last_name: "Lossantos",
+        phone: null,
+      },
+    ];
+    vi.mocked(invokeEdgeFunction).mockResolvedValueOnce({ temporaryPassword: "NewTempPass123!" });
+
+    const user = userEvent.setup();
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <TeamManagementPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Elaide Lossantos")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /new password/i }));
+
+    await waitFor(() => {
+      expect(invokeEdgeFunction).toHaveBeenCalledWith("dealer-team-tools", {
+        action: "generate_temporary_password",
+        userId: "employee-legacy-1",
+      });
+    });
+    expect(screen.getByText("Temporary password created")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("NewTempPass123!")).toBeInTheDocument();
+  });
+
   it("links an existing profile when the account was already created without a dealership membership", async () => {
     existingProfileByEmail = { id: "employee-existing-1" };
     vi.mocked(invokeEdgeFunction).mockRejectedValueOnce(new Error("An account with this email already exists."));
