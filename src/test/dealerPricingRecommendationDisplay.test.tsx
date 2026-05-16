@@ -84,7 +84,22 @@ function makeSupabaseChain(table: string) {
   }
 
   if (table === "dealership_product_pricing") {
-    chain.eq = vi.fn(() => Promise.resolve({ data: pricingRows, error: null }));
+    let isUpdating = false;
+    let updateEqCount = 0;
+
+    chain.update = vi.fn(() => {
+      isUpdating = true;
+      updateEqCount = 0;
+      return chain;
+    });
+    chain.eq = vi.fn(() => {
+      if (!isUpdating) {
+        return Promise.resolve({ data: pricingRows, error: null });
+      }
+
+      updateEqCount += 1;
+      return updateEqCount >= 2 ? Promise.resolve({ data: null, error: null }) : chain;
+    });
   }
 
   return chain;
@@ -134,5 +149,12 @@ describe("dealer pricing recommendation display", () => {
       expect(screen.getByRole("button", { name: /REC \$1,089/i })).toBeInTheDocument();
     });
     expect(screen.getByText("$889")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /REC \$1,089/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("$1,089")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("$889")).not.toBeInTheDocument();
   });
 });
