@@ -359,6 +359,10 @@ export default function TeamManagementPage() {
 
   const handleDeleteMember = async (member: TeamMember) => {
     if (!member.user_id) return;
+    if (!isAdmin) {
+      toast({ title: "Admin Required", description: "Only dealership admins can delete team members.", variant: "destructive" });
+      return;
+    }
     const label = member.profile?.email || member.profile?.name || "this user";
     const confirmed = window.confirm(`Delete ${label}? This removes their team access and may delete their user account if they do not belong to another dealership.`);
     if (!confirmed) return;

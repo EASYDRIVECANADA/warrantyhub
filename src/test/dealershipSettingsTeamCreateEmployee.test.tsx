@@ -13,12 +13,13 @@ let existingProfileByEmail: { id: string } | null = null;
 let dealershipById: { legacy_dealer_id: string | null } | null = null;
 let legacyMembers: any[] = [];
 let profilesById: any[] = [];
+let mockedMemberRole = "admin";
 
 vi.mock("../hooks/useDealership", () => ({
   useDealership: () => ({
     dealershipId: "dealership-1",
     dealershipName: "Bridge Warranty Dealer",
-    memberRole: "admin",
+    memberRole: mockedMemberRole,
     loading: false,
     reloadDealership: vi.fn(),
   }),
@@ -97,6 +98,7 @@ describe("dealership settings team creation", () => {
     dealershipById = null;
     legacyMembers = [];
     profilesById = [];
+    mockedMemberRole = "admin";
     vi.mocked(invokeEdgeFunction).mockClear();
   });
 
@@ -450,6 +452,47 @@ describe("dealership settings team creation", () => {
       expect(screen.queryByText("Elaide Lossantos")).not.toBeInTheDocument();
     });
     expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "User Deleted" }));
+  });
+
+  it("does not expose delete controls to dealership employees", async () => {
+    mockedMemberRole = "employee";
+    dealershipById = { legacy_dealer_id: "dealer-1" };
+    legacyMembers = [
+      {
+        id: "50ae05bf-5ed0-4202-beb9-782f1b437648",
+        user_id: "employee-legacy-1",
+        role: "DEALER_EMPLOYEE",
+        created_at: "2026-05-17T00:00:00.000Z",
+      },
+    ];
+    profilesById = [
+      {
+        id: "employee-legacy-1",
+        email: "elaidelossantos05@gmail.com",
+        display_name: "Elaide Lossantos",
+        first_name: "Elaide",
+        last_name: "Lossantos",
+        phone: "123123",
+      },
+    ];
+
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <TeamManagementPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Elaide Lossantos")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^delete$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: /^actions$/i })).not.toBeInTheDocument();
   });
 
   it("generates a new temporary password for an existing team member", async () => {
