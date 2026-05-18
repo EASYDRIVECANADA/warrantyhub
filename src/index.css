@@ -207,7 +207,7 @@
 
 @media print {
   @page {
-    margin: 12mm;
+    margin: 8mm;
   }
 
   body {

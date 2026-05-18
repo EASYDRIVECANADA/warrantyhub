@@ -190,7 +190,7 @@ function SectionBar({ children }: { children: ReactNode }) {
 
 function Field({ label, children, className = "" }: { label: string; children?: ReactNode; className?: string }) {
   return (
-    <div className={`min-h-[30px] border-b border-r border-slate-400 px-1.5 py-1 ${className}`}>
+    <div className={`min-h-[28px] border-b border-r border-slate-400 px-1.5 py-0.5 ${className}`}>
       <div className="text-[7px] font-semibold leading-none text-slate-700">{label}</div>
       <div className="mt-0.5 min-h-[12px] text-[8px] font-medium leading-tight text-slate-950">{children ?? "N/A"}</div>
     </div>
@@ -390,7 +390,7 @@ function TermsPageHeader({ brandName, contractNumber, subtitle }: { brandName: s
 
 function ContractTermBlock({ section }: { section: ContractTermSection }) {
   return (
-    <section className="mb-3 break-inside-avoid">
+    <section className="mb-2 break-inside-avoid">
       <div className="mb-1 bg-slate-100 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-[#073f82]">
         {section.title}
       </div>
@@ -399,7 +399,7 @@ function ContractTermBlock({ section }: { section: ContractTermSection }) {
           <p key={paragraph}>{paragraph}</p>
         ))}
         {section.bullets?.length ? (
-          <ul className="list-disc space-y-0.5 pl-4">
+          <ul className="list-disc pl-4">
             {section.bullets.map((bullet) => (
               <li key={bullet}>{bullet}</li>
             ))}
@@ -423,8 +423,8 @@ export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicati
   return (
     <div className="print-contract-root bg-white text-slate-950">
       <div className="mx-auto max-w-[190mm] bg-white p-8 print:p-0">
-        <div className="min-h-[260mm] text-[8px] leading-tight">
-          <div className="grid grid-cols-[1fr_1.2fr_1fr] items-start border-b border-slate-400 pb-2">
+        <div className="text-[8px] leading-tight">
+          <div className="grid grid-cols-[1fr_1.2fr_1fr] items-start border-b border-slate-400 pb-1.5">
             <div className="text-center">
               <div className="text-[12px] font-extrabold text-[#073f82]">{props.brandName}</div>
               <div className="text-[16px] font-bold text-[#e340a1]">{props.contractNumber}</div>
@@ -537,17 +537,17 @@ export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicati
             </aside>
           </div>
 
-          <div className="mt-3 grid grid-cols-[1fr_1fr] items-end gap-6 text-[8px]">
+          <div className="mt-2 grid grid-cols-[1fr_1fr] items-end gap-6 text-[8px]">
             <div>
               <div>DATE OF PURCHASE: <span className="font-semibold">{value(props.purchaseDate)}</span></div>
-              <div className="mt-2 flex items-end gap-2">
+              <div className="mt-1.5 flex items-end gap-2">
                 <span>SELLING DEALER:</span>
                 <span className="min-w-[150px] border-b border-slate-800 px-2 pb-0.5 font-semibold">{value(props.dealer.name)}</span>
               </div>
             </div>
             <div className="text-right">
               <div>EXPIRY DATE: <span className="font-semibold">{value(props.expiryDate)}</span></div>
-              <div className="mt-3 flex items-end justify-end gap-2">
+              <div className="mt-2 flex items-end justify-end gap-2">
                 <span>APPLICANT:</span>
                 <span className="inline-block w-36 border-b border-slate-800">&nbsp;</span>
               </div>
@@ -560,9 +560,9 @@ export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicati
           </div>
         </div>
 
-        <div className="mt-5 min-h-[260mm] text-[8px] leading-tight print:break-before-page">
+        <div className="mt-4 text-[8px] leading-tight print:mt-0 print:break-before-page">
           <TermsPageHeader brandName={props.brandName} contractNumber={props.contractNumber} subtitle={printedDocumentSubtitle} />
-          <div className="mb-3 text-center text-[13px] font-extrabold uppercase tracking-wide text-[#073f82]">
+          <div className="mb-2 text-center text-[13px] font-extrabold uppercase tracking-wide text-[#073f82]">
             Bridge Warranty Product Terms
           </div>
           <div className="grid grid-cols-2 gap-x-5">
@@ -570,15 +570,15 @@ export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicati
               <ContractTermBlock key={section.title} section={section} />
             ))}
           </div>
-          <div className="mt-3 border-t border-slate-300 pt-2 text-[7px] text-slate-600">
+          <div className="mt-2 border-t border-slate-300 pt-1.5 text-[7px] text-slate-600">
             These Bridge Warranty administrative terms are intended to support the application and selected product terms. If there is a conflict between this page and the provider terms for coverage, limits, deductibles, exclusions, claims, or refunds, the provider terms control unless applicable law requires otherwise.
           </div>
         </div>
 
         {hasProviderDetails ? (
-          <div className="mt-5 border-t border-slate-300 pt-4 text-[9px] leading-snug print:break-before-page">
+          <div className="mt-4 border-t border-slate-300 pt-3 text-[8px] leading-snug print:mt-0 print:break-before-page">
             <TermsPageHeader brandName={props.brandName} contractNumber={props.contractNumber} subtitle={printedDocumentSubtitle} />
-            <div className="mb-2 border-b border-[#073f82] pb-2 text-[11px] font-bold text-[#073f82]">Provider-Specific Terms</div>
+            <div className="mb-2 border-b border-[#073f82] pb-1.5 text-[10px] font-bold text-[#073f82]">Provider-Specific Terms</div>
             {props.termsSections?.map((section) => (
               <section key={section.title} className="mb-2">
                 <div className="font-bold uppercase">{section.title}</div>

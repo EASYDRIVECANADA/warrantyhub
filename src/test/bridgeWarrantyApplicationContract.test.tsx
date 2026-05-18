@@ -184,4 +184,33 @@ describe("BridgeWarrantyApplicationContract", () => {
     expect(screen.getAllByText("Cosmetic rim repair - $50").length).toBeGreaterThan(0);
     expect(screen.getByText("Provider Road Hazard Terms")).toBeInTheDocument();
   });
+
+  it("does not force mostly blank full-height print pages", () => {
+    const { container } = render(
+      <BridgeWarrantyApplicationContract
+        brandName="Bridge Warranty"
+        contractNumber="BW76025"
+        issueDate="May 18, 2026"
+        purchaseDate="May 18, 2026"
+        customer={{ firstName: "Cyril", lastName: "Warren" }}
+        dealer={{ name: "Easy Drive Canada" }}
+        vehicle={{ vin: "5N1YT4M98RB503974" }}
+        warranty={{
+          productName: "Powertrain Protection",
+          termLabel: "6 Months / Unlimited KM",
+          deductibleLabel: "$100",
+          totalPriceLabel: "$609",
+          basePriceLabel: "$589",
+        }}
+        coverage={{
+          title: "Powertrain Protection",
+          productType: "VSC",
+          components: ["Engine", "Transmission"],
+          addOns: [],
+        }}
+      />,
+    );
+
+    expect(container.innerHTML).not.toContain("min-h-[260mm]");
+  });
 });
