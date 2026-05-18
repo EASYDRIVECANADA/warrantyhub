@@ -9,7 +9,7 @@ import { Search, RotateCcw, Car, Shield, Check, Loader2, AlertCircle, LayoutGrid
 import { supabase } from "../../integrations/supabase/client";
 import { useDealership } from "../../hooks/useDealership";
 import { cn } from "../../lib/utils";
-import { buildBasePricingRows, resolveCustomerRetailNumber } from "../../lib/pricing/dealerPricing";
+import { buildBasePricingRows, resolveCustomerRetailNumber, resolveDealerCostNumber } from "../../lib/pricing/dealerPricing";
 import { compareProductsByConfiguredOrder } from "../../lib/products/defaultProductOrder";
 import { PRODUCT_TYPE_FILTERS, matchesProductTypeFilter } from "../../lib/products/productTypeFilters";
 
@@ -36,19 +36,6 @@ interface Product {
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────
-
-const getMinPrice = (pricing: any): number | null => {
-  if (!pricing) return null;
-  const retails = buildBasePricingRows(pricing).map((row) => row.suggestedRetail).filter((value) => value > 0);
-  return retails.length > 0 ? Math.min(...retails) : null;
-};
-
-
-const getMaxPrice = (pricing: any): number | null => {
-  if (!pricing) return null;
-  const retails = buildBasePricingRows(pricing).map((row) => row.suggestedRetail).filter((value) => value > 0);
-  return retails.length > 0 ? Math.max(...retails) : null;
-};
 
 const getUniqueTierNames = (pricing: any): string[] => {
   if (!pricing) return [];
@@ -121,7 +108,6 @@ export default function FindProductsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [providers, setProviders] = useState<string[]>([]);
   const [selectedProvider, setSelectedProvider] = useState("all");
   const [selectedType, setSelectedType] = useState(PRODUCT_TYPE_FILTERS[0].value);
   const [dealerPricing, setDealerPricing] = useState<Record<string, { retail_price: Record<string, number>; confidentiality_enabled: boolean; sort_order?: number | null }>>({});
@@ -182,8 +168,6 @@ export default function FindProductsPage() {
         }));
 
         setProducts(enriched);
-        const provList = [...new Set(enriched.map((p) => p.providerName).filter((n) => n !== "Unknown Provider"))].sort();
-        setProviders(provList);
       } catch (err) {
         console.error("Failed to load products:", err);
       } finally {
@@ -262,6 +246,34 @@ export default function FindProductsPage() {
 
   // ── filtered products ─────────────────────────────────────────────────
   const mileageKm = mileage ? parseInt(mileage, 10) : null;
+
+  const availableProductTypeFilters = useMemo(() => {
+    const filters = PRODUCT_TYPE_FILTERS.filter((type) =>
+      products.some((product) => matchesProductTypeFilter(product.product_type, type.value)),
+    );
+    return filters.length > 0 ? filters : PRODUCT_TYPE_FILTERS;
+  }, [products]);
+
+  const providersForSelectedType = useMemo(() => {
+    const providerNames = products
+      .filter((product) => matchesProductTypeFilter(product.product_type, selectedType))
+      .map((product) => product.providerName)
+      .filter((name) => name !== "Unknown Provider");
+    return [...new Set(providerNames)].sort();
+  }, [products, selectedType]);
+
+  useEffect(() => {
+    if (loading || products.length === 0) return;
+    if (availableProductTypeFilters.some((type) => type.value === selectedType)) return;
+    setSelectedType(availableProductTypeFilters[0]?.value ?? PRODUCT_TYPE_FILTERS[0].value);
+    setSelectedProvider("all");
+  }, [availableProductTypeFilters, loading, products.length, selectedType]);
+
+  useEffect(() => {
+    if (selectedProvider === "all") return;
+    if (providersForSelectedType.includes(selectedProvider)) return;
+    setSelectedProvider("all");
+  }, [providersForSelectedType, selectedProvider]);
 
   const filteredProducts = useMemo(() => {
     let list = [...products];
@@ -426,7 +438,7 @@ export default function FindProductsPage() {
           <div className="px-6 md:px-8 py-4 space-y-3">
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-center">
               <div className="flex min-w-0 items-center gap-2 overflow-x-auto rounded-lg border bg-card p-1.5 shadow-sm">
-              {PRODUCT_TYPE_FILTERS.map((type) => (
+              {availableProductTypeFilters.map((type) => (
                 <button
                   key={type.value}
                   onClick={() => setSelectedType(type.value)}
@@ -465,7 +477,7 @@ export default function FindProductsPage() {
               >
                 All Providers
               </button>
-              {providers.map((prov) => (
+              {providersForSelectedType.map((prov) => (
                 <button
                   key={prov}
                   onClick={() => setSelectedProvider(prov)}
@@ -547,11 +559,17 @@ export default function FindProductsPage() {
               {filteredProducts.map((product) => {
                 const config = dealerPricing[product.id];
                 const baseRows = buildBasePricingRows(product.pricing_json);
-                const customerPrices = baseRows
-                  .map((row) => resolveCustomerRetailNumber(row, config))
-                  .filter((value) => value > 0);
-                const minPrice = customerPrices.length ? Math.min(...customerPrices) : getMinPrice(product.pricing_json);
-                const maxPrice = customerPrices.length ? Math.max(...customerPrices) : getMaxPrice(product.pricing_json);
+                const showCustomerRetail = Boolean(config?.confidentiality_enabled);
+                const visiblePrices = showCustomerRetail
+                  ? baseRows
+                    .map((row) => resolveCustomerRetailNumber(row, config))
+                    .filter((value) => value > 0)
+                  : baseRows
+                    .map((row) => resolveDealerCostNumber(row, config))
+                    .filter((value) => value > 0);
+                const minPrice = visiblePrices.length ? Math.min(...visiblePrices) : null;
+                const maxPrice = visiblePrices.length ? Math.max(...visiblePrices) : null;
+                const priceLabel = showCustomerRetail ? "Retail price" : "Dealer cost";
                 const tierChips = getUniqueTierNames(product.pricing_json);
                 const cd = product.coverage_details_json || {};
                 const categories: Array<{ name: string; parts: string[] }> = cd.categories || [];
@@ -592,10 +610,13 @@ export default function FindProductsPage() {
                       <div>
                         <h3 className="font-bold text-slate-900 text-[15px] leading-snug">{product.name}</h3>
                         {minPrice !== null && (
+                          <>
                           <p className="text-sm font-bold text-primary mt-0.5">
                             ${minPrice.toLocaleString()}
                             {maxPrice !== null && maxPrice !== minPrice && ` – $${maxPrice.toLocaleString()}`}
                           </p>
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{priceLabel}</p>
+                          </>
                         )}
                       </div>
 

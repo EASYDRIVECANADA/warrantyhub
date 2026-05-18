@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { Switch } from "../../components/ui/switch";
 import { useToast } from "../../hooks/use-toast";
+import { useAuth } from "../../providers/AuthProvider";
 import { getProductsV2Api } from "../../lib/products/productsV2";
 import type { ProductV2, CoverageCategory, PricingRow, Benefit, TermsSection } from "../../lib/products/typesV2";
 import {
@@ -168,6 +169,7 @@ export default function ProviderProductEditorPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
   const api = useMemo(() => getProductsV2Api(), []);
   const isNew = !id || id === "new";
   const showAI = searchParams.get("ai") === "true";
@@ -180,6 +182,7 @@ export default function ProviderProductEditorPage() {
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState(false);
   const [loading, setLoading] = useState(!isNew);
+  const canManageProducts = (user as any)?.providerRole !== "member";
 
   useEffect(() => {
     if (!isNew && id) {
@@ -337,6 +340,19 @@ export default function ProviderProductEditorPage() {
     { value: "ai", label: "AI", icon: Sparkles },
     { value: "preview", label: "Preview", icon: Eye },
   ];
+
+  if (!canManageProducts) {
+    return (
+      <DashboardLayout navItems={providerNavItems} title="Products">
+        <Card>
+          <CardContent className="p-6">
+            <p className="text-sm font-medium">Admin access required</p>
+            <p className="mt-1 text-sm text-muted-foreground">Only provider admins can create or edit products.</p>
+          </CardContent>
+        </Card>
+      </DashboardLayout>
+    );
+  }
 
   if (loading) {
     return (

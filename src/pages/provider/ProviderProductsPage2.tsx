@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Link, useNavigate } from "react-router-dom";
 import { Plus, Search, Package, Edit, ToggleLeft, ToggleRight, Sparkles, Copy, Loader2 } from "lucide-react";
 import { useToast } from "../../hooks/use-toast";
+import { useAuth } from "../../providers/AuthProvider";
 import { getProductsV2Api } from "../../lib/products/productsV2";
 import type { ProductV2 } from "../../lib/products/typesV2";
 
@@ -45,6 +46,8 @@ export default function ProviderProductsPage2() {
   const [cloning, setCloning] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canManageProducts = (user as any)?.providerRole !== "member";
 
   const api = useMemo(() => getProductsV2Api(), []);
 
@@ -128,20 +131,22 @@ export default function ProviderProductsPage2() {
             <h2 className="text-2xl font-bold">Your Products</h2>
             <p className="text-sm text-muted-foreground">Manage your warranty plans, tiers, and pricing</p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" asChild>
-              <Link to="/provider/products/new?ai=true">
-                <Sparkles className="w-4 h-4 mr-1" />
-                AI Import
-              </Link>
-            </Button>
-            <Button asChild>
-              <Link to="/provider/products/new">
-                <Plus className="w-4 h-4 mr-1" />
-                Add Product
-              </Link>
-            </Button>
-          </div>
+          {canManageProducts && (
+            <div className="flex gap-2">
+              <Button variant="outline" asChild>
+                <Link to="/provider/products/new?ai=true">
+                  <Sparkles className="w-4 h-4 mr-1" />
+                  AI Import
+                </Link>
+              </Button>
+              <Button asChild>
+                <Link to="/provider/products/new">
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add Product
+                </Link>
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3">
@@ -225,17 +230,19 @@ export default function ProviderProductsPage2() {
                     </div>
                   </div>
 
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/provider/products/${product.id}`)}>
-                      <Edit className="w-3.5 h-3.5 mr-1" /> Edit
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => handleClone(product)} disabled={cloning === product.id} title="Clone product">
-                      {cloning === product.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => handleToggleStatus(product)}>
-                      {product.status === "active" ? <ToggleRight className="w-4 h-4 text-green-500" /> : <ToggleLeft className="w-4 h-4" />}
-                    </Button>
-                  </div>
+                  {canManageProducts && (
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/provider/products/${product.id}`)}>
+                        <Edit className="w-3.5 h-3.5 mr-1" /> Edit
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => handleClone(product)} disabled={cloning === product.id} title="Clone product">
+                        {cloning === product.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => handleToggleStatus(product)}>
+                        {product.status === "active" ? <ToggleRight className="w-4 h-4 text-green-500" /> : <ToggleLeft className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))}

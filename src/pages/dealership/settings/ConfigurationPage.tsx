@@ -10,6 +10,7 @@ import { Tabs, TabsList, TabsTrigger } from "../../../components/ui/tabs";
 import { supabase } from "../../../integrations/supabase/client";
 import { useDealership } from "../../../hooks/useDealership";
 import { useToast } from "../../../hooks/use-toast";
+import { useAuth } from "../../../providers/AuthProvider";
 import {
   Settings2, DollarSign, Pencil, Check, X, ChevronRight, ChevronLeft,
   Search, Package, Zap, Building2, Shield, GripVertical, Sparkles, RotateCcw,
@@ -80,6 +81,7 @@ type Recommendation = {
 };
 
 const fmt = (v: number) => `$${v.toLocaleString("en-CA", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+const EASYDRIVE_ADMIN_EMAIL = "info@easydrivecanada.com";
 
 const RECOMMENDATION_STRATEGIES: Record<RecommendationStrategy, { label: string; description: string }> = {
   conservative: {
@@ -424,6 +426,7 @@ const isNA = (v: any) => v == null || (typeof v === "string" && ["n/a", "—", "
 
 export default function ConfigurationPage() {
   const { dealershipId, memberRole, loading: dLoading } = useDealership();
+  const { user } = useAuth();
   const { toast } = useToast();
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -449,6 +452,7 @@ export default function ConfigurationPage() {
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
   const isAdmin = memberRole === "admin";
+  const canEditDealerCost = isAdmin && user?.email?.trim().toLowerCase() === EASYDRIVE_ADMIN_EMAIL;
 
   useEffect(() => {
     (async () => {
@@ -556,21 +560,20 @@ export default function ConfigurationPage() {
   const storageKey = (bandIdx: number | null, rowIdx: number, termIdx: number) =>
     cellKey(activeTier, bandIdx, rowIdx, termIdx);
 
-  // ── Persist dealer cost and retail prices ──
-  const persistPricing = async (productId: string, newRetail: Record<string, number>, newCost: Record<string, number>) => {
+  // ── Persist dealer-owned retail prices ──
+  const persistRetail = async (productId: string, newRetail: Record<string, number>) => {
     if (!dealershipId) return;
     const existing = pricingConfigs[productId];
     if (existing) {
       await supabase
         .from("dealership_product_pricing")
-        .update({ dealer_cost: newCost, retail_price: newRetail, confidentiality_enabled: confidentialityEnabled })
+        .update({ retail_price: newRetail, confidentiality_enabled: confidentialityEnabled })
         .eq("dealership_id", dealershipId)
         .eq("product_id", productId);
     } else {
       await supabase.from("dealership_product_pricing").insert({
         dealership_id: dealershipId,
         product_id: productId,
-        dealer_cost: newCost,
         retail_price: newRetail,
         confidentiality_enabled: confidentialityEnabled,
       });
@@ -579,7 +582,7 @@ export default function ConfigurationPage() {
       ...prev,
       [productId]: {
         product_id: productId,
-        dealer_cost: newCost,
+        dealer_cost: existing?.dealer_cost ?? {},
         retail_price: newRetail,
         confidentiality_enabled: confidentialityEnabled,
         sort_order: existing?.sort_order ?? null,
@@ -587,12 +590,34 @@ export default function ConfigurationPage() {
     }));
   };
 
-  const persistRetail = async (productId: string, newRetail: Record<string, number>) => {
-    await persistPricing(productId, newRetail, pricingConfigs[productId]?.dealer_cost ?? {});
-  };
-
   const persistCost = async (productId: string, newCost: Record<string, number>) => {
-    await persistPricing(productId, pricingConfigs[productId]?.retail_price ?? {}, newCost);
+    if (!dealershipId || !canEditDealerCost) return;
+    const existing = pricingConfigs[productId];
+    if (existing) {
+      await supabase
+        .from("dealership_product_pricing")
+        .update({ dealer_cost: newCost, retail_price: existing.retail_price ?? {}, confidentiality_enabled: confidentialityEnabled })
+        .eq("dealership_id", dealershipId)
+        .eq("product_id", productId);
+    } else {
+      await supabase.from("dealership_product_pricing").insert({
+        dealership_id: dealershipId,
+        product_id: productId,
+        dealer_cost: newCost,
+        retail_price: {},
+        confidentiality_enabled: confidentialityEnabled,
+      });
+    }
+    setPricingConfigs((prev) => ({
+      ...prev,
+      [productId]: {
+        product_id: productId,
+        dealer_cost: newCost,
+        retail_price: existing?.retail_price ?? {},
+        confidentiality_enabled: confidentialityEnabled,
+        sort_order: existing?.sort_order ?? null,
+      },
+    }));
   };
 
   const persistPlanOrder = async (orderedPlans: Product[]) => {
@@ -601,7 +626,6 @@ export default function ConfigurationPage() {
     const rows = orderedPlans.map((product, index) => ({
       dealership_id: dealershipId,
       product_id: product.id,
-      dealer_cost: pricingConfigs[product.id]?.dealer_cost ?? {},
       retail_price: pricingConfigs[product.id]?.retail_price ?? {},
       confidentiality_enabled: confidentialityEnabled,
       sort_order: index,
@@ -656,7 +680,7 @@ export default function ConfigurationPage() {
     }
     setSavingKey(null);
     setEditingCell(null);
-    toast({ title: kind === "cost" ? "Cost saved" : "Retail price saved" });
+    toast({ title: kind === "cost" ? "Dealer cost saved" : "Retail price saved" });
   };
 
   const clearCell = async (kind: "cost" | "retail", key: string) => {
@@ -795,16 +819,50 @@ export default function ConfigurationPage() {
   };
 
   const handleToggleConfidentiality = async (enabled: boolean) => {
+    if (!enabled) {
+      const message = [
+        "Turning this off means customers may see dealer cost instead of retail price.",
+        "Only turn this off for internal dealer-facing workflows.",
+        "Show dealer cost?",
+      ].join("\n\n");
+
+      const confirmed = await confirmProceed(message, "Show dealer cost?");
+      if (!confirmed) return;
+    }
+
     setConfidentialityEnabled(enabled);
     if (dealershipId) {
-      for (const productId of Object.keys(pricingConfigs)) {
+      const rows = products.map((product) => {
+        const existing = pricingConfigs[product.id];
+        return {
+          dealership_id: dealershipId,
+          product_id: product.id,
+          retail_price: existing?.retail_price ?? {},
+          confidentiality_enabled: enabled,
+          sort_order: existing?.sort_order ?? null,
+        };
+      });
+
+      if (rows.length > 0) {
         await supabase
           .from("dealership_product_pricing")
-          .update({ confidentiality_enabled: enabled })
-          .eq("dealership_id", dealershipId)
-          .eq("product_id", productId);
+          .upsert(rows, { onConflict: "dealership_id,product_id" });
       }
     }
+    setPricingConfigs((prev) => {
+      const next = { ...prev };
+      products.forEach((product) => {
+        const existing = next[product.id];
+        next[product.id] = {
+          product_id: product.id,
+          dealer_cost: existing?.dealer_cost ?? {},
+          retail_price: existing?.retail_price ?? {},
+          confidentiality_enabled: enabled,
+          sort_order: existing?.sort_order ?? null,
+        };
+      });
+      return next;
+    });
     toast({
       title: enabled ? "Customer-facing retail enabled" : "Customer-facing retail disabled",
     });
@@ -864,14 +922,15 @@ export default function ConfigurationPage() {
       claimLimit: mr.isBase ? currentTier?.perClaimAmount : undefined,
       strategy: recommendationStrategy,
     });
-    const isEditingCost = editingCell?.kind === "cost" && editingCell.key === key;
     const isEditingRetail = editingCell?.kind === "retail" && editingCell.key === key;
+    const isEditingCost = editingCell?.kind === "cost" && editingCell.key === key;
     const renderEditor = (kind: "cost" | "retail") => (
       <div className="flex items-center gap-1">
         <div className="relative">
           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
           <Input
             type="number"
+            aria-label={kind === "cost" ? "Dealer cost" : "Retail price"}
             className="w-24 h-7 pl-5 text-xs"
             value={draftValue}
             autoFocus
@@ -885,6 +944,7 @@ export default function ConfigurationPage() {
           />
         </div>
         <Button size="icon" variant="ghost" className="h-6 w-6" disabled={savingKey === `${kind}:${key}`}
+          aria-label={kind === "cost" ? "Save dealer cost" : "Save retail price"}
           onClick={() => { const n = parseFloat(draftValue); if (!isNaN(n)) saveCell(kind, key, n); }}>
           <Check className="w-3.5 h-3.5 text-green-600" />
         </Button>
@@ -903,13 +963,14 @@ export default function ConfigurationPage() {
             <span className={cn("text-[11px]", hasCustomCost ? "font-semibold text-slate-700" : "text-muted-foreground")}>
               Cost {fmt(cost)}
             </span>
-            {isAdmin && (
+            {canEditDealerCost && (
               <Button size="icon" variant="ghost" className="h-6 w-6 opacity-50 hover:opacity-100"
-                onClick={() => { setEditingCell({ kind: "cost", key }); setDraftValue(cost.toString()); }}>
+                onClick={() => { setEditingCell({ kind: "cost", key }); setDraftValue(cost.toString()); }}
+                title="Edit dealer cost">
                 <Pencil className="w-3 h-3" />
               </Button>
             )}
-            {isAdmin && hasCustomCost && (
+            {canEditDealerCost && hasCustomCost && (
               <Button size="icon" variant="ghost" className="h-6 w-6 opacity-30 hover:opacity-100"
                 onClick={() => clearCell("cost", key)} title="Clear custom cost">
                 <X className="w-3 h-3" />
@@ -991,9 +1052,18 @@ export default function ConfigurationPage() {
                 </div>
               </div>
               {isAdmin && (
-                <div className="flex items-center gap-3 bg-background/80 rounded-xl px-4 py-2.5 border">
-                  <span className="text-sm font-medium whitespace-nowrap">Show Retail to Customers</span>
-                  <Switch checked={confidentialityEnabled} onCheckedChange={handleToggleConfidentiality} />
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 bg-background/80 rounded-xl px-4 py-2.5 border">
+                  <div>
+                    <span className="text-sm font-medium whitespace-nowrap">Show Retail to Customers</span>
+                    <p className="text-[11px] text-muted-foreground max-w-[340px]">
+                      On shows customer retail. Off shows dealer cost.
+                    </p>
+                  </div>
+                  <Switch
+                    aria-label="Show Retail to Customers"
+                    checked={confidentialityEnabled}
+                    onCheckedChange={handleToggleConfidentiality}
+                  />
                 </div>
               )}
             </div>
@@ -1396,7 +1466,7 @@ export default function ConfigurationPage() {
                           </div>
 
                           <p className="text-xs text-muted-foreground">
-                            Click either pencil to edit dealer cost or customer retail. Grey italic retail values show provider suggested retail until you save a custom price. REC values update with the selected margin profile and can be clicked to apply that suggested retail to one cell.
+                            Dealer admins can edit customer retail only. Cost values are controlled by the warranty provider. Grey italic retail values show provider suggested retail until you save a custom price. REC values update with the selected margin profile and can be clicked to apply that suggested retail to one cell.
                           </p>
                         </>
                       )}

@@ -101,9 +101,10 @@ async function getProfileAuthState(userId: string, email: string): Promise<Profi
       .from("user_roles")
       .select("role")
       .eq("user_id", userId)
-      .limit(1);
+      .limit(10);
     if (roleRows && roleRows.length > 0) {
-      const v2Role = (roleRows[0] as any).role as string;
+      const roles = roleRows.map((row: any) => row.role as string).filter(Boolean);
+      const v2Role = roles.includes("super_admin") ? "super_admin" : roles[0];
       const mapped = V2_TO_V1_ROLE[v2Role];
       if (mapped) {
         const isActive = data ? (data as any).is_active !== false : true;

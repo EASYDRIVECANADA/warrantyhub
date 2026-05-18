@@ -13,7 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/ta
 import { useToast } from "../../hooks/use-toast";
 import { useAuth } from "../../providers/AuthProvider";
 import { supabase } from "../../integrations/supabase/client";
-import { Building2, Users, Shield, Plus, Save, UserCog } from "lucide-react";
+import { Building2, Users, Shield, Plus, Save, UserCog, KeyRound, Trash2, Check, Copy } from "lucide-react";
+import { invokeEdgeFunction } from "../../lib/supabase/functions";
 
 interface TeamMember {
   id: string;
@@ -24,10 +25,23 @@ interface TeamMember {
   joinedAt: string;
 }
 
+type CreatedMemberCredentials = {
+  email: string;
+  temporaryPassword: string;
+};
+
+function splitFullName(fullName: string) {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  const firstName = parts.shift() ?? "";
+  const lastName = parts.join(" ");
+  return { firstName, lastName };
+}
+
 export default function ProviderSettingsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [providerId, setProviderId] = useState<string | null>(null);
+  const [providerRole, setProviderRole] = useState<"admin" | "member" | null>(null);
   const [company, setCompany] = useState({
     name: "",
     description: "",
@@ -41,6 +55,12 @@ export default function ProviderSettingsPage() {
   const [newMember, setNewMember] = useState({ name: "", email: "", role: "member" });
   const [saving, setSaving] = useState(false);
   const [, setLoading] = useState(true);
+  const [submittingMember, setSubmittingMember] = useState(false);
+  const [resettingPasswordUserId, setResettingPasswordUserId] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [createdCredentials, setCreatedCredentials] = useState<CreatedMemberCredentials | null>(null);
+  const [passwordCopied, setPasswordCopied] = useState(false);
+  const isProviderAdmin = providerRole === "admin" || (user as any)?.providerRole === "admin";
 
   useEffect(() => {
     if (!user) return;
@@ -48,13 +68,14 @@ export default function ProviderSettingsPage() {
       // Get provider membership
       const { data: membership } = await supabase
         .from("provider_members")
-        .select("provider_id")
+        .select("provider_id, role")
         .eq("user_id", user.id)
         .limit(1)
         .maybeSingle();
 
       if (!membership) { setLoading(false); return; }
       const pid = (membership as any).provider_id;
+      setProviderRole(((membership as any).role ?? "member") as "admin" | "member");
       setProviderId(pid);
 
       // Load provider company info
@@ -102,7 +123,7 @@ export default function ProviderSettingsPage() {
   }, [user]);
 
   const handleSaveProfile = async () => {
-    if (!providerId) return;
+    if (!providerId || !isProviderAdmin) return;
     setSaving(true);
     try {
       const { error } = await supabase
@@ -125,59 +146,119 @@ export default function ProviderSettingsPage() {
     }
   };
 
+  const refreshTeam = async (pid: string) => {
+    const { data: updatedMembers } = await supabase.from("provider_members").select("id, user_id, role, created_at").eq("provider_id", pid);
+    if (updatedMembers) {
+      const userIds = updatedMembers.map((m: any) => m.user_id);
+      const { data: profiles } = await supabase.from("profiles").select("id, full_name, display_name, first_name, last_name, email").in("id", userIds);
+      const profileMap: Record<string, any> = {};
+      (profiles || []).forEach((p: any) => { profileMap[p.id] = p; });
+      setTeam(updatedMembers.map((m: any) => ({
+        id: m.id,
+        user_id: m.user_id,
+        name:
+          profileMap[m.user_id]?.full_name ||
+          profileMap[m.user_id]?.display_name ||
+          [profileMap[m.user_id]?.first_name, profileMap[m.user_id]?.last_name].filter(Boolean).join(" ") ||
+          profileMap[m.user_id]?.email ||
+          "Unknown",
+        email: profileMap[m.user_id]?.email || "",
+        role: m.role,
+        joinedAt: m.created_at,
+      })));
+    }
+  };
+
   const handleAddMember = async () => {
-    if (!providerId || !newMember.email) return;
+    if (!providerId || !newMember.email || !isProviderAdmin) return;
+    setSubmittingMember(true);
     try {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("id, email")
-        .eq("email", newMember.email.trim().toLowerCase())
-        .maybeSingle();
+      const { firstName, lastName } = splitFullName(newMember.name);
+      const email = newMember.email.trim().toLowerCase();
+      if (!firstName) throw new Error("Full name is required");
+      if (!lastName) throw new Error("Please enter first and last name");
 
-      if (!profile) {
-        toast({ title: "User Not Found", description: "No account found with that email.", variant: "destructive" });
-        return;
-      }
+      const response = await invokeEdgeFunction<{ userId: string; temporaryPassword: string }>("company-access-tools", {
+        action: "create_company_member",
+        companyType: "provider",
+        companyId: providerId,
+        member: {
+          firstName,
+          lastName,
+          email,
+          phone: undefined,
+          role: newMember.role,
+        },
+      });
 
-      const userId = (profile as any).id;
-      const { error } = await supabase
-        .from("provider_members")
-        .insert({ provider_id: providerId, user_id: userId, role: newMember.role });
-
-      if (error) throw error;
-
-      // Also add to user_roles
-      await supabase.from("user_roles").upsert({ user_id: userId, role: "provider" }, { onConflict: "user_id,role" });
-      await supabase.from("profiles").update({ role: "PROVIDER" }).eq("id", userId);
-
-      toast({ title: "Member Added", description: `${newMember.email} has been added to the team.` });
+      toast({ title: "Member Added", description: `${email} has been added to the team.` });
+      setCreatedCredentials({ email, temporaryPassword: response.temporaryPassword });
+      setPasswordCopied(false);
       setDialogOpen(false);
       setNewMember({ name: "", email: "", role: "member" });
-      // Refresh
-      const { data: updatedMembers } = await supabase.from("provider_members").select("id, user_id, role, created_at").eq("provider_id", providerId);
-      if (updatedMembers) {
-        const userIds = updatedMembers.map((m: any) => m.user_id);
-        const { data: profiles } = await supabase.from("profiles").select("id, full_name, email").in("id", userIds);
-        const profileMap: Record<string, any> = {};
-        (profiles || []).forEach((p: any) => { profileMap[p.id] = p; });
-        setTeam(updatedMembers.map((m: any) => ({
-          id: m.id, user_id: m.user_id, name: profileMap[m.user_id]?.full_name || profileMap[m.user_id]?.email || "Unknown",
-          email: profileMap[m.user_id]?.email || "", role: m.role, joinedAt: m.created_at,
-        })));
-      }
+      await refreshTeam(providerId);
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Could not add member.", variant: "destructive" });
+    } finally {
+      setSubmittingMember(false);
     }
   };
 
   const handleRoleChange = async (memberId: string, _userId: string, role: string) => {
+    if (!providerId || !isProviderAdmin) return;
     try {
-      const { error } = await supabase.from("provider_members").update({ role }).eq("id", memberId);
-      if (error) throw error;
+      await invokeEdgeFunction("company-access-tools", {
+        action: "update_company_member_role",
+        companyType: "provider",
+        companyId: providerId,
+        memberId,
+        role,
+      });
       setTeam((prev) => prev.map((m) => (m.id === memberId ? { ...m, role } : m)));
       toast({ title: "Role Updated" });
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Could not update role.", variant: "destructive" });
+    }
+  };
+
+  const handleGenerateTemporaryPassword = async (member: TeamMember) => {
+    if (!providerId || !isProviderAdmin) return;
+    setResettingPasswordUserId(member.user_id);
+    try {
+      const response = await invokeEdgeFunction<{ temporaryPassword: string }>("company-access-tools", {
+        action: "generate_temporary_password",
+        companyType: "provider",
+        companyId: providerId,
+        userId: member.user_id,
+      });
+      setCreatedCredentials({ email: member.email || member.name, temporaryPassword: response.temporaryPassword });
+      setPasswordCopied(false);
+      toast({ title: "Temporary Password Created" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Could not generate password.", variant: "destructive" });
+    } finally {
+      setResettingPasswordUserId(null);
+    }
+  };
+
+  const handleRemoveMember = async (member: TeamMember) => {
+    if (!providerId || !isProviderAdmin) return;
+    if (!window.confirm(`Remove ${member.email || member.name} from this provider?`)) return;
+    setDeletingUserId(member.user_id);
+    try {
+      await invokeEdgeFunction("company-access-tools", {
+        action: "remove_company_member",
+        companyType: "provider",
+        companyId: providerId,
+        memberId: member.id,
+        userId: member.user_id,
+      });
+      setTeam((prev) => prev.filter((m) => m.id !== member.id));
+      toast({ title: "Member Removed" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Could not remove member.", variant: "destructive" });
+    } finally {
+      setDeletingUserId(null);
     }
   };
 
@@ -226,15 +307,17 @@ export default function ProviderSettingsPage() {
                     {company.regions.map((r, i) => (
                       <Badge key={i} variant="secondary">{r}</Badge>
                     ))}
-                    <Badge variant="outline" className="cursor-pointer hover:bg-muted" onClick={() => {
-                      const region = prompt("Enter region name:");
-                      if (region) setCompany({ ...company, regions: [...company.regions, region] });
-                    }}>
-                      <Plus className="w-3 h-3 mr-1" /> Add
-                    </Badge>
+                    {isProviderAdmin && (
+                      <Badge variant="outline" className="cursor-pointer hover:bg-muted" onClick={() => {
+                        const region = prompt("Enter region name:");
+                        if (region) setCompany({ ...company, regions: [...company.regions, region] });
+                      }}>
+                        <Plus className="w-3 h-3 mr-1" /> Add
+                      </Badge>
+                    )}
                   </div>
                 </div>
-                <Button onClick={handleSaveProfile} disabled={saving}>
+                <Button onClick={handleSaveProfile} disabled={saving || !isProviderAdmin}>
                   <Save className="w-4 h-4 mr-1" />
                   {saving ? "Saving..." : "Save Profile"}
                 </Button>
@@ -277,37 +360,39 @@ export default function ProviderSettingsPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle className="text-base">Team Members</CardTitle>
-                  <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button size="sm"><Plus className="w-4 h-4 mr-1" /> Add Member</Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader><DialogTitle>Add Team Member</DialogTitle></DialogHeader>
-                      <div className="space-y-4 mt-2">
-                        <div>
-                          <Label>Full Name</Label>
-                          <Input value={newMember.name} onChange={(e) => setNewMember({ ...newMember, name: e.target.value })} placeholder="John Doe" />
+                  {isProviderAdmin && (
+                    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button size="sm"><Plus className="w-4 h-4 mr-1" /> Add Member</Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader><DialogTitle>Add Team Member</DialogTitle></DialogHeader>
+                        <div className="space-y-4 mt-2">
+                          <div>
+                            <Label>Full Name</Label>
+                            <Input value={newMember.name} onChange={(e) => setNewMember({ ...newMember, name: e.target.value })} placeholder="John Doe" />
+                          </div>
+                          <div>
+                            <Label>Email</Label>
+                            <Input value={newMember.email} onChange={(e) => setNewMember({ ...newMember, email: e.target.value })} placeholder="john@company.com" />
+                          </div>
+                          <div>
+                            <Label>Role</Label>
+                            <Select value={newMember.role} onValueChange={(v) => setNewMember({ ...newMember, role: v })}>
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="admin">Admin</SelectItem>
+                                <SelectItem value="member">Member</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <Button className="w-full" onClick={handleAddMember} disabled={submittingMember || !newMember.email}>
+                            {submittingMember ? "Creating..." : "Create Member"}
+                          </Button>
                         </div>
-                        <div>
-                          <Label>Email</Label>
-                          <Input value={newMember.email} onChange={(e) => setNewMember({ ...newMember, email: e.target.value })} placeholder="john@company.com" />
-                        </div>
-                        <div>
-                          <Label>Role</Label>
-                          <Select value={newMember.role} onValueChange={(v) => setNewMember({ ...newMember, role: v })}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="admin">Admin</SelectItem>
-                              <SelectItem value="member">Member</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <Button className="w-full" onClick={handleAddMember} disabled={!newMember.email}>
-                          Send Invitation
-                        </Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+                      </DialogContent>
+                    </Dialog>
+                  )}
                 </CardHeader>
                 <CardContent>
                   <Table>
@@ -317,7 +402,7 @@ export default function ProviderSettingsPage() {
                         <TableHead>Email</TableHead>
                         <TableHead>Role</TableHead>
                         <TableHead>Joined</TableHead>
-                        <TableHead>Actions</TableHead>
+                        {isProviderAdmin && <TableHead>Actions</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -336,15 +421,41 @@ export default function ProviderSettingsPage() {
                             <Badge variant={m.role === "admin" ? "default" : "secondary"} className="capitalize">{m.role}</Badge>
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">{m.joinedAt}</TableCell>
-                          <TableCell>
-                            <Select value={m.role} onValueChange={(v) => handleRoleChange(m.id, m.user_id, v)}>
-                              <SelectTrigger className="w-28 h-8"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="admin">Admin</SelectItem>
-                                <SelectItem value="member">Member</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
+                          {isProviderAdmin && (
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 gap-1"
+                                  disabled={resettingPasswordUserId === m.user_id}
+                                  onClick={() => handleGenerateTemporaryPassword(m)}
+                                >
+                                  <KeyRound className="h-3.5 w-3.5" />
+                                  Password
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 gap-1 text-destructive hover:text-destructive"
+                                  disabled={deletingUserId === m.user_id}
+                                  onClick={() => handleRemoveMember(m)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Remove
+                                </Button>
+                                <Select value={m.role} onValueChange={(v) => handleRoleChange(m.id, m.user_id, v)}>
+                                  <SelectTrigger className="w-28 h-8"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="admin">Admin</SelectItem>
+                                    <SelectItem value="member">Member</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </TableCell>
+                          )}
                         </TableRow>
                       ))}
                     </TableBody>
@@ -354,6 +465,47 @@ export default function ProviderSettingsPage() {
             </div>
           </TabsContent>
         </Tabs>
+
+        <Dialog
+          open={Boolean(createdCredentials)}
+          onOpenChange={(open) => {
+            if (!open) {
+              setCreatedCredentials(null);
+              setPasswordCopied(false);
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader><DialogTitle>Temporary password created</DialogTitle></DialogHeader>
+            {createdCredentials && (
+              <div className="space-y-4">
+                <div className="rounded-lg border bg-muted/40 p-4">
+                  <div className="text-xs font-medium text-muted-foreground">Member</div>
+                  <div className="mt-1 text-sm font-medium">{createdCredentials.email}</div>
+                </div>
+                <div className="rounded-lg border bg-muted/40 p-4">
+                  <div className="text-xs font-medium text-muted-foreground">Temporary password</div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Input readOnly value={createdCredentials.temporaryPassword} className="font-mono" />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="gap-2"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(createdCredentials.temporaryPassword).then(() => {
+                          setPasswordCopied(true);
+                        });
+                      }}
+                    >
+                      {passwordCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                      {passwordCopied ? "Copied" : "Copy password"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );

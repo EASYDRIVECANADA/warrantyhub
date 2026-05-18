@@ -6,6 +6,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import ConfigurationPage from "../pages/dealership/settings/ConfigurationPage";
 
+let authUser = {
+  id: "dealer-admin-1",
+  email: "admin@example.com",
+  role: "DEALER_ADMIN",
+};
+
 vi.mock("../hooks/useDealership", () => ({
   useDealership: () => ({
     dealershipId: "dealership-1",
@@ -18,11 +24,7 @@ vi.mock("../hooks/useDealership", () => ({
 
 vi.mock("../providers/AuthProvider", () => ({
   useAuth: () => ({
-    user: {
-      id: "dealer-admin-1",
-      email: "admin@example.com",
-      role: "DEALER_ADMIN",
-    },
+    user: authUser,
     signOut: vi.fn(),
   }),
 }));
@@ -55,7 +57,15 @@ const productRows = [
   },
 ];
 
-const defaultPricingRows = [
+type TestPricingRow = {
+  product_id: string;
+  dealer_cost: Record<string, number>;
+  retail_price: Record<string, number>;
+  confidentiality_enabled: boolean;
+  sort_order: number | null;
+};
+
+const defaultPricingRows: TestPricingRow[] = [
   {
     product_id: "product-1",
     dealer_cost: {},
@@ -65,7 +75,9 @@ const defaultPricingRows = [
   },
 ];
 
-let pricingRows = defaultPricingRows;
+let pricingRows: TestPricingRow[] = defaultPricingRows;
+const dealershipPricingUpsertMock = vi.fn(() => Promise.resolve({ data: null, error: null }));
+const dealershipPricingUpdateMock = vi.fn();
 
 function makeSupabaseChain(table: string) {
   const chain: Record<string, unknown> = {};
@@ -89,11 +101,13 @@ function makeSupabaseChain(table: string) {
     let isUpdating = false;
     let updateEqCount = 0;
 
-    chain.update = vi.fn(() => {
+    chain.update = vi.fn((payload) => {
       isUpdating = true;
       updateEqCount = 0;
+      dealershipPricingUpdateMock(payload);
       return chain;
     });
+    chain.upsert = dealershipPricingUpsertMock;
     chain.eq = vi.fn(() => {
       if (!isUpdating) {
         return Promise.resolve({ data: pricingRows, error: null });
@@ -133,7 +147,14 @@ function renderPage() {
 describe("dealer pricing recommendation display", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authUser = {
+      id: "dealer-admin-1",
+      email: "admin@example.com",
+      role: "DEALER_ADMIN",
+    };
     pricingRows = defaultPricingRows;
+    dealershipPricingUpsertMock.mockClear();
+    dealershipPricingUpdateMock.mockClear();
     delete (window as any).__warrantyhub_confirm__;
   });
 
@@ -194,5 +215,128 @@ describe("dealer pricing recommendation display", () => {
       "Reset retail prices for this plan back to provider suggested retail?",
       "Reset retail pricing",
     );
+  });
+
+  it("does not expose dealer cost editing in dealership configuration", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: /provider one/i }));
+    await user.click(await screen.findByRole("button", { name: /test warranty/i }));
+
+    expect(await screen.findByText("Cost $189")).toBeInTheDocument();
+    expect(screen.queryByText(/click either pencil/i)).not.toBeInTheDocument();
+    expect(screen.queryByTitle(/clear custom cost/i)).not.toBeInTheDocument();
+  });
+
+  it("allows the EasyDrive super admin account to edit dealer cost overrides", async () => {
+    authUser = {
+      id: "easydrive-super-admin",
+      email: "info@easydrivecanada.com",
+      role: "SUPER_ADMIN",
+    };
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: /provider one/i }));
+    await user.click(await screen.findByRole("button", { name: /test warranty/i }));
+
+    await user.click(await screen.findByTitle(/edit dealer cost/i));
+    const costInput = screen.getByRole("spinbutton", { name: /^dealer cost$/i });
+    await user.clear(costInput);
+    await user.type(costInput, "275");
+    await user.click(screen.getByRole("button", { name: /save dealer cost/i }));
+
+    await waitFor(() => {
+      expect(dealershipPricingUpdateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dealer_cost: { "t0|m-|r0|term0": 275 },
+        }),
+      );
+    });
+    expect(await screen.findByText("Cost $275")).toBeInTheDocument();
+  });
+
+  it("warns before turning customer retail off because dealer cost may be shown", async () => {
+    pricingRows = [
+      {
+        product_id: "product-1",
+        dealer_cost: {},
+        retail_price: { "t0|m-|r0|term0": 889 },
+        confidentiality_enabled: true,
+        sort_order: null,
+      },
+    ];
+    (window as any).__warrantyhub_confirm__ = vi.fn().mockResolvedValue(false);
+
+    const user = userEvent.setup();
+    renderPage();
+
+    const toggle = await screen.findByRole("switch");
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+
+    await user.click(toggle);
+
+    await waitFor(() => {
+      expect((window as any).__warrantyhub_confirm__).toHaveBeenCalledWith(
+        expect.stringContaining("customers may see dealer cost"),
+        "Show dealer cost?",
+      );
+    });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("turns customer retail on without the dealer-cost exposure warning", async () => {
+    pricingRows = [
+      {
+        product_id: "product-1",
+        dealer_cost: {},
+        retail_price: { "t0|m-|r0|term0": 889 },
+        confidentiality_enabled: false,
+        sort_order: null,
+      },
+    ];
+    (window as any).__warrantyhub_confirm__ = vi.fn().mockResolvedValue(false);
+
+    const user = userEvent.setup();
+    renderPage();
+
+    const toggle = await screen.findByRole("switch");
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+
+    await user.click(toggle);
+
+    await waitFor(() => {
+      expect(toggle).toHaveAttribute("aria-checked", "true");
+    });
+    expect((window as any).__warrantyhub_confirm__).not.toHaveBeenCalled();
+  });
+
+  it("persists customer retail visibility for products without existing pricing rows", async () => {
+    pricingRows = [];
+    (window as any).__warrantyhub_confirm__ = vi.fn().mockResolvedValue(true);
+
+    const user = userEvent.setup();
+    renderPage();
+
+    const toggle = await screen.findByRole("switch");
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+
+    await user.click(toggle);
+
+    await waitFor(() => {
+      expect(dealershipPricingUpsertMock).toHaveBeenCalledWith(
+        [
+          expect.objectContaining({
+            dealership_id: "dealership-1",
+            product_id: "product-1",
+            retail_price: {},
+            confidentiality_enabled: true,
+          }),
+        ],
+        { onConflict: "dealership_id,product_id" },
+      );
+    });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
   });
 });

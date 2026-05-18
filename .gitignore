@@ -13,5 +13,9 @@ pnpm-debug.log*
 
 .DS_Store
 
+# Test artifacts
+playwright-report/
+test-results/
+
 # Supabase local dev
 supabase/.temp/

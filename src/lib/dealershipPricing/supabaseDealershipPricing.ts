@@ -56,7 +56,6 @@ export const supabaseDealershipPricingApi: DealershipPricingApi = {
         {
           dealership_id: input.dealershipId,
           product_id: input.productId,
-          dealer_cost: input.dealerCost ?? {},
           retail_price: input.retailPrice,
           confidentiality_enabled: input.confidentialityEnabled ?? false,
         },

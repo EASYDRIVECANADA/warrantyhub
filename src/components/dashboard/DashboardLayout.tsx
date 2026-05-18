@@ -43,6 +43,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, t
   const roleMatches = (allowedRoles?: string[]) => {
     if (!allowedRoles?.length) return true;
     const role = user?.role ?? "";
+    if (role === "SUPER_ADMIN") return true;
     const aliases: Record<string, string[]> = {
       dealership_admin: ["DEALER_ADMIN", "dealership_admin"],
       dealership_employee: ["DEALER_EMPLOYEE", "dealership_employee"],
@@ -51,7 +52,9 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, t
     };
     return allowedRoles.some((allowed) => role === allowed || aliases[allowed]?.includes(role));
   };
-  const visibleNavItems = navItems
+  const dashboardNavItems =
+    user?.role === "SUPER_ADMIN" && navItems === dealershipNavItems ? superAdminDealerNavItems : navItems;
+  const visibleNavItems = dashboardNavItems
     .filter((item) => roleMatches(item.allowedRoles))
     .map((item) => {
       if (!item.children) return item;
@@ -255,6 +258,15 @@ export const adminNavItems: NavItem[] = [
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
 
+export const platformAdminNavItems: NavItem[] = [
+  { label: "Platform Dashboard", href: "/platform", icon: LayoutDashboard },
+  { label: "Access Requests", href: "/admin-access-requests", icon: Users },
+  { label: "Companies", href: "/admin-companies", icon: Package },
+  { label: "Dealerships", href: "/admin-dealerships", icon: Building2 },
+  { label: "Platform Users", href: "/admin-users", icon: UserCircle },
+  { label: "Audit Logs", href: "/audit-logs", icon: FileText },
+];
+
 export const dealershipNavItems: NavItem[] = [
   { label: "Dashboard", href: "/dealership/overview", icon: LayoutDashboard },
   { label: "Find Products", href: "/dealership/find-products", icon: Package },
@@ -273,6 +285,8 @@ export const dealershipNavItems: NavItem[] = [
     ],
   },
 ];
+
+export const superAdminDealerNavItems: NavItem[] = [...platformAdminNavItems, ...dealershipNavItems];
 
 export const providerNavItems: NavItem[] = [
   { label: "Overview", href: "/provider/overview", icon: LayoutDashboard },

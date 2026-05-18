@@ -12,7 +12,6 @@ export type DealershipProductPricing = {
 export type UpsertDealershipPricingInput = {
   dealershipId: string;
   productId: string;
-  dealerCost?: Record<string, unknown>;
   retailPrice: Record<string, unknown>;
   confidentialityEnabled?: boolean;
 };

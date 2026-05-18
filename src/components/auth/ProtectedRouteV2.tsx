@@ -13,6 +13,7 @@ const ROLE_MAP: Record<string, AppRoleCompat[]> = {
 };
 
 function matchesRole(userRole: string, allowedRoles: string[]): boolean {
+  if (userRole === "SUPER_ADMIN") return true;
   for (const allowed of allowedRoles) {
     if (userRole === allowed) return true;
     const mapped = ROLE_MAP[allowed];

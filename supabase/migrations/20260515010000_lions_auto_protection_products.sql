@@ -1,8 +1,8 @@
 -- Lions Auto Protection - provider and product seed.
--- Source: warranty list supplied May 2026.
+-- Source: Dealer Price List PDF supplied May 2026.
 --
 -- Safe to re-run: the provider rows are upserted and Lions products are refreshed.
--- Pricing was not supplied; claim maximums are stored separately from dealer/retail price.
+-- Dealer costs are sourced from the dealer price list. Suggested retail pricing was not supplied.
 
 DO $$
 DECLARE
@@ -119,18 +119,18 @@ BEGIN
       "termsSections": [
         {
           "title": "Pricing",
-          "content": "Dealer cost and suggested retail pricing were not supplied with the warranty list."
+          "content": "Dealer costs are sourced from the supplied dealer price list. Suggested retail pricing was not supplied."
         }
       ]
     }
     $json$::jsonb,
     $json$
     {
-      "source": "Lions Auto Protection warranty list supplied May 2026. Pricing not supplied.",
+      "source": "Dealer Price List PDF supplied May 2026. Suggested retail not supplied.",
       "rows": [
-        {"label": "3 Months / 3,000 km", "vehicleClass": "$1,000 Claim Max", "claimMax": 1000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"},
-        {"label": "7 Months / 11,000 km", "vehicleClass": "$1,000 Claim Max", "claimMax": 1000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"},
-        {"label": "12 Months / 12,000 km", "vehicleClass": "$1,000 Claim Max", "claimMax": 1000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"}
+        {"label": "3 Months / 3,000 km", "vehicleClass": "$1,000 Claim Max", "claimMax": 1000, "dealerCost": 70, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "7 Months / 11,000 km", "vehicleClass": "$1,000 Claim Max", "claimMax": 1000, "dealerCost": 100, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "12 Months / 12,000 km", "vehicleClass": "$1,000 Claim Max", "claimMax": 1000, "dealerCost": 170, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"}
       ]
     }
     $json$::jsonb,
@@ -154,23 +154,31 @@ BEGIN
       "termsSections": [
         {
           "title": "Pricing",
-          "content": "Dealer cost and suggested retail pricing were not supplied with the warranty list."
+          "content": "Dealer costs are sourced from the supplied dealer price list. Suggested retail pricing was not supplied."
         }
       ]
     }
     $json$::jsonb,
     $json$
     {
-      "source": "Lions Auto Protection warranty list supplied May 2026. Pricing not supplied.",
+      "source": "Dealer Price List PDF supplied May 2026. Suggested retail not supplied.",
       "rows": [
-        {"label": "12 Months / 20,000 km", "vehicleClass": "$3,000 Claim Max", "claimMax": 3000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"},
-        {"label": "12 Months / Unlimited km", "vehicleClass": "$3,000 Claim Max", "claimMax": 3000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"},
-        {"label": "24 Months / 40,000 km", "vehicleClass": "$3,000 Claim Max", "claimMax": 3000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"},
-        {"label": "24 Months / Unlimited km", "vehicleClass": "$3,000 Claim Max", "claimMax": 3000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"},
-        {"label": "36 Months / 60,000 km", "vehicleClass": "$3,000 Claim Max", "claimMax": 3000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"},
-        {"label": "48 Months / 80,000 km", "vehicleClass": "$3,000 Claim Max", "claimMax": 3000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"},
-        {"label": "Unlimited Time / 20,000 km", "vehicleClass": "$3,000 Claim Max", "claimMax": 3000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"},
-        {"label": "Unlimited Time / 40,000 km", "vehicleClass": "$3,000 Claim Max", "claimMax": 3000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"}
+        {"label": "12 Months / 20,000 km", "vehicleClass": "$3,000 Claim Max - Class 1/2/3", "claimMax": 3000, "dealerCost": 325, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "12 Months / 20,000 km", "vehicleClass": "$3,000 Claim Max - Class 4", "claimMax": 3000, "dealerCost": 725, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "24 Months / 40,000 km", "vehicleClass": "$3,000 Claim Max - Class 1/2/3", "claimMax": 3000, "dealerCost": 435, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "24 Months / 40,000 km", "vehicleClass": "$3,000 Claim Max - Class 4", "claimMax": 3000, "dealerCost": 835, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "36 Months / 60,000 km", "vehicleClass": "$3,000 Claim Max - Class 1/2/3", "claimMax": 3000, "dealerCost": 675, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "36 Months / 60,000 km", "vehicleClass": "$3,000 Claim Max - Class 4", "claimMax": 3000, "dealerCost": 1075, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "48 Months / 80,000 km", "vehicleClass": "$3,000 Claim Max - Class 1/2/3", "claimMax": 3000, "dealerCost": 800, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "48 Months / 80,000 km", "vehicleClass": "$3,000 Claim Max - Class 4", "claimMax": 3000, "dealerCost": 1200, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "Unlimited Time / 20,000 km", "vehicleClass": "$3,000 Claim Max - Class 1/2/3", "claimMax": 3000, "dealerCost": 375, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "Unlimited Time / 20,000 km", "vehicleClass": "$3,000 Claim Max - Class 4", "claimMax": 3000, "dealerCost": 775, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "Unlimited Time / 40,000 km", "vehicleClass": "$3,000 Claim Max - Class 1/2/3", "claimMax": 3000, "dealerCost": 520, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "Unlimited Time / 40,000 km", "vehicleClass": "$3,000 Claim Max - Class 4", "claimMax": 3000, "dealerCost": 920, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "12 Months / Unlimited km", "vehicleClass": "$3,000 Claim Max - Class 1/2/3", "claimMax": 3000, "dealerCost": 380, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "12 Months / Unlimited km", "vehicleClass": "$3,000 Claim Max - Class 4", "claimMax": 3000, "dealerCost": 780, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "24 Months / Unlimited km", "vehicleClass": "$3,000 Claim Max - Class 1/2/3", "claimMax": 3000, "dealerCost": 520, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "24 Months / Unlimited km", "vehicleClass": "$3,000 Claim Max - Class 4", "claimMax": 3000, "dealerCost": 920, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"}
       ]
     }
     $json$::jsonb,
@@ -194,18 +202,18 @@ BEGIN
       "termsSections": [
         {
           "title": "Pricing",
-          "content": "Dealer cost and suggested retail pricing were not supplied with the warranty list."
+          "content": "Dealer costs are sourced from the supplied dealer price list. Suggested retail pricing was not supplied."
         }
       ]
     }
     $json$::jsonb,
     $json$
     {
-      "source": "Lions Auto Protection warranty list supplied May 2026. Pricing not supplied.",
+      "source": "Dealer Price List PDF supplied May 2026. Suggested retail not supplied.",
       "rows": [
-        {"label": "12 Months / 20,000 km", "vehicleClass": "$3,000 Claim Max", "claimMax": 3000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"},
-        {"label": "24 Months / 40,000 km", "vehicleClass": "$3,000 Claim Max", "claimMax": 3000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"},
-        {"label": "36 Months / 60,000 km", "vehicleClass": "$3,000 Claim Max", "claimMax": 3000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"}
+        {"label": "12 Months / 20,000 km", "vehicleClass": "$3,000 Claim Max - Electric Option", "claimMax": 3000, "dealerCost": 325, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "24 Months / 40,000 km", "vehicleClass": "$3,000 Claim Max - Electric Option", "claimMax": 3000, "dealerCost": 435, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "36 Months / 60,000 km", "vehicleClass": "$3,000 Claim Max - Electric Option", "claimMax": 3000, "dealerCost": 675, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"}
       ]
     }
     $json$::jsonb,
@@ -229,18 +237,18 @@ BEGIN
       "termsSections": [
         {
           "title": "Pricing",
-          "content": "Dealer cost and suggested retail pricing were not supplied with the warranty list."
+          "content": "Dealer costs are sourced from the supplied dealer price list. Suggested retail pricing was not supplied."
         }
       ]
     }
     $json$::jsonb,
     $json$
     {
-      "source": "Lions Auto Protection warranty list supplied May 2026. Pricing not supplied.",
+      "source": "Dealer Price List PDF supplied May 2026. Suggested retail not supplied.",
       "rows": [
-        {"label": "12 Months / 20,000 km", "vehicleClass": "$3,000 Claim Max", "claimMax": 3000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"},
-        {"label": "24 Months / 40,000 km", "vehicleClass": "$3,000 Claim Max", "claimMax": 3000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"},
-        {"label": "36 Months / 60,000 km", "vehicleClass": "$3,000 Claim Max", "claimMax": 3000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"}
+        {"label": "12 Months / 20,000 km", "vehicleClass": "$3,000 Claim Max - Class 1/2/3", "claimMax": 3000, "dealerCost": 425, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "24 Months / 40,000 km", "vehicleClass": "$3,000 Claim Max - Class 1/2/3", "claimMax": 3000, "dealerCost": 650, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "36 Months / 60,000 km", "vehicleClass": "$3,000 Claim Max - Class 1/2/3", "claimMax": 3000, "dealerCost": 785, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"}
       ]
     }
     $json$::jsonb,
@@ -264,17 +272,19 @@ BEGIN
       "termsSections": [
         {
           "title": "Pricing",
-          "content": "Dealer cost and suggested retail pricing were not supplied with the warranty list."
+          "content": "Dealer costs are sourced from the supplied dealer price list. Suggested retail pricing was not supplied."
         }
       ]
     }
     $json$::jsonb,
     $json$
     {
-      "source": "Lions Auto Protection warranty list supplied May 2026. Pricing not supplied.",
+      "source": "Dealer Price List PDF supplied May 2026. Suggested retail not supplied.",
       "rows": [
-        {"label": "60 Months / Up to 100,000 km", "vehicleClass": "$5,000 Claim Max", "claimMax": 5000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"},
-        {"label": "60 Months / Up to 160,000 km", "vehicleClass": "$5,000 Claim Max", "claimMax": 5000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"}
+        {"label": "60 Months / Up to 100,000 km", "vehicleClass": "$5,000 Claim Max - Class 1", "claimMax": 5000, "dealerCost": 840, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "60 Months / Up to 100,000 km", "vehicleClass": "$5,000 Claim Max - Class 2", "claimMax": 5000, "dealerCost": 1084, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "60 Months / Up to 160,000 km", "vehicleClass": "$5,000 Claim Max - Class 1", "claimMax": 5000, "dealerCost": 1290, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "60 Months / Up to 160,000 km", "vehicleClass": "$5,000 Claim Max - Class 2", "claimMax": 5000, "dealerCost": 1804, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"}
       ]
     }
     $json$::jsonb,
@@ -298,21 +308,36 @@ BEGIN
       "termsSections": [
         {
           "title": "Pricing",
-          "content": "Dealer cost and suggested retail pricing were not supplied with the warranty list."
+          "content": "Dealer costs are sourced from the supplied dealer price list. Suggested retail pricing was not supplied."
         }
       ]
     }
     $json$::jsonb,
     $json$
     {
-      "source": "Lions Auto Protection warranty list supplied May 2026. Pricing not supplied.",
+      "source": "Dealer Price List PDF supplied May 2026. Suggested retail not supplied.",
       "rows": [
-        {"label": "12 Months / 20,000 km", "vehicleClass": "$20,000 Claim Max", "claimMax": 20000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"},
-        {"label": "24 Months / 40,000 km", "vehicleClass": "$20,000 Claim Max", "claimMax": 20000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"},
-        {"label": "36 Months / 60,000 km", "vehicleClass": "$20,000 Claim Max", "claimMax": 20000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"},
-        {"label": "Unlimited Time / Up to 110,000 km", "vehicleClass": "$20,000 Claim Max", "claimMax": 20000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"},
-        {"label": "Unlimited Time / Up to 150,000 km", "vehicleClass": "$20,000 Claim Max", "claimMax": 20000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"},
-        {"label": "Unlimited Time / Up to 200,000 km", "vehicleClass": "$20,000 Claim Max", "claimMax": 20000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"}
+        {"label": "12 Months / 20,000 km", "vehicleClass": "$20,000 Claim Max - Class 1", "claimMax": 20000, "dealerCost": 789, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "12 Months / 20,000 km", "vehicleClass": "$20,000 Claim Max - Class 2", "claimMax": 20000, "dealerCost": 919, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "12 Months / 20,000 km", "vehicleClass": "$20,000 Claim Max - Class 3", "claimMax": 20000, "dealerCost": 1909, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "12 Months / 20,000 km", "vehicleClass": "$20,000 Claim Max - Class 4", "claimMax": 20000, "dealerCost": 2475, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "24 Months / 40,000 km", "vehicleClass": "$20,000 Claim Max - Class 1", "claimMax": 20000, "dealerCost": 1240, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "24 Months / 40,000 km", "vehicleClass": "$20,000 Claim Max - Class 2", "claimMax": 20000, "dealerCost": 1299, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "24 Months / 40,000 km", "vehicleClass": "$20,000 Claim Max - Class 3", "claimMax": 20000, "dealerCost": 2359, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "24 Months / 40,000 km", "vehicleClass": "$20,000 Claim Max - Class 4", "claimMax": 20000, "dealerCost": 2925, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "36 Months / 60,000 km", "vehicleClass": "$20,000 Claim Max - Class 1", "claimMax": 20000, "dealerCost": 1690, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "36 Months / 60,000 km", "vehicleClass": "$20,000 Claim Max - Class 2", "claimMax": 20000, "dealerCost": 1729, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "36 Months / 60,000 km", "vehicleClass": "$20,000 Claim Max - Class 3", "claimMax": 20000, "dealerCost": 2809, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "36 Months / 60,000 km", "vehicleClass": "$20,000 Claim Max - Class 4", "claimMax": 20000, "dealerCost": 3375, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "Unlimited Time / Up to 110,000 km", "vehicleClass": "$20,000 Claim Max - Class 1", "claimMax": 20000, "dealerCost": 1099, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "Unlimited Time / Up to 110,000 km", "vehicleClass": "$20,000 Claim Max - Class 2", "claimMax": 20000, "dealerCost": 1299, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "Unlimited Time / Up to 110,000 km", "vehicleClass": "$20,000 Claim Max - Class 3", "claimMax": 20000, "dealerCost": 2399, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "Unlimited Time / Up to 150,000 km", "vehicleClass": "$20,000 Claim Max - Class 1", "claimMax": 20000, "dealerCost": 1599, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "Unlimited Time / Up to 150,000 km", "vehicleClass": "$20,000 Claim Max - Class 2", "claimMax": 20000, "dealerCost": 1899, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "Unlimited Time / Up to 150,000 km", "vehicleClass": "$20,000 Claim Max - Class 3", "claimMax": 20000, "dealerCost": 2699, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "Unlimited Time / Up to 200,000 km", "vehicleClass": "$20,000 Claim Max - Class 1", "claimMax": 20000, "dealerCost": 2399, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "Unlimited Time / Up to 200,000 km", "vehicleClass": "$20,000 Claim Max - Class 2", "claimMax": 20000, "dealerCost": 2599, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "Unlimited Time / Up to 200,000 km", "vehicleClass": "$20,000 Claim Max - Class 3", "claimMax": 20000, "dealerCost": 3599, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"}
       ]
     }
     $json$::jsonb,
@@ -336,16 +361,18 @@ BEGIN
       "termsSections": [
         {
           "title": "Pricing",
-          "content": "Dealer cost and suggested retail pricing were not supplied with the warranty list."
+          "content": "Dealer costs are sourced from the supplied dealer price list. Suggested retail pricing was not supplied."
         }
       ]
     }
     $json$::jsonb,
     $json$
     {
-      "source": "Lions Auto Protection warranty list supplied May 2026. Pricing not supplied.",
+      "source": "Dealer Price List PDF supplied May 2026. Suggested retail not supplied.",
       "rows": [
-        {"label": "Unlimited Time / Up to 150,000 km", "vehicleClass": "$5,000 Claim Max", "claimMax": 5000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"}
+        {"label": "Unlimited Time / Up to 150,000 km", "vehicleClass": "$5,000 Claim Max - Electric Class 1", "claimMax": 5000, "dealerCost": 1525, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "Unlimited Time / Up to 150,000 km", "vehicleClass": "$5,000 Claim Max - Electric Class 2", "claimMax": 5000, "dealerCost": 2039, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "Unlimited Time / Up to 150,000 km", "vehicleClass": "$5,000 Claim Max - Electric Class 3", "claimMax": 5000, "dealerCost": 2653, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"}
       ]
     }
     $json$::jsonb,
@@ -369,16 +396,18 @@ BEGIN
       "termsSections": [
         {
           "title": "Pricing",
-          "content": "Dealer cost and suggested retail pricing were not supplied with the warranty list."
+          "content": "Dealer costs are sourced from the supplied dealer price list. Suggested retail pricing was not supplied."
         }
       ]
     }
     $json$::jsonb,
     $json$
     {
-      "source": "Lions Auto Protection warranty list supplied May 2026. Pricing not supplied.",
+      "source": "Dealer Price List PDF supplied May 2026. Suggested retail not supplied.",
       "rows": [
-        {"label": "Unlimited Time / Up to 150,000 km", "vehicleClass": "$5,000 Claim Max", "claimMax": 5000, "dealerCost": "n/a", "suggestedRetail": "n/a", "priceStatus": "Pricing not supplied"}
+        {"label": "Unlimited Time / Up to 150,000 km", "vehicleClass": "$5,000 Claim Max - Hybrid Class 1", "claimMax": 5000, "dealerCost": 1690, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "Unlimited Time / Up to 150,000 km", "vehicleClass": "$5,000 Claim Max - Hybrid Class 2", "claimMax": 5000, "dealerCost": 2110, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"},
+        {"label": "Unlimited Time / Up to 150,000 km", "vehicleClass": "$5,000 Claim Max - Hybrid Class 3", "claimMax": 5000, "dealerCost": 3065, "suggestedRetail": "n/a", "priceStatus": "Retail not supplied"}
       ]
     }
     $json$::jsonb,
@@ -388,3 +417,4 @@ BEGIN
 
   RAISE NOTICE 'Done - 8 Lions Auto Protection products inserted successfully';
 END $$;
+

@@ -11,6 +11,12 @@ function roleToDashboardPath(role: string): string {
   return "/";
 }
 
+function canAccessAllowedRoles(user: { role: Role }, allowedRoles?: Role[]) {
+  if (!allowedRoles) return true;
+  if (user.role === "SUPER_ADMIN") return true;
+  return allowedRoles.includes(user.role);
+}
+
 export function ProtectedRoute({ allowedRoles }: { allowedRoles?: Role[] }) {
   const { user, isLoading } = useAuth();
 
@@ -24,7 +30,7 @@ export function ProtectedRoute({ allowedRoles }: { allowedRoles?: Role[] }) {
 
   if (!user) return <Navigate to="/sign-in" replace />;
 
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
+  if (!canAccessAllowedRoles(user, allowedRoles)) {
     return <Navigate to={roleToDashboardPath(user.role)} replace />;
   }
 

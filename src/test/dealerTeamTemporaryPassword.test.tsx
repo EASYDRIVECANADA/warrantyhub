@@ -75,4 +75,28 @@ describe("DealerTeamPage temporary password flow", () => {
     expect(screen.getByText("This password is shown once. Share it securely with the employee.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /copy password/i })).toBeInTheDocument();
   });
+
+  it("keeps local employee profile details available when editing", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: /add first member/i }));
+    await user.type(screen.getByPlaceholderText("John"), "Jane");
+    await user.type(screen.getByPlaceholderText("Doe"), "Employee");
+    await user.type(screen.getByPlaceholderText("(555) 123-4567"), "555-111-2222");
+    await user.type(screen.getByPlaceholderText("john.doe@company.com"), "employee@example.com");
+    await user.click(screen.getByRole("button", { name: /^add member$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Temporary password created")).toBeInTheDocument();
+    });
+
+    await user.keyboard("{Escape}");
+    await user.click(await screen.findByRole("button", { name: /^edit$/i }));
+
+    expect(screen.getByPlaceholderText("John")).toHaveValue("Jane");
+    expect(screen.getByPlaceholderText("Doe")).toHaveValue("Employee");
+    expect(screen.getByPlaceholderText("(555) 123-4567")).toHaveValue("555-111-2222");
+    expect(screen.getByPlaceholderText("john.doe@company.com")).toHaveValue("employee@example.com");
+  });
 });

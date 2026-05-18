@@ -98,7 +98,11 @@ function read(): DealerTeamMember[] {
         return {
           id: m.id ?? crypto.randomUUID(),
           dealerId: m.dealerId ?? "",
+          userId: m.userId,
           email: m.email ?? "",
+          firstName: m.firstName,
+          lastName: m.lastName,
+          phone: m.phone,
           role: normalizedRole,
           status: (m.status ?? "INVITED") as DealerTeamStatus,
           createdAt,
@@ -262,10 +266,15 @@ export function DealerTeamPage() {
 
       if (mode === "local") {
         const items = read();
+        const newUserId = crypto.randomUUID();
         const next: DealerTeamMember = {
           id: crypto.randomUUID(),
           dealerId,
+          userId: newUserId,
           email,
+          firstName,
+          lastName,
+          phone: phone || undefined,
           role: draft.role,
           status: "ACTIVE",
           createdAt: new Date().toISOString(),
@@ -275,12 +284,15 @@ export function DealerTeamPage() {
         const users = readLocalUsersRaw();
         writeLocalUsersRaw([
           {
-            id: crypto.randomUUID(),
+            id: newUserId,
             email,
             password: fallbackTemporaryPassword,
             role: draft.role,
             dealerId,
             companyName: "",
+            firstName,
+            lastName,
+            phone,
             isActive: true,
           },
           ...users,
@@ -367,8 +379,33 @@ export function DealerTeamPage() {
         if (idx < 0) throw new Error("Team member not found");
         if (items[idx]!.dealerId !== dealerId) throw new Error("Not authorized");
         const updated = [...items];
-        updated[idx] = { ...updated[idx]!, email, role: draft.role };
+        updated[idx] = {
+          ...updated[idx]!,
+          email,
+          firstName,
+          lastName,
+          phone: phone || undefined,
+          role: draft.role,
+        };
         write(updated);
+
+        const currentUserId = updated[idx]!.userId;
+        if (currentUserId) {
+          const users = readLocalUsersRaw();
+          const uidx = users.findIndex((u) => (u?.id ?? "").toString() === currentUserId);
+          if (uidx >= 0) {
+            const nextUsers = [...users];
+            nextUsers[uidx] = {
+              ...nextUsers[uidx],
+              email,
+              firstName,
+              lastName,
+              phone,
+              role: draft.role,
+            };
+            writeLocalUsersRaw(nextUsers);
+          }
+        }
         return;
       }
 

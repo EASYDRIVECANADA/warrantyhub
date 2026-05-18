@@ -8,6 +8,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { getAppMode } from "../lib/runtime";
 import { getSupabaseClient } from "../lib/supabase/client";
+import { invokeEdgeFunction } from "../lib/supabase/functions";
 import type { Role } from "../lib/auth/types";
 import { confirmProceed } from "../lib/utils";
 import { useAuth } from "../providers/AuthProvider";
@@ -155,15 +156,10 @@ export function AdminAccessRequestsPage() {
     }) => {
       const now = new Date().toISOString();
 
-      const actorId = user?.id;
       const actorEmail = user?.email;
 
       if (mode === "supabase") {
-        const supabase = getSupabaseClient();
-        if (!supabase) throw new Error("Supabase is not configured");
-
         const current = (listQuery.data ?? []).find((r) => r.id === input.id);
-        const fromStatus = current?.status ?? "PENDING";
 
         const effectiveAssignedRole: Role | undefined =
           current?.requestType === "PROVIDER" && input.status === "APPROVED" ? "PROVIDER" : input.assignedRole;
@@ -184,217 +180,22 @@ export function AdminAccessRequestsPage() {
           }
         }
 
-        const maybeEnsureDealerLink = async () => {
-          if (input.status !== "APPROVED") return;
-          if (current?.requestType !== "DEALER") return;
-          if (effectiveAssignedRole !== "DEALER_ADMIN") return;
-
-          const requesterId = (current?.requesterId ?? "").trim();
-          const email = (current?.email ?? "").trim().toLowerCase();
-
-          let profileId: string | undefined;
-          if (requesterId) {
-            profileId = requesterId;
-          } else {
-            if (!email) throw new Error("Requester email is missing");
-
-            const profileLookup = await supabase.from("profiles").select("id, email").eq("email", email).maybeSingle();
-            if (profileLookup.error) throw new Error(toErrorMessage(profileLookup.error));
-            profileId = (profileLookup.data as any)?.id as string | undefined;
-          }
-
-          if (!profileId) throw new Error("Requester profile not found");
-
-          const dealerName = (effectiveAssignedCompany ?? "").trim();
-          if (!dealerName) throw new Error("Assigned company is required for approval");
-
-          const dealerInsert = await supabase.from("dealers").insert({ name: dealerName, markup_pct: 0 }).select("id").single();
-          if (dealerInsert.error) throw new Error(toErrorMessage(dealerInsert.error));
-          const dealerId = (dealerInsert.data as any)?.id as string | undefined;
-          if (!dealerId) throw new Error("Failed to create dealership");
-
-          // Also create V2 dealerships row (or find existing one from migration)
-          const dealershipUpsert = await supabase
-            .from("dealerships")
-            .upsert({ name: dealerName, legacy_dealer_id: dealerId, status: "approved" }, { onConflict: "legacy_dealer_id" })
-            .select("id")
-            .maybeSingle();
-          const dealershipId = (dealershipUpsert.data as any)?.id;
-
-          const membershipInsert = await supabase
-            .from("dealer_members")
-            .insert({ dealer_id: dealerId, user_id: profileId, role: "DEALER_ADMIN", status: "ACTIVE" });
-          if (membershipInsert.error) throw new Error(toErrorMessage(membershipInsert.error));
-
-          // Also create V2 dealership_members row
-          if (dealershipId) {
-            await supabase
-              .from("dealership_members")
-              .upsert({ user_id: profileId, dealership_id: dealershipId, role: "admin" }, { onConflict: "user_id,dealership_id" });
-          }
-
-          // Insert into V2 user_roles table
-          await supabase
-            .from("user_roles")
-            .upsert({ user_id: profileId, role: "dealership_admin" }, { onConflict: "user_id,role" });
-        };
-
         if (input.status === "APPROVED") {
-          await maybeEnsureDealerLink();
+          await invokeEdgeFunction("company-access-tools", {
+            action: "approve_access_request",
+            requestId: input.id,
+            companyType: current?.requestType === "PROVIDER" ? "provider" : "dealership",
+            assignedCompany: effectiveAssignedCompany,
+            assignedRole: effectiveAssignedRole,
+          });
+          return;
         }
 
-        const updateRow: Record<string, unknown> = {
-          status: input.status,
-          reviewed_at: now,
-          reviewed_by: actorId ?? null,
-          reviewed_by_email: actorEmail ?? null,
-        };
-
-        if (typeof effectiveAssignedRole === "string") updateRow.assigned_role = effectiveAssignedRole;
-        if (typeof effectiveAssignedCompany === "string") updateRow.assigned_company = effectiveAssignedCompany;
-        if (input.status === "REJECTED") updateRow.rejection_message = input.rejectionMessage?.trim() || null;
-        if (input.status === "APPROVED") updateRow.rejection_message = null;
-
-        const { error } = await supabase
-          .from("access_requests")
-          .update(updateRow)
-          .eq("id", input.id);
-
-        if (error) throw new Error(toErrorMessage(error));
-
-        if (input.status === "APPROVED" && effectiveAssignedRole && effectiveAssignedCompany) {
-          const requesterId = (current?.requesterId ?? "").trim();
-          const email = (current?.email ?? "").trim().toLowerCase();
-
-          let profileId: string | undefined;
-          if (requesterId) {
-            profileId = requesterId;
-          } else if (email) {
-            const profileLookup = await supabase.from("profiles").select("id, email").eq("email", email).maybeSingle();
-            if (!profileLookup.error && profileLookup.data?.id) {
-              profileId = profileLookup.data.id as string;
-            }
-          }
-
-          if (profileId) {
-
-              let providerCompanyId: string | null = null;
-              if (current?.requestType === "PROVIDER") {
-                const requestedName = effectiveAssignedCompany.trim();
-
-                const existingCompany = await supabase
-                  .from("provider_companies")
-                  .select("id")
-                  .eq("provider_company_name", requestedName)
-                  .maybeSingle();
-
-                if (existingCompany.error) throw new Error(toErrorMessage(existingCompany.error));
-
-                if (existingCompany.data?.id) {
-                  providerCompanyId = existingCompany.data.id as string;
-                } else {
-                  const insertCompany = await supabase
-                    .from("provider_companies")
-                    .insert({
-                      provider_company_name: requestedName,
-                      legal_business_name: requestedName,
-                      contact_email: (current?.email ?? "").trim(),
-                      status: "ACTIVE",
-                    })
-                    .select("id")
-                    .single();
-
-                  if (insertCompany.error) throw new Error(toErrorMessage(insertCompany.error));
-                  providerCompanyId = (insertCompany.data as any).id as string;
-                }
-              }
-
-              const profileUpdate = await supabase
-                .from("profiles")
-                .update({
-                  role: effectiveAssignedRole,
-                  company_name: effectiveAssignedCompany,
-                  is_active: true,
-                  provider_company_id: providerCompanyId,
-                })
-                .eq("id", profileId);
-
-              if (profileUpdate.error) throw new Error(toErrorMessage(profileUpdate.error));
-
-              // V2: Insert into user_roles table
-              const v2Role = effectiveAssignedRole === "SUPER_ADMIN" || effectiveAssignedRole === "ADMIN"
-                ? "super_admin"
-                : effectiveAssignedRole === "DEALER_ADMIN"
-                  ? "dealership_admin"
-                  : effectiveAssignedRole === "DEALER_EMPLOYEE"
-                    ? "dealership_employee"
-                    : effectiveAssignedRole === "PROVIDER"
-                      ? "provider"
-                      : null;
-
-              if (v2Role) {
-                await supabase
-                  .from("user_roles")
-                  .upsert({ user_id: profileId, role: v2Role }, { onConflict: "user_id,role" });
-              }
-
-              // V2: For providers, also create providers and provider_members rows
-              if (current?.requestType === "PROVIDER" && effectiveAssignedCompany) {
-                const providerName = effectiveAssignedCompany.trim();
-                let v2ProviderId: string | null = null;
-
-                // Try to find existing provider from backfill (matched by name or provider_company_id)
-                if (providerCompanyId) {
-                  const { data: existingProvider } = await supabase
-                    .from("providers")
-                    .select("id")
-                    .eq("legacy_profile_id", profileId)
-                    .maybeSingle();
-                  if (existingProvider) {
-                    v2ProviderId = (existingProvider as any).id;
-                  }
-                }
-
-                if (!v2ProviderId) {
-                  // Create provider entity
-                  const { data: newProvider, error: providerErr } = await supabase
-                    .from("providers")
-                    .insert({
-                      company_name: providerName,
-                      contact_email: (current?.email ?? "").trim(),
-                      status: "approved",
-                    })
-                    .select("id")
-                    .maybeSingle();
-                  if (!providerErr && newProvider) {
-                    v2ProviderId = (newProvider as any).id;
-                  }
-                }
-
-                if (v2ProviderId) {
-                  // Create provider membership
-                  await supabase
-                    .from("provider_members")
-                    .upsert({ user_id: profileId, provider_id: v2ProviderId, role: "admin" }, { onConflict: "user_id,provider_id" });
-                }
-              }
-
-              // V2: For dealers, also ensure dealerships/roles are linked (handled above in maybeEnsureDealerLink)
-          }
-        }
-
-        const auditInsert = await supabase.from("access_request_audit").insert({
-          access_request_id: input.id,
-          action: input.status === "APPROVED" ? "APPROVED" : "REJECTED",
-          from_status: fromStatus,
-          to_status: input.status,
-          assigned_role: effectiveAssignedRole ?? null,
-          assigned_company: effectiveAssignedCompany ?? null,
-          actor_user_id: actorId ?? null,
-          actor_email: actorEmail ?? null,
+        await invokeEdgeFunction("company-access-tools", {
+          action: "reject_access_request",
+          requestId: input.id,
+          rejectionMessage: input.rejectionMessage?.trim() || undefined,
         });
-
-        if (auditInsert.error) throw new Error(toErrorMessage(auditInsert.error));
         return;
       }
 

@@ -138,6 +138,38 @@ as $$
   );
 $$;
 
+create or replace function public.is_active_dealer_admin_member(target_dealer_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.dealer_members dm
+    where dm.dealer_id = target_dealer_id
+      and dm.user_id = auth.uid()
+      and dm.status = 'ACTIVE'
+      and dm.role = 'DEALER_ADMIN'
+  );
+$$;
+
+create or replace function public.can_select_dealer_team_profile(target_user_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.dealer_members dm_target
+    where dm_target.user_id = target_user_id
+      and public.is_active_dealer_admin_member(dm_target.dealer_id)
+  );
+$$;
+
 create or replace function public.can_update_profile(target_id uuid, new_role text)
 returns boolean
 language sql
@@ -184,18 +216,7 @@ create policy "profiles_select_dealer_admin_team"
   on public.profiles
   for select
   to authenticated
-  using (
-    exists (
-      select 1
-      from public.dealer_members dm_target
-      join public.dealer_members dm_admin
-        on dm_admin.dealer_id = dm_target.dealer_id
-      where dm_target.user_id = profiles.id
-        and dm_admin.user_id = auth.uid()
-        and dm_admin.status = 'ACTIVE'
-        and dm_admin.role = 'DEALER_ADMIN'
-    )
-  );
+  using (public.can_select_dealer_team_profile(profiles.id));
 
 create table if not exists public.support_conversations (
   id uuid primary key default gen_random_uuid(),
@@ -826,16 +847,7 @@ create policy "dealer_members_dealer_admin_select_team"
   on public.dealer_members
   for select
   to authenticated
-  using (
-    exists (
-      select 1
-      from public.dealer_members dm_admin
-      where dm_admin.dealer_id = dealer_members.dealer_id
-        and dm_admin.user_id = auth.uid()
-        and dm_admin.status = 'ACTIVE'
-        and dm_admin.role = 'DEALER_ADMIN'
-    )
-  );
+  using (public.is_active_dealer_admin_member(dealer_members.dealer_id));
 
 create table if not exists public.dealer_employee_invites (
   dealer_id uuid primary key references public.dealers(id) on delete cascade,
@@ -1583,7 +1595,10 @@ exception
   when duplicate_object then null;
 end $$;
 
-do $$claim_limit_type_check
+do $$
+begin
+  alter table public.product_pricing
+    add constraint product_pricing_claim_limit_type_check
     check (
       claim_limit_type is null
       or claim_limit_type in ('PER_CLAIM','TOTAL_COVERAGE','FMV','MAX_RETAIL')
@@ -1615,9 +1630,6 @@ exception
 end $$;
 
 do $$
-begin
-  alter table public.product_pricing
-    add constraint product_pricing_
 begin
   alter table public.product_pricing
     add constraint product_pricing_claim_limit_cents_check
@@ -2003,10 +2015,6 @@ begin
   $sql$;
 
   execute $sql$
-    alter table storage.objects enable row level security;
-  $sql$;
-
-  execute $sql$
     drop policy if exists "product_documents_storage_select" on storage.objects;
   $sql$;
 
@@ -2276,9 +2284,6 @@ create policy "Super admins can manage dealerships"
   using (public.has_role(auth.uid(), 'super_admin'));
 
 drop policy if exists "Authenticated can insert dealerships" on public.dealerships;
-create policy "Authenticated can insert dealerships"
-  on public.dealerships for insert
-  with check (auth.uid() is not null);
 
 drop policy if exists "Dealership admins can update their dealership" on public.dealerships;
 create policy "Dealership admins can update their dealership"
@@ -2310,9 +2315,6 @@ create policy "Members can view their dealership members"
   using (public.is_dealership_member(auth.uid(), dealership_id));
 
 drop policy if exists "Authenticated can insert dealership members" on public.dealership_members;
-create policy "Authenticated can insert dealership members"
-  on public.dealership_members for insert
-  with check (auth.uid() is not null);
 
 drop policy if exists "Super admins can manage dealership members" on public.dealership_members;
 create policy "Super admins can manage dealership members"
@@ -2358,9 +2360,6 @@ create policy "Super admins can manage providers"
   using (public.has_role(auth.uid(), 'super_admin'));
 
 drop policy if exists "Authenticated can insert providers" on public.providers;
-create policy "Authenticated can insert providers"
-  on public.providers for insert
-  with check (auth.uid() is not null);
 
 drop policy if exists "Provider admins can update own" on public.providers;
 create policy "Provider admins can update own"
@@ -2392,9 +2391,6 @@ create policy "Members can view provider members"
   using (public.is_provider_member(auth.uid(), provider_id));
 
 drop policy if exists "Authenticated can insert provider members" on public.provider_members;
-create policy "Authenticated can insert provider members"
-  on public.provider_members for insert
-  with check (auth.uid() is not null);
 
 drop policy if exists "Super admins can manage provider members" on public.provider_members;
 create policy "Super admins can manage provider members"
@@ -2535,6 +2531,35 @@ drop trigger if exists update_dealership_product_pricing_updated_at on public.de
 create trigger update_dealership_product_pricing_updated_at
   before update on public.dealership_product_pricing
   for each row execute function public.update_updated_at_column();
+
+create or replace function public.prevent_dealer_cost_write_from_dealer_admin()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if coalesce(auth.role(), '') = 'service_role' or public.has_role(auth.uid(), 'super_admin') then
+    return new;
+  end if;
+
+  if tg_op = 'INSERT' and coalesce(new.dealer_cost, '{}'::jsonb) <> '{}'::jsonb then
+    raise exception 'Only providers or platform admins can change dealer cost';
+  end if;
+
+  if tg_op = 'UPDATE' and new.dealer_cost is distinct from old.dealer_cost then
+    raise exception 'Only providers or platform admins can change dealer cost';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_dealership_product_pricing_prevent_dealer_cost_write
+  on public.dealership_product_pricing;
+create trigger trg_dealership_product_pricing_prevent_dealer_cost_write
+  before insert or update on public.dealership_product_pricing
+  for each row execute function public.prevent_dealer_cost_write_from_dealer_admin();
 
 drop policy if exists "Dealership members can view pricing" on public.dealership_product_pricing;
 create policy "Dealership members can view pricing"

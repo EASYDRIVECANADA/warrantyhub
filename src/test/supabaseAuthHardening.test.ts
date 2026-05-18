@@ -63,4 +63,21 @@ describe("supabaseAuthApi V2 role hardening", () => {
     expect(signOutMock).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem("warrantyhub.local.auth_notice")).toBe("Account disabled");
   });
+
+  it("prioritizes super admin when a user has both platform and dealership roles", async () => {
+    profilesMaybeSingleMock.mockResolvedValue({
+      data: { role: "SUPER_ADMIN", is_active: true },
+      error: null,
+    });
+    userRolesLimitMock.mockResolvedValue({
+      data: [{ role: "dealership_admin" }, { role: "super_admin" }],
+      error: null,
+    });
+
+    await expect(supabaseAuthApi.getCurrentUser()).resolves.toMatchObject({
+      id: "user-1",
+      email: "disabled@example.com",
+      role: "SUPER_ADMIN",
+    });
+  });
 });

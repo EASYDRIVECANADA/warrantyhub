@@ -30,7 +30,7 @@ export function useDealership(): UseDealershipResult {
 
     if (member) {
       setDealershipId(member.dealership_id);
-      setMemberRole(member.role as "admin" | "employee");
+      setMemberRole(user.role === "SUPER_ADMIN" ? "admin" : member.role as "admin" | "employee");
       const { data: ds } = await supabase.from("dealerships").select("name").eq("id", member.dealership_id).maybeSingle();
       setDealershipName((ds as any)?.name ?? null);
       setLoading(false);
@@ -56,8 +56,26 @@ export function useDealership(): UseDealershipResult {
         setDealershipId(dealership.id);
         setDealershipName((dealership as any).name ?? null);
         setMemberRole(
-          legacyMember.role === "DEALER_ADMIN" ? "admin" : "employee"
+          user.role === "SUPER_ADMIN" ? "admin" : legacyMember.role === "DEALER_ADMIN" ? "admin" : "employee"
         );
+        setLoading(false);
+        return;
+      }
+    }
+
+    if (user.role === "SUPER_ADMIN") {
+      const { data: dealership } = await supabase
+        .from("dealerships")
+        .select("id, name")
+        .ilike("name", "%easy%drive%canada%")
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (dealership) {
+        setDealershipId((dealership as any).id);
+        setDealershipName((dealership as any).name ?? null);
+        setMemberRole("admin");
       }
     }
 
