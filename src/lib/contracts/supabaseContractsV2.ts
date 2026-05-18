@@ -113,39 +113,44 @@ export const supabaseContractsV2Api: ContractsV2Api = {
     const uid = await currentUserId();
     const contractNumber = `${CONTRACT_NUMBER_PREFIX}-${Date.now().toString(36).toUpperCase()}`;
 
+    const insertRow: Record<string, unknown> = {
+      contract_number: contractNumber,
+      customer_name: `${input.customerFirstName} ${input.customerLastName}`.trim(),
+      customer_first_name: input.customerFirstName,
+      customer_last_name: input.customerLastName,
+      customer_email: input.customerEmail ?? null,
+      customer_phone: input.customerPhone ?? null,
+      dealership_id: input.dealershipId,
+      provider_entity_id: input.providerEntityId,
+      product_id: input.productId,
+      vin: input.vehicleVin,
+      vehicle_make: input.vehicleMake,
+      vehicle_model: input.vehicleModel,
+      vehicle_year: String(input.vehicleYear),
+      vehicle_mileage_km: input.vehicleMileage ?? null,
+      contract_price: input.contractPrice ?? null,
+      dealer_cost_dollars: input.dealerCost ?? null,
+      pricing_vehicle_class: input.pricingVehicleClass ?? null,
+      pricing_term_months: input.pricingTermMonths ?? null,
+      pricing_term_km: input.pricingTermKm ?? null,
+      pricing_base_price_cents: input.pricingBasePriceCents ?? null,
+      pricing_dealer_cost_cents: input.pricingDealerCostCents ?? null,
+      addon_snapshot: input.addonSnapshot ?? null,
+      addon_total_retail_cents: input.addonTotalRetailCents ?? null,
+      addon_total_cost_cents: input.addonTotalCostCents ?? null,
+      status: "DRAFT",
+      status_new: "draft",
+      start_date: input.startDate ?? null,
+      created_by_user_id: uid,
+    };
+
+    if (input.endDate !== undefined) {
+      insertRow.end_date = input.endDate;
+    }
+
     const { data, error } = await supabase
       .from("contracts")
-      .insert({
-        contract_number: contractNumber,
-        customer_name: `${input.customerFirstName} ${input.customerLastName}`.trim(),
-        customer_first_name: input.customerFirstName,
-        customer_last_name: input.customerLastName,
-        customer_email: input.customerEmail ?? null,
-        customer_phone: input.customerPhone ?? null,
-        dealership_id: input.dealershipId,
-        provider_entity_id: input.providerEntityId,
-        product_id: input.productId,
-        vin: input.vehicleVin,
-        vehicle_make: input.vehicleMake,
-        vehicle_model: input.vehicleModel,
-        vehicle_year: String(input.vehicleYear),
-        vehicle_mileage_km: input.vehicleMileage ?? null,
-        contract_price: input.contractPrice ?? null,
-        dealer_cost_dollars: input.dealerCost ?? null,
-        pricing_vehicle_class: input.pricingVehicleClass ?? null,
-        pricing_term_months: input.pricingTermMonths ?? null,
-        pricing_term_km: input.pricingTermKm ?? null,
-        pricing_base_price_cents: input.pricingBasePriceCents ?? null,
-        pricing_dealer_cost_cents: input.pricingDealerCostCents ?? null,
-        addon_snapshot: input.addonSnapshot ?? null,
-        addon_total_retail_cents: input.addonTotalRetailCents ?? null,
-        addon_total_cost_cents: input.addonTotalCostCents ?? null,
-        status: "DRAFT",
-        status_new: "draft",
-        start_date: input.startDate ?? null,
-        end_date: input.endDate ?? null,
-        created_by_user_id: uid,
-      })
+      .insert(insertRow)
       .select("*")
       .single();
 
