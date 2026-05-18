@@ -289,7 +289,7 @@ export default function NewContractPage() {
       const preId = searchParams.get("productId");
       if (preId && mapped.find(p => p.id === preId)) setSelectedProductId(preId);
     })();
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => {
     if (!dealershipId) {

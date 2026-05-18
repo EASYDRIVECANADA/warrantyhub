@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const mode = useMemo(() => getAppMode(), []);
 
-  const api = useMemo(() => getAuthApi(), [mode]);
+  const api = useMemo(() => getAuthApi(), []);
 
   const refreshUser = useCallback(async () => {
     setIsLoading(true);

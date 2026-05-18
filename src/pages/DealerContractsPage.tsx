@@ -112,10 +112,14 @@ export function DealerContractsPage() {
   const prefilledMileageKmRaw = (searchParams.get("mileageKm") ?? "").trim();
   const prefilledMileageKmNum = prefilledMileageKmRaw ? Number(prefilledMileageKmRaw) : NaN;
   const prefilledMileageKm = Number.isFinite(prefilledMileageKmNum) && prefilledMileageKmNum >= 0 ? Math.round(prefilledMileageKmNum) : null;
-  const preselectedAddonIds = (searchParams.get("addonIds") ?? "")
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean);
+  const preselectedAddonIds = useMemo(
+    () =>
+      (searchParams.get("addonIds") ?? "")
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean),
+    [searchParams],
+  );
   const [q, setQ] = useState("");
   const [quickFilter, setQuickFilter] = useState<QuickFilterKey>("ALL");
   const [selectedContractIds, setSelectedContractIds] = useState<Record<string, boolean>>({});
@@ -151,8 +155,11 @@ export function DealerContractsPage() {
     queryFn: () => marketplaceApi.listPublishedProducts(),
   });
 
-  const products = (productsQuery.data ?? []) as MarketplaceProduct[];
-  const selectedProduct = preselectedProductId ? products.find((p) => p.id === preselectedProductId) : undefined;
+  const products = useMemo(() => (productsQuery.data ?? []) as MarketplaceProduct[], [productsQuery.data]);
+  const selectedProduct = useMemo(
+    () => (preselectedProductId ? products.find((p) => p.id === preselectedProductId) : undefined),
+    [preselectedProductId, products],
+  );
 
   const productNameById = useMemo(() => {
     const m = new Map<string, string>();
@@ -373,7 +380,7 @@ export function DealerContractsPage() {
     createFromMarketplaceMutation.mutate();
   }, [autoCreateGuardKey, createFromMarketplaceMutation, preselectedProductId, selectedProduct]);
 
-  const contracts = (listQuery.data ?? []) as Contract[];
+  const contracts = useMemo(() => (listQuery.data ?? []) as Contract[], [listQuery.data]);
   const myContracts = useMemo(() => {
     const uid = (user?.id ?? "").trim();
     const uem = (user?.email ?? "").trim().toLowerCase();
@@ -400,7 +407,7 @@ export function DealerContractsPage() {
       const byId = (c.createdByUserId ?? "").trim();
       return byId && ids.has(byId);
     });
-  }, [contracts, mode, myContracts, user, user?.dealerId, user?.role]);
+  }, [contracts, mode, myContracts, user]);
 
   const searched = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -424,7 +431,7 @@ export function DealerContractsPage() {
   }, [q, visibleContracts]);
 
   const isDealerAdmin = user?.role === "DEALER_ADMIN";
-  const batches = (batchesQuery.data ?? []) as Batch[];
+  const batches = useMemo(() => (batchesQuery.data ?? []) as Batch[], [batchesQuery.data]);
   const contractIdsInAnyBatch = useMemo(() => {
     const ids = new Set<string>();
     for (const b of batches) {
@@ -510,12 +517,16 @@ export function DealerContractsPage() {
     };
   }, [isActive, isDealerAdmin, isMissingInfo, isPrintable, isReadyToRemit, searched]);
 
-  const providerIds = Array.from(
-    new Set(
-      filtered
-        .map((c) => (c.providerId ?? "").trim())
-        .filter(Boolean),
-    ),
+  const providerIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          filtered
+            .map((c) => (c.providerId ?? "").trim())
+            .filter(Boolean),
+        ),
+      ),
+    [filtered],
   );
 
   const providersQuery = useQuery({
@@ -524,7 +535,10 @@ export function DealerContractsPage() {
     enabled: providerIds.length > 0,
   });
 
-  const providerById = new Map(((providersQuery.data ?? []) as ProviderPublic[]).map((p) => [p.id, p] as const));
+  const providerById = useMemo(
+    () => new Map(((providersQuery.data ?? []) as ProviderPublic[]).map((p) => [p.id, p] as const)),
+    [providersQuery.data],
+  );
 
   const providerDisplay = (id: string | undefined) => {
     if (!id) return "—";

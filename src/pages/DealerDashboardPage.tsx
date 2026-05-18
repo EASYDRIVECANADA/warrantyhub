@@ -134,26 +134,31 @@ export function DealerDashboardPage() {
     queryFn: () => marketplaceApi.listPublishedProducts(),
   });
 
-  const contracts = (contractsQuery.data ?? []) as Contract[];
-  const batches = (batchesQuery.data ?? []) as Batch[];
-  const products = (productsQuery.data ?? []) as MarketplaceProduct[];
-  const productById = new Map(products.map((p) => [p.id, p] as const));
+  const contracts = useMemo(() => (contractsQuery.data ?? []) as Contract[], [contractsQuery.data]);
+  const batches = useMemo(() => (batchesQuery.data ?? []) as Batch[], [batchesQuery.data]);
+  const products = useMemo(() => (productsQuery.data ?? []) as MarketplaceProduct[], [productsQuery.data]);
+  const productById = useMemo(() => new Map(products.map((p) => [p.id, p] as const)), [products]);
 
   const uid = (user?.id ?? "").trim();
   const uem = (user?.email ?? "").trim().toLowerCase();
-  const isMine = (c: Contract) => {
-    const byId = (c.createdByUserId ?? "").trim();
-    const byEmail = (c.createdByEmail ?? "").trim().toLowerCase();
-    if (uid && byId) return byId === uid;
-    if (uem && byEmail) return byEmail === uem;
-    return false;
-  };
 
-  const myContracts = contracts.filter(isMine);
-  const myContractIds = new Set(myContracts.map((c) => c.id));
-  const myRemittances = batches
-    .filter((b) => Array.isArray(b.contractIds) && (b.contractIds as string[]).length > 0)
-    .filter((b) => (b.contractIds as string[]).every((id) => myContractIds.has(id)));
+  const myContracts = useMemo(() => {
+    return contracts.filter((c) => {
+      const byId = (c.createdByUserId ?? "").trim();
+      const byEmail = (c.createdByEmail ?? "").trim().toLowerCase();
+      if (uid && byId) return byId === uid;
+      if (uem && byEmail) return byEmail === uem;
+      return false;
+    });
+  }, [contracts, uem, uid]);
+  const myContractIds = useMemo(() => new Set(myContracts.map((c) => c.id)), [myContracts]);
+  const myRemittances = useMemo(
+    () =>
+      batches
+        .filter((b) => Array.isArray(b.contractIds) && (b.contractIds as string[]).length > 0)
+        .filter((b) => (b.contractIds as string[]).every((id) => myContractIds.has(id))),
+    [batches, myContractIds],
+  );
 
   const providerIds = Array.from(
     new Set(
@@ -276,6 +281,13 @@ export function DealerDashboardPage() {
   ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   const visibleContracts = useMemo(() => {
+    const isMine = (c: Contract) => {
+      const byId = (c.createdByUserId ?? "").trim();
+      const byEmail = (c.createdByEmail ?? "").trim().toLowerCase();
+      if (uid && byId) return byId === uid;
+      if (uem && byEmail) return byEmail === uem;
+      return false;
+    };
     if (!user) return [] as Contract[];
     if (isEmployee) return contracts.filter(isMine);
     if (!isDealerAdmin) return contracts.filter(isMine);

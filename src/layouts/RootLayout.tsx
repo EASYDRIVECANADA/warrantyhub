@@ -52,7 +52,6 @@ class RouteErrorBoundary extends Component<
       .filter(Boolean)
       .join("\n");
 
-    // eslint-disable-next-line no-console
     console.error("RouteErrorBoundary caught an error", err, info);
     this.setState({ details });
   }
@@ -94,6 +93,28 @@ class RouteErrorBoundary extends Component<
     return this.props.children;
   }
 }
+
+const PROVIDER_REDIRECT_MAP: Record<string, string> = {
+  "/provider-dashboard": "/provider/overview",
+  "/provider-products": "/provider/products",
+  "/provider-terms": "/provider/settings",
+  "/provider-contracts": "/provider/contracts",
+  "/provider-remittances": "/provider/remittances",
+  "/provider-documents": "/provider/settings",
+};
+
+const DEALER_REDIRECT_MAP: Record<string, string> = {
+  "/dealer-admin": "/dealership/overview",
+  "/dealer-dashboard": "/dealership/overview",
+  "/dealer-marketplace": "/dealership/find-products",
+  "/dealer-contracts": "/dealership/contracts",
+  "/dealer-remittances": "/dealership/remittances",
+  "/dealer-reporting": "/dealership/reporting",
+  "/dealer-configure": "/dealership/settings/configuration",
+  "/dealer-employees": "/dealership/settings/team",
+  "/dealer-team": "/dealership/settings/team",
+  "/dealer-contracts-admin": "/dealership/contracts",
+};
 
 export function RootLayout() {
   const { user, isLoading, refreshUser, signOut } = useAuth();
@@ -185,47 +206,24 @@ export function RootLayout() {
     navigate(dashboardPathForRole(user.role), { replace: true });
   }, [isLoading, location.pathname, navigate, user]);
 
-  // Redirect provider users from old /provider-* routes to new /provider/* routes
-  const providerRedirectMap: Record<string, string> = {
-    "/provider-dashboard": "/provider/overview",
-    "/provider-products": "/provider/products",
-    "/provider-terms": "/provider/settings",
-    "/provider-contracts": "/provider/contracts",
-    "/provider-remittances": "/provider/remittances",
-    "/provider-documents": "/provider/settings",
-  };
-
   useEffect(() => {
     if (!user || user.role !== "PROVIDER") return;
-    const target = providerRedirectMap[location.pathname];
+    const target = PROVIDER_REDIRECT_MAP[location.pathname];
     if (target) navigate(target, { replace: true });
   }, [user, location.pathname, navigate]);
-
-  // Redirect dealer users from old /dealer-* routes to new /dealership/* routes
-  const dealerRedirectMap: Record<string, string> = {
-    "/dealer-admin": "/dealership/overview",
-    "/dealer-dashboard": "/dealership/overview",
-    "/dealer-marketplace": "/dealership/find-products",
-    "/dealer-contracts": "/dealership/contracts",
-    "/dealer-remittances": "/dealership/remittances",
-    "/dealer-reporting": "/dealership/reporting",
-    "/dealer-configure": "/dealership/settings/configuration",
-    "/dealer-employees": "/dealership/settings/team",
-    "/dealer-team": "/dealership/settings/team",
-    "/dealer-contracts-admin": "/dealership/contracts",
-  };
 
   useEffect(() => {
     if (!user || (user.role !== "DEALER_ADMIN" && user.role !== "DEALER_EMPLOYEE")) return;
-    const target = dealerRedirectMap[location.pathname];
+    const target = DEALER_REDIRECT_MAP[location.pathname];
     if (target) navigate(target, { replace: true });
   }, [user, location.pathname, navigate]);
 
-  if (!isLoading && user?.role === "UNASSIGNED") {
+  const shouldShowUnassignedRedirect = (() => {
+    if (isLoading || user?.role !== "UNASSIGNED") return false;
     const path = location.pathname;
     const allowed = path === "/request-access" || path === "/profile" || path === "/dealer-employee-signup";
-    if (!allowed) return <Navigate to="/request-access" replace />;
-  }
+    return !allowed;
+  })();
 
   const isAuthLikeRoute =
     location.pathname === "/sign-in" ||
@@ -335,6 +333,10 @@ export function RootLayout() {
   ] as const;
 
   const superAdminSecondaryItems = [{ to: "/profile", label: "Profile", icon: User, active: location.pathname.startsWith("/profile") }] as const;
+
+  if (shouldShowUnassignedRedirect) {
+    return <Navigate to="/request-access" replace />;
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">

@@ -141,7 +141,7 @@ export default function ContractDetailPage() {
 
       setLoading(false);
     })();
-  }, [id]);
+  }, [id, navigate, toast]);
 
   const handleSubmit = async () => {
     if (!contract) return;

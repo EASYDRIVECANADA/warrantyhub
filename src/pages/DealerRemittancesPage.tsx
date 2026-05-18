@@ -70,9 +70,7 @@ export function DealerRemittancesPage() {
   const { user } = useAuth();
 
   const mode = useMemo(() => getAppMode(), []);
-
-  if (!user) return <Navigate to="/sign-in" replace />;
-  if (user.role !== "DEALER_ADMIN") return <Navigate to="/dealer-dashboard" replace />;
+  const isDealerAdmin = user?.role === "DEALER_ADMIN";
 
   const [remittanceNumber, setRemittanceNumber] = useState("");
   const [amount, setAmount] = useState("");
@@ -84,26 +82,28 @@ export function DealerRemittancesPage() {
 
   const contractsQuery = useQuery({
     queryKey: ["contracts"],
+    enabled: isDealerAdmin,
     queryFn: () => contractsApi.list(),
   });
 
   const batchesQuery = useQuery({
     queryKey: ["batches"],
+    enabled: isDealerAdmin,
     queryFn: () => batchesApi.list(),
   });
 
-  const allContracts = (contractsQuery.data ?? []) as Contract[];
+  const allContracts = useMemo(() => (contractsQuery.data ?? []) as Contract[], [contractsQuery.data]);
   const uid = (user?.id ?? "").trim();
   const uem = (user?.email ?? "").trim().toLowerCase();
-  const isMine = (c: Contract) => {
-    const byId = (c.createdByUserId ?? "").trim();
-    const byEmail = (c.createdByEmail ?? "").trim().toLowerCase();
-    if (uid && byId) return byId === uid;
-    if (uem && byEmail) return byEmail === uem;
-    return false;
-  };
 
   const visibleContracts = useMemo(() => {
+    const isMine = (c: Contract) => {
+      const byId = (c.createdByUserId ?? "").trim();
+      const byEmail = (c.createdByEmail ?? "").trim().toLowerCase();
+      if (uid && byId) return byId === uid;
+      if (uem && byEmail) return byEmail === uem;
+      return false;
+    };
     if (!user) return [] as Contract[];
     if (user.role !== "DEALER_ADMIN") return allContracts.filter(isMine);
     if (mode !== "local") return allContracts.filter(isMine);
@@ -117,10 +117,10 @@ export function DealerRemittancesPage() {
       const byId = (c.createdByUserId ?? "").trim();
       return byId && ids.has(byId);
     });
-  }, [allContracts, isMine, mode, user]);
+  }, [allContracts, mode, uem, uid, user]);
 
   const visibleContractIds = useMemo(() => new Set(visibleContracts.map((c) => c.id)), [visibleContracts]);
-  const soldContracts = visibleContracts.filter((c) => c.status === "SOLD");
+  const soldContracts = useMemo(() => visibleContracts.filter((c) => c.status === "SOLD"), [visibleContracts]);
 
   const createRemittanceMutation = useMutation({
     mutationFn: async () => {
@@ -217,10 +217,14 @@ export function DealerRemittancesPage() {
 
   const busy = createRemittanceMutation.isPending || submitRemittanceMutation.isPending;
 
-  const allBatches = batchesQuery.data ?? [];
-  const myRemittances = (allBatches as Batch[])
-    .filter((b) => Array.isArray(b.contractIds) && b.contractIds.length > 0)
-    .filter((b) => (b.contractIds ?? []).every((id) => visibleContractIds.has(id)));
+  const allBatches = useMemo(() => (batchesQuery.data ?? []) as Batch[], [batchesQuery.data]);
+  const myRemittances = useMemo(
+    () =>
+      allBatches
+        .filter((b) => Array.isArray(b.contractIds) && b.contractIds.length > 0)
+        .filter((b) => (b.contractIds ?? []).every((id) => visibleContractIds.has(id))),
+    [allBatches, visibleContractIds],
+  );
 
   const contractIdsInAnyBatch = useMemo(() => {
     const ids = new Set<string>();
@@ -235,7 +239,10 @@ export function DealerRemittancesPage() {
     return soldContracts.filter((c) => !contractIdsInAnyBatch.has(c.id));
   }, [contractIdsInAnyBatch, soldContracts]);
 
-  const pickableContracts = contractPickerView === "READY" ? readyToRemitContracts : soldContracts;
+  const pickableContracts = useMemo(
+    () => (contractPickerView === "READY" ? readyToRemitContracts : soldContracts),
+    [contractPickerView, readyToRemitContracts, soldContracts],
+  );
 
   const filteredSoldContracts = useMemo(() => {
     const query = contractSearch.trim().toLowerCase();
@@ -253,8 +260,8 @@ export function DealerRemittancesPage() {
     setContractSearch("");
   }, [contractPickerView]);
 
-  const selectedIds = pickableContracts.filter((c) => selected[c.id]).map((c) => c.id);
-  const selectedContracts = pickableContracts.filter((c) => selected[c.id]);
+  const selectedIds = useMemo(() => pickableContracts.filter((c) => selected[c.id]).map((c) => c.id), [pickableContracts, selected]);
+  const selectedContracts = useMemo(() => pickableContracts.filter((c) => selected[c.id]), [pickableContracts, selected]);
 
   const selectedProviderId = useMemo(() => {
     const set = new Set(selectedContracts.map((c) => (c.providerId ?? "").trim()).filter(Boolean));
@@ -292,11 +299,11 @@ export function DealerRemittancesPage() {
     return "DRAFT";
   };
 
-  const pending = myRemittances.filter((r) => derivedWorkflow(r) === "DRAFT");
-  const submitted = myRemittances.filter((r) => derivedWorkflow(r) === "SUBMITTED");
-  const approved = myRemittances.filter((r) => derivedWorkflow(r) === "APPROVED");
-  const rejected = myRemittances.filter((r) => derivedWorkflow(r) === "REJECTED");
-  const paid = myRemittances.filter((r) => derivedWorkflow(r) === "PAID");
+  const pending = useMemo(() => myRemittances.filter((r) => derivedWorkflow(r) === "DRAFT"), [myRemittances]);
+  const submitted = useMemo(() => myRemittances.filter((r) => derivedWorkflow(r) === "SUBMITTED"), [myRemittances]);
+  const approved = useMemo(() => myRemittances.filter((r) => derivedWorkflow(r) === "APPROVED"), [myRemittances]);
+  const rejected = useMemo(() => myRemittances.filter((r) => derivedWorkflow(r) === "REJECTED"), [myRemittances]);
+  const paid = useMemo(() => myRemittances.filter((r) => derivedWorkflow(r) === "PAID"), [myRemittances]);
 
   const remittanceCounts = useMemo(() => {
     return {
@@ -343,6 +350,9 @@ export function DealerRemittancesPage() {
       return hay.includes(q);
     });
   }, [approved, myRemittances, paid, pending, rejected, remittanceSearch, remittanceTab, submitted]);
+
+  if (!user) return <Navigate to="/sign-in" replace />;
+  if (!isDealerAdmin) return <Navigate to="/dealer-dashboard" replace />;
 
   return (
     <PageShell title="">

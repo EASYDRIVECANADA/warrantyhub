@@ -110,10 +110,10 @@ export function AdminProvidersPage() {
     },
   });
 
-  const companies = companiesQuery.data ?? [];
-  const providerProfiles = providersQuery.data ?? [];
-  const products = productsQuery.data ?? [];
-  const contracts = contractsQuery.data ?? [];
+  const companies = useMemo(() => companiesQuery.data ?? [], [companiesQuery.data]);
+  const providerProfiles = useMemo(() => providersQuery.data ?? [], [providersQuery.data]);
+  const products = useMemo(() => productsQuery.data ?? [], [productsQuery.data]);
+  const contracts = useMemo(() => contractsQuery.data ?? [], [contractsQuery.data]);
 
   const productCountByProvider = useMemo(() => {
     const counts: Record<string, number> = {};

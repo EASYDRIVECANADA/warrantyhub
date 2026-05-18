@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import DashboardLayout, { dealershipNavItems } from "../../../components/dashboard/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../../components/ui/card";
 import { Button } from "../../../components/ui/button";
@@ -22,22 +22,7 @@ export default function DealershipProfilePage() {
   const [savingDealership, setSavingDealership] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
 
-  useEffect(() => {
-    if (!user) return;
-    const fetchProfile = async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("full_name, phone")
-        .eq("id", user.id)
-        .maybeSingle();
-      if (data) setProfile({ full_name: (data as any).full_name || "", phone: (data as any).phone || "" });
-      await fetchDealershipInfo();
-      setLoading(false);
-    };
-    fetchProfile();
-  }, [user]);
-
-  const fetchDealershipInfo = async () => {
+  const fetchDealershipInfo = useCallback(async () => {
     if (!dealershipId) return;
     // Try V2 dealerships table first, then fall back to dealers
     const { data: v2 } = await supabase
@@ -78,7 +63,22 @@ export default function DealershipProfilePage() {
         });
       }
     }
-  };
+  }, [dealershipId, user?.id]);
+
+  useEffect(() => {
+    if (!user) return;
+    const fetchProfile = async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("full_name, phone")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (data) setProfile({ full_name: (data as any).full_name || "", phone: (data as any).phone || "" });
+      await fetchDealershipInfo();
+      setLoading(false);
+    };
+    fetchProfile();
+  }, [fetchDealershipInfo, user]);
 
   const handleSaveProfile = async () => {
     if (!user) return;

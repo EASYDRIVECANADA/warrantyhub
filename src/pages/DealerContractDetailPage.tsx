@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -137,21 +137,6 @@ export function DealerContractDetailPage() {
   };
 
   const unauthorized = contract != null && !canView(contract);
-  if (!contractQuery.isLoading && unauthorized) {
-    return (
-      <PageShell
-        title="Contract"
-        subtitle="You can only access contracts created by your dealership."
-        actions={
-          <Button variant="outline" asChild>
-            <Link to="/dealer-contracts">Back to contracts</Link>
-          </Button>
-        }
-      >
-        <div className="mt-6 text-sm text-muted-foreground">Contract not found.</div>
-      </PageShell>
-    );
-  }
 
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
@@ -182,14 +167,14 @@ export function DealerContractDetailPage() {
     return "PRICING";
   });
 
-  const setStep = (next: WizardStep) => {
+  const setStep = useCallback((next: WizardStep) => {
     setStepRaw(next);
     try {
       sessionStorage.setItem(`warrantyhub.contract-wizard-step.${contractId}`, next);
     } catch {
       // sessionStorage may be disabled or full
     }
-  };
+  }, [contractId]);
 
   useEffect(() => {
     return () => {
@@ -257,7 +242,7 @@ export function DealerContractDetailPage() {
     }
     setStep("PRICING");
     didInitStepRef.current = true;
-  }, [contract]);
+  }, [contract, setStep]);
 
   const selectedAddonIdList = useMemo(() => Object.keys(selectedAddonIds).filter((id) => selectedAddonIds[id]), [selectedAddonIds]);
 
@@ -390,7 +375,7 @@ export function DealerContractDetailPage() {
     setStep("CONFIRM");
   };
 
-  const marketplaceProducts = (marketplaceProductsQuery.data ?? []) as Product[];
+  const marketplaceProducts = useMemo(() => (marketplaceProductsQuery.data ?? []) as Product[], [marketplaceProductsQuery.data]);
 
   const parsedVehicleYear = Number(vehicleYear);
   const vehicleAgeYears = Number.isFinite(parsedVehicleYear) ? new Date().getFullYear() - parsedVehicleYear : undefined;
@@ -495,7 +480,7 @@ export function DealerContractDetailPage() {
     queryFn: () => productPricingApi.list({ productId: selectedProductId }),
   });
 
-  const pricingOptions = (pricingOptionsQuery.data ?? []) as ProductPricing[];
+  const pricingOptions = useMemo(() => (pricingOptionsQuery.data ?? []) as ProductPricing[], [pricingOptionsQuery.data]);
 
   const productAddonsQuery = useQuery({
     queryKey: ["product-addons-public", selectedProductId],
@@ -674,6 +659,22 @@ export function DealerContractDetailPage() {
       enabled: Boolean(selectedProductId) && Boolean(selectedPricingId) && vinNormalized.length === 17 && Boolean(customerName.trim()),
     },
   ];
+
+  if (!contractQuery.isLoading && unauthorized) {
+    return (
+      <PageShell
+        title="Contract"
+        subtitle="You can only access contracts created by your dealership."
+        actions={
+          <Button variant="outline" asChild>
+            <Link to="/dealer-contracts">Back to contracts</Link>
+          </Button>
+        }
+      >
+        <div className="mt-6 text-sm text-muted-foreground">Contract not found.</div>
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell

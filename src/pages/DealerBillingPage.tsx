@@ -37,28 +37,12 @@ export function DealerBillingPage() {
     return on === "1" || on === "true" || on === "yes" || on === "on";
   })();
 
-  if (!user) return <Navigate to="/sign-in" replace />;
-  if (user.role !== "DEALER_ADMIN" && user.role !== "DEALER_EMPLOYEE") return <Navigate to="/" replace />;
+  const isDealerUser = user?.role === "DEALER_ADMIN" || user?.role === "DEALER_EMPLOYEE";
+  const dealerId = (user?.dealerId ?? "").toString().trim();
 
-  const dealerId = (user.dealerId ?? "").toString().trim();
-  if (!dealerId) return <Navigate to="/request-access" replace />;
-
-  if (subscriptionsDisabled) {
-    return (
-      <PageShell title="Subscription" subtitle="Subscriptions are temporarily disabled for testing.">
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-          <div className="flex items-center gap-3">
-            <Check className="h-5 w-5 text-emerald-600" />
-            <p className="text-sm text-emerald-800">Your dealership has full access while we finalize billing.</p>
-          </div>
-        </div>
-      </PageShell>
-    );
-  }
-
-  const status = (user.dealerSubscriptionStatus ?? "").toString().trim() || "INACTIVE";
-  const plan = user.dealerSubscriptionPlanKey ?? null;
-  const feeCents = typeof user.dealerContractFeeCents === "number" ? user.dealerContractFeeCents : null;
+  const status = (user?.dealerSubscriptionStatus ?? "").toString().trim() || "INACTIVE";
+  const plan = user?.dealerSubscriptionPlanKey ?? null;
+  const feeCents = typeof user?.dealerContractFeeCents === "number" ? user.dealerContractFeeCents : null;
 
   const trialBadge = useMemo(() => {
     const s = (user?.dealerSubscriptionStatus ?? "").toString().toLowerCase();
@@ -143,7 +127,7 @@ export function DealerBillingPage() {
     setError(null);
     setBusy(true);
     try {
-      if (user.role !== "DEALER_ADMIN") throw new Error("Only Dealer Admin can subscribe");
+      if (user?.role !== "DEALER_ADMIN") throw new Error("Only Dealer Admin can subscribe");
       const res = await invokeEdgeFunction<{ url: string }>("stripe-create-checkout-session", { dealerId, planKey });
       if (!res?.url) throw new Error("Stripe checkout URL was not returned");
       window.location.href = res.url;
@@ -158,7 +142,7 @@ export function DealerBillingPage() {
     setError(null);
     setBusy(true);
     try {
-      if (user.role !== "DEALER_ADMIN") throw new Error("Only Dealer Admin can manage billing");
+      if (user?.role !== "DEALER_ADMIN") throw new Error("Only Dealer Admin can manage billing");
       const res = await invokeEdgeFunction<{ url: string }>("stripe-create-portal-session", { dealerId });
       if (!res?.url) throw new Error("Billing portal URL was not returned");
       window.location.href = res.url;
@@ -168,6 +152,23 @@ export function DealerBillingPage() {
       setBusy(false);
     }
   };
+
+  if (!user) return <Navigate to="/sign-in" replace />;
+  if (!isDealerUser) return <Navigate to="/" replace />;
+  if (!dealerId) return <Navigate to="/request-access" replace />;
+
+  if (subscriptionsDisabled) {
+    return (
+      <PageShell title="Subscription" subtitle="Subscriptions are temporarily disabled for testing.">
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <div className="flex items-center gap-3">
+            <Check className="h-5 w-5 text-emerald-600" />
+            <p className="text-sm text-emerald-800">Your dealership has full access while we finalize billing.</p>
+          </div>
+        </div>
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell

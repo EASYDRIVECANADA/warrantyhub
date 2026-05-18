@@ -745,7 +745,7 @@ export function ProviderProductsPage() {
     queryFn: () => pricingApi.list({ productId: editorProductId }),
   });
 
-  const pricingRowsFromApi = (pricingRowsQuery.data ?? []) as ProductPricing[];
+  const pricingRowsFromApi = useMemo(() => (pricingRowsQuery.data ?? []) as ProductPricing[], [pricingRowsQuery.data]);
 
   const pricingRowScopeKeyById = useMemo(() => {
     const map = new Map<string, string>();
@@ -836,7 +836,7 @@ export function ProviderProductsPage() {
     queryFn: () => addonsApi.list({ productId: editorProductId }),
   });
 
-  const addons = (addonsQuery.data ?? []) as ProductAddon[];
+  const addons = useMemo(() => (addonsQuery.data ?? []) as ProductAddon[], [addonsQuery.data]);
 
   const hasHydratedAddons = useRef(false);
   const hydratedAddonsProductId = useRef<string>("");
@@ -1192,7 +1192,7 @@ export function ProviderProductsPage() {
     },
   });
 
-  const products = (productsQuery.data ?? []) as Product[];
+  const products = useMemo(() => (productsQuery.data ?? []) as Product[], [productsQuery.data]);
 
   const pricingHealthProductIds = useMemo(() => {
     return products

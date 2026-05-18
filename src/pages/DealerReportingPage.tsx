@@ -117,10 +117,9 @@ function monthToDateRange() {
 
 export function DealerReportingPage() {
   const { user } = useAuth();
-  if (!user) return <Navigate to="/sign-in" replace />;
-  if (user.role !== "DEALER_ADMIN") return <Navigate to="/dealer-dashboard" replace />;
-
-  const dealerId = (user.dealerId ?? user.id).trim();
+  const isDealerAdmin = user?.role === "DEALER_ADMIN";
+  const userId = (user?.id ?? "").trim();
+  const dealerId = (user?.dealerId ?? userId).trim();
 
   const contractsApi = useMemo(() => getContractsApi(), []);
   const batchesApi = useMemo(() => getBatchesApi(), []);
@@ -138,7 +137,7 @@ export function DealerReportingPage() {
   const [activeTab, setActiveTab] = useState<"CONTRACTS" | "EMPLOYEE" | "PROFITABILITY">("CONTRACTS");
   const [page, setPage] = useState(1);
   const pageSize = 25;
-  const profitabilityKey = useMemo(() => `warrantyhub.dealer_reporting.show_profitability.${user.id}`, [user.id]);
+  const profitabilityKey = useMemo(() => `warrantyhub.dealer_reporting.show_profitability.${userId || "anonymous"}`, [userId]);
   const [showProfitability, setShowProfitability] = useState(() => {
     const raw = localStorage.getItem(profitabilityKey);
     return raw === "1";
@@ -167,24 +166,27 @@ export function DealerReportingPage() {
 
   const contractsQuery = useQuery({
     queryKey: ["contracts"],
+    enabled: isDealerAdmin,
     queryFn: () => contractsApi.list(),
   });
 
   const batchesQuery = useQuery({
     queryKey: ["batches"],
+    enabled: isDealerAdmin,
     queryFn: () => batchesApi.list(),
   });
 
   const productsQuery = useQuery({
     queryKey: ["marketplace-products"],
+    enabled: isDealerAdmin,
     queryFn: () => marketplaceApi.listPublishedProducts(),
   });
 
-  const products = (productsQuery.data ?? []) as MarketplaceProduct[];
-  const productById = new Map(products.map((p) => [p.id, p] as const));
+  const products = useMemo(() => (productsQuery.data ?? []) as MarketplaceProduct[], [productsQuery.data]);
+  const productById = useMemo(() => new Map(products.map((p) => [p.id, p] as const)), [products]);
 
-  const providerOptions = Array.from(new Set(products.map((p) => p.providerId).filter(Boolean))).sort();
-  const productTypeOptions = Array.from(new Set(products.map((p) => p.productType))).sort();
+  const providerOptions = useMemo(() => Array.from(new Set(products.map((p) => p.providerId).filter(Boolean))).sort(), [products]);
+  const productTypeOptions = useMemo(() => Array.from(new Set(products.map((p) => p.productType))).sort(), [products]);
 
   const providersQuery = useQuery({
     queryKey: ["providers", providerOptions.join(",")],
@@ -192,11 +194,20 @@ export function DealerReportingPage() {
     enabled: providerOptions.length > 0,
   });
 
-  const providerById = new Map(((providersQuery.data ?? []) as ProviderPublic[]).map((p) => [p.id, p] as const));
+  const providerById = useMemo(
+    () => new Map(((providersQuery.data ?? []) as ProviderPublic[]).map((p) => [p.id, p] as const)),
+    [providersQuery.data],
+  );
 
-  const contracts = ((contractsQuery.data ?? []) as Contract[]).filter((c) => (c.dealerId ?? "").trim() === dealerId);
+  const contracts = useMemo(
+    () => ((contractsQuery.data ?? []) as Contract[]).filter((c) => (c.dealerId ?? "").trim() === dealerId),
+    [contractsQuery.data, dealerId],
+  );
   const dealerContractIds = useMemo(() => new Set(contracts.map((c) => c.id)), [contracts]);
-  const batches = ((batchesQuery.data ?? []) as Batch[]).filter((b) => batchMatchesDealer(b, dealerContractIds));
+  const batches = useMemo(
+    () => ((batchesQuery.data ?? []) as Batch[]).filter((b) => batchMatchesDealer(b, dealerContractIds)),
+    [batchesQuery.data, dealerContractIds],
+  );
 
   const q = query.trim().toLowerCase();
   const start = parseDateInput(startDate);
@@ -374,6 +385,9 @@ export function DealerReportingPage() {
   const isError = contractsQuery.isError || batchesQuery.isError || productsQuery.isError || providersQuery.isError;
 
   const effectiveShowProfitability = showProfitability || activeTab === "PROFITABILITY";
+
+  if (!user) return <Navigate to="/sign-in" replace />;
+  if (!isDealerAdmin) return <Navigate to="/dealer-dashboard" replace />;
 
   return (
     <PageShell title="">

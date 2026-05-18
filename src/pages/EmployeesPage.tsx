@@ -10,8 +10,7 @@ import { useAuth } from "../providers/AuthProvider";
 
 export function EmployeesPage({ title }: { title: string }) {
   const { user } = useAuth();
-  if (!user) return <Navigate to="/sign-in" replace />;
-  if (user.role !== "DEALER_ADMIN") return <Navigate to="/dealer-dashboard" replace />;
+  const isDealerAdmin = user?.role === "DEALER_ADMIN";
 
   const api = useMemo(() => getEmployeesApi(), []);
   const qc = useQueryClient();
@@ -24,6 +23,7 @@ export function EmployeesPage({ title }: { title: string }) {
 
   const listQuery = useQuery({
     queryKey: ["employees"],
+    enabled: isDealerAdmin,
     queryFn: () => api.list(),
   });
 
@@ -54,6 +54,9 @@ export function EmployeesPage({ title }: { title: string }) {
   });
 
   const busy = createMutation.isPending || updateMutation.isPending || removeMutation.isPending;
+
+  if (!user) return <Navigate to="/sign-in" replace />;
+  if (!isDealerAdmin) return <Navigate to="/dealer-dashboard" replace />;
 
   return (
     <div className="container mx-auto px-4 py-10">

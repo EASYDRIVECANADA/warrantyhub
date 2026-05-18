@@ -118,8 +118,8 @@ export function SuperAdminPlatformPage() {
     },
   });
 
-  const profiles = profilesQuery.data ?? [];
-  const accessRequests = accessRequestsQuery.data ?? [];
+  const profiles = useMemo(() => profilesQuery.data ?? [], [profilesQuery.data]);
+  const accessRequests = useMemo(() => accessRequestsQuery.data ?? [], [accessRequestsQuery.data]);
 
   const totalUsers = profiles.length;
   const activeDealers = profiles.filter((p) => p.role === "DEALER_ADMIN").length;

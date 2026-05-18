@@ -126,7 +126,7 @@ export function ProviderDashboardPage() {
     queryFn: () => contractsApi.list(),
   });
 
-  const products = (productsQuery.data ?? []) as Product[];
+  const products = useMemo(() => (productsQuery.data ?? []) as Product[], [productsQuery.data]);
   const publishedCount = products.filter((p) => p.published).length;
   const draftCount = products.filter((p) => !p.published).length;
 
@@ -164,11 +164,15 @@ export function ProviderDashboardPage() {
 
   const productsById = useMemo(() => new Map(products.map((p) => [p.id, p] as const)), [products]);
 
-  const allContracts = (contractsQuery.data ?? []) as Contract[];
-  const providerContracts = allContracts.filter((c) => {
-    const pid = (c.providerId ?? "").trim();
-    return Boolean(user?.id) && pid === user?.id;
-  });
+  const allContracts = useMemo(() => (contractsQuery.data ?? []) as Contract[], [contractsQuery.data]);
+  const providerContracts = useMemo(
+    () =>
+      allContracts.filter((c) => {
+        const pid = (c.providerId ?? "").trim();
+        return Boolean(user?.id) && pid === user?.id;
+      }),
+    [allContracts, user?.id],
+  );
 
   const contractsSoldCount = providerContracts.filter((c) => c.status !== "DRAFT").length;
 

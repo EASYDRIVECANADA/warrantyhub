@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { Bell, Clock, Mail, ShieldCheck } from "lucide-react";
@@ -183,7 +183,7 @@ export function RequestAccessPage() {
     navigate("/dealer-dashboard", { replace: true });
   }, [navigate, user]);
 
-  const submitRequest = async ({ auto }: { auto: boolean }) => {
+  const submitRequest = useCallback(async ({ auto }: { auto: boolean }) => {
     const fixedDealership = signupIntent === "DEALERSHIP";
     const rt: RequestType = fixedDealership ? "DEALER" : requestType;
 
@@ -255,7 +255,7 @@ export function RequestAccessPage() {
       setError(err instanceof Error ? err.message : "Request failed");
       throw err;
     }
-  };
+  }, [company, email, message, mode, name, requestType, signupIntent, user]);
 
   useEffect(() => {
     if (!user) return;
@@ -374,7 +374,7 @@ export function RequestAccessPage() {
         setAutoRequested(false);
       }
     })();
-  }, [autoRequested, loadingMyRequest, myRequest, signupIntent, user]);
+  }, [autoRequested, loadingMyRequest, myRequest, signupIntent, submitRequest, user]);
 
   const isPendingView = myRequest?.status === "PENDING" || loadingMyRequest;
   const isApprovedView = !loadingMyRequest && myRequest?.status === "APPROVED";

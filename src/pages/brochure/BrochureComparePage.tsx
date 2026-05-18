@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import BrochureHeader from "../../components/brochure/BrochureHeader";
@@ -19,7 +19,7 @@ function parseCoverage(row: any): { name: string; categories: { name: string; pa
 export default function BrochureComparePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const planIds = searchParams.get("plans")?.split(",").filter(Boolean) ?? [];
+  const planIds = useMemo(() => searchParams.get("plans")?.split(",").filter(Boolean) ?? [], [searchParams]);
 
   const [columns, setColumns] = useState<string[]>([]);
   const [matrix, setMatrix] = useState<CoverageCategory[]>([]);
@@ -89,7 +89,7 @@ export default function BrochureComparePage() {
       setMatrix(matrixWithFallback);
       setLoading(false);
     })();
-  }, [planIds.join(",")]);
+  }, [planIds]);
 
   return (
     <div className="min-h-screen bg-background">

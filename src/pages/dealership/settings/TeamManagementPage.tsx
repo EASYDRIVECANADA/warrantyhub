@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import DashboardLayout, { dealershipNavItems } from "../../../components/dashboard/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { Button } from "../../../components/ui/button";
@@ -81,7 +81,7 @@ export default function TeamManagementPage() {
 
   const isAdmin = memberRole === "admin";
 
-  const enrichMembers = async (rows: TeamMember[]) => {
+  const enrichMembers = useCallback(async (rows: TeamMember[]) => {
     if (rows.length === 0) {
       setMembers([]);
       return;
@@ -108,9 +108,9 @@ export default function TeamManagementPage() {
         phone: profileMap[m.user_id]?.phone ?? null,
       },
     })));
-  };
+  }, []);
 
-  const fetchMembers = async () => {
+  const fetchMembers = useCallback(async () => {
     if (!dealershipId) return;
 
     const { data: dealershipRows } = await supabase
@@ -157,7 +157,7 @@ export default function TeamManagementPage() {
 
     await enrichMembers(rows);
     setLoading(false);
-  };
+  }, [dealershipId, enrichMembers]);
 
   useEffect(() => {
     if (!dealershipId) return;
@@ -167,8 +167,8 @@ export default function TeamManagementPage() {
       return;
     }
 
-    fetchMembers();
-  }, [dealershipId, user]);
+    void fetchMembers();
+  }, [dealershipId, fetchMembers, user]);
 
   const handleAddMember = async () => {
     if (!dealershipId || !newMember.email) return;

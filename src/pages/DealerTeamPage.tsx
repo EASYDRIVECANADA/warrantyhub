@@ -144,15 +144,13 @@ export function DealerTeamPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const mode = useMemo(() => getAppMode(), []);
-
-  if (!user) return <Navigate to="/sign-in" replace />;
-  if (user.role !== "DEALER_ADMIN") return <Navigate to="/dealer-dashboard" replace />;
-
-  const localDealerId = (user.dealerId ?? user.id).trim();
+  const isDealerAdmin = user?.role === "DEALER_ADMIN";
+  const userId = (user?.id ?? "").trim();
+  const localDealerId = (user?.dealerId ?? userId).trim();
 
   const supabaseSessionQuery = useQuery({
     queryKey: ["dealer-team-supabase-session", mode],
-    enabled: mode !== "local",
+    enabled: isDealerAdmin && mode !== "local",
     queryFn: async () => {
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error("Supabase is not configured");
@@ -161,13 +159,9 @@ export function DealerTeamPage() {
     },
   });
 
-  if (mode !== "local" && supabaseSessionQuery.isSuccess && !supabaseSessionQuery.data) {
-    return <Navigate to="/sign-in" replace />;
-  }
-
   const dealerIdQuery = useQuery({
-    queryKey: ["dealer-team-dealer-id", mode, user.id],
-    enabled: mode !== "local" && supabaseSessionQuery.isSuccess && Boolean(supabaseSessionQuery.data?.user?.id),
+    queryKey: ["dealer-team-dealer-id", mode, userId],
+    enabled: isDealerAdmin && mode !== "local" && supabaseSessionQuery.isSuccess && Boolean(supabaseSessionQuery.data?.user?.id),
     queryFn: async () => {
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error("Supabase is not configured");
@@ -208,7 +202,7 @@ export function DealerTeamPage() {
 
   const listQuery = useQuery({
     queryKey: ["dealer-team", mode, dealerId],
-    enabled: Boolean(dealerId) && (mode === "local" || dealerIdQuery.isSuccess),
+    enabled: isDealerAdmin && Boolean(dealerId) && (mode === "local" || dealerIdQuery.isSuccess),
     queryFn: async () => {
       if (!dealerId) return [];
       if (mode === "local") {
@@ -578,6 +572,12 @@ export function DealerTeamPage() {
       createEmployeeMutation.mutate();
     })();
   };
+
+  if (!user) return <Navigate to="/sign-in" replace />;
+  if (!isDealerAdmin) return <Navigate to="/dealer-dashboard" replace />;
+  if (mode !== "local" && supabaseSessionQuery.isSuccess && !supabaseSessionQuery.data) {
+    return <Navigate to="/sign-in" replace />;
+  }
 
   return (
     <PageShell

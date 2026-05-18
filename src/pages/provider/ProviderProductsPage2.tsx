@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useCallback, useState, useMemo, useEffect } from "react";
 import DashboardLayout, { providerNavItems } from "../../components/dashboard/DashboardLayout";
 import { Card, CardContent } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
@@ -46,9 +46,9 @@ export default function ProviderProductsPage2() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const api = getProductsV2Api();
+  const api = useMemo(() => getProductsV2Api(), []);
 
-  const loadProducts = async () => {
+  const loadProducts = useCallback(async () => {
     try {
       setLoading(true);
       const data = await api.list();
@@ -58,9 +58,9 @@ export default function ProviderProductsPage2() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [api]);
 
-  useEffect(() => { loadProducts(); }, []);
+  useEffect(() => { void loadProducts(); }, [loadProducts]);
 
   const filtered = useMemo(() => {
     return products.filter((p) => {

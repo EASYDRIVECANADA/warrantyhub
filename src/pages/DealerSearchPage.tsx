@@ -149,11 +149,9 @@ export function DealerSearchPage() {
   const { user } = useAuth();
   const mode = useMemo(() => getAppMode(), []);
 
-  if (!user) return <Navigate to="/sign-in" replace />;
-  if (user.role !== "DEALER_ADMIN" && user.role !== "DEALER_EMPLOYEE") return <Navigate to="/" replace />;
-
-  const isEmployee = user.role === "DEALER_EMPLOYEE";
-  const isDealerAdmin = user.role === "DEALER_ADMIN";
+  const isEmployee = user?.role === "DEALER_EMPLOYEE";
+  const isDealerAdmin = user?.role === "DEALER_ADMIN";
+  const isDealerUser = isDealerAdmin || isEmployee;
 
   const [query, setQuery] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -171,33 +169,35 @@ export function DealerSearchPage() {
 
   const contractsQuery = useQuery({
     queryKey: ["contracts"],
+    enabled: isDealerUser,
     queryFn: () => api.list(),
   });
 
   const productsQuery = useQuery({
     queryKey: ["marketplace-products"],
+    enabled: isDealerUser,
     queryFn: () => marketplaceApi.listPublishedProducts(),
   });
 
-  const contracts = (contractsQuery.data ?? []) as Contract[];
-  const products = (productsQuery.data ?? []) as MarketplaceProduct[];
+  const contracts = useMemo(() => (contractsQuery.data ?? []) as Contract[], [contractsQuery.data]);
+  const products = useMemo(() => (productsQuery.data ?? []) as MarketplaceProduct[], [productsQuery.data]);
 
   const uid = (user?.id ?? "").trim();
   const uem = (user?.email ?? "").trim().toLowerCase();
-  const isMine = (c: Contract) => {
-    const byId = (c.createdByUserId ?? "").trim();
-    const byEmail = (c.createdByEmail ?? "").trim().toLowerCase();
-    if (uid && byId) return byId === uid;
-    if (uem && byEmail) return byEmail === uem;
-    return false;
-  };
 
-  const visibleContracts = (() => {
+  const visibleContracts = useMemo(() => {
+    const isMine = (c: Contract) => {
+      const byId = (c.createdByUserId ?? "").trim();
+      const byEmail = (c.createdByEmail ?? "").trim().toLowerCase();
+      if (uid && byId) return byId === uid;
+      if (uem && byEmail) return byEmail === uem;
+      return false;
+    };
     if (isEmployee) return contracts.filter(isMine);
     if (!isDealerAdmin) return contracts.filter(isMine);
     if (mode !== "local") return contracts.filter(isMine);
 
-    const did = (user.dealerId ?? "").trim();
+    const did = (user?.dealerId ?? "").trim();
     if (!did) return contracts.filter(isMine);
     const ids = dealershipUserIds(did);
     return contracts.filter((c) => {
@@ -206,7 +206,7 @@ export function DealerSearchPage() {
       const byId = (c.createdByUserId ?? "").trim();
       return byId && ids.has(byId);
     });
-  })();
+  }, [contracts, isDealerAdmin, isEmployee, mode, uem, uid, user?.dealerId]);
 
   const q = query.trim().toLowerCase();
   const start = parseDateInput(startDate);
@@ -216,10 +216,10 @@ export function DealerSearchPage() {
   const productFilter = productId.trim();
   const productTypeFilter = productType.trim();
 
-  const productById = new Map(products.map((p) => [p.id, p] as const));
+  const productById = useMemo(() => new Map(products.map((p) => [p.id, p] as const)), [products]);
 
-  const providerOptions = Array.from(new Set(products.map((p) => p.providerId).filter(Boolean))).sort();
-  const productTypeOptions = Array.from(new Set(products.map((p) => p.productType))).sort();
+  const providerOptions = useMemo(() => Array.from(new Set(products.map((p) => p.providerId).filter(Boolean))).sort(), [products]);
+  const productTypeOptions = useMemo(() => Array.from(new Set(products.map((p) => p.productType))).sort(), [products]);
 
   const providersQuery = useQuery({
     queryKey: ["providers", providerOptions.join(",")],
@@ -227,7 +227,10 @@ export function DealerSearchPage() {
     enabled: providerOptions.length > 0,
   });
 
-  const providerById = new Map(((providersQuery.data ?? []) as ProviderPublic[]).map((p) => [p.id, p] as const));
+  const providerById = useMemo(
+    () => new Map(((providersQuery.data ?? []) as ProviderPublic[]).map((p) => [p.id, p] as const)),
+    [providersQuery.data],
+  );
 
   const applySavedSearch = (s: SavedSearch) => {
     setQuery(s.query);
@@ -238,36 +241,40 @@ export function DealerSearchPage() {
     setProductId(s.productId);
   };
 
-  const filtered = visibleContracts
-    .filter((c) => {
-      const dateValue = c.updatedAt ?? c.createdAt;
-      return withinDateRange(dateValue, start, end);
-    })
-    .filter((c) => {
-      if (!providerFilter && !productFilter && !productTypeFilter) return true;
+  const filtered = useMemo(
+    () =>
+      visibleContracts
+        .filter((c) => {
+          const dateValue = c.updatedAt ?? c.createdAt;
+          return withinDateRange(dateValue, start, end);
+        })
+        .filter((c) => {
+          if (!providerFilter && !productFilter && !productTypeFilter) return true;
 
-      const selectedProduct = c.productId ? productById.get(c.productId) : undefined;
-      const effectiveProvider = c.providerId ?? selectedProduct?.providerId;
-      const effectiveType = selectedProduct?.productType;
+          const selectedProduct = c.productId ? productById.get(c.productId) : undefined;
+          const effectiveProvider = c.providerId ?? selectedProduct?.providerId;
+          const effectiveType = selectedProduct?.productType;
 
-      if (providerFilter && effectiveProvider !== providerFilter) return false;
-      if (productFilter && c.productId !== productFilter) return false;
-      if (productTypeFilter && effectiveType !== (productTypeFilter as ProductType)) return false;
+          if (providerFilter && effectiveProvider !== providerFilter) return false;
+          if (productFilter && c.productId !== productFilter) return false;
+          if (productTypeFilter && effectiveType !== (productTypeFilter as ProductType)) return false;
 
-      return true;
-    })
-    .filter((c) => {
-      if (!q) return true;
-      return (
-        matchText(c.warrantyId, q) ||
-        matchText(c.contractNumber, q) ||
-        matchText(c.vin, q) ||
-        matchText(c.customerName, q) ||
-        matchText(c.customerEmail, q) ||
-        matchText(c.customerPhone, q)
-      );
-    })
-    .sort((a, b) => (b.updatedAt ?? b.createdAt).localeCompare(a.updatedAt ?? a.createdAt));
+          return true;
+        })
+        .filter((c) => {
+          if (!q) return true;
+          return (
+            matchText(c.warrantyId, q) ||
+            matchText(c.contractNumber, q) ||
+            matchText(c.vin, q) ||
+            matchText(c.customerName, q) ||
+            matchText(c.customerEmail, q) ||
+            matchText(c.customerPhone, q)
+          );
+        })
+        .sort((a, b) => (b.updatedAt ?? b.createdAt).localeCompare(a.updatedAt ?? a.createdAt)),
+    [end, productById, productFilter, productTypeFilter, providerFilter, q, start, visibleContracts],
+  );
 
   const exportCsv = () => {
     const rows = filtered.map((c) => {
@@ -326,6 +333,9 @@ export function DealerSearchPage() {
   };
 
   const anyFilter = Boolean(q || startDate || endDate || providerFilter || productFilter || productTypeFilter);
+
+  if (!user) return <Navigate to="/sign-in" replace />;
+  if (!isDealerUser) return <Navigate to="/" replace />;
 
   return (
     <PageShell

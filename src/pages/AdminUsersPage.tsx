@@ -211,10 +211,10 @@ export function AdminUsersPage() {
 
   const busy = updateRoleMutation.isPending;
 
-  const allProfiles = profilesQuery.data ?? [];
-  const dealers = dealersQuery.data ?? [];
-  const providerCompanies = providerCompaniesQuery.data ?? [];
-  const dealerMembers = dealerMembersQuery.data ?? [];
+  const allProfiles = useMemo(() => profilesQuery.data ?? [], [profilesQuery.data]);
+  const dealers = useMemo(() => dealersQuery.data ?? [], [dealersQuery.data]);
+  const providerCompanies = useMemo(() => providerCompaniesQuery.data ?? [], [providerCompaniesQuery.data]);
+  const dealerMembers = useMemo(() => dealerMembersQuery.data ?? [], [dealerMembersQuery.data]);
 
   const dealerAdmins = allProfiles.filter((p) => p.role === "DEALER_ADMIN");
   const dealerEmployees = allProfiles.filter((p) => p.role === "DEALER_EMPLOYEE");
@@ -232,11 +232,6 @@ export function AdminUsersPage() {
     for (const p of providerCompanies) map[p.id] = p;
     return map;
   }, [providerCompanies]);
-
-  const getDealerForUser = (userId: string): string | null => {
-    const member = dealerMembers.find((m) => m.user_id === userId);
-    return member?.dealer_id ?? null;
-  };
 
   const filtered = allProfiles.filter((p) => {
     const q = search.trim().toLowerCase();
@@ -262,6 +257,10 @@ export function AdminUsersPage() {
   };
 
   const groupedDealers = useMemo(() => {
+    const getDealerForUser = (userId: string): string | null => {
+      const member = dealerMembers.find((m) => m.user_id === userId);
+      return member?.dealer_id ?? null;
+    };
     const groups: Record<string, { admins: AdminProfile[]; employees: AdminProfile[] }> = {};
     for (const admin of dealerAdmins) {
       const dealerId = getDealerForUser(admin.id);

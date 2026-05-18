@@ -79,11 +79,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 
   useEffect(() => {
+    const timeouts = timeoutsRef.current;
     return () => {
-      for (const handle of timeoutsRef.current.values()) {
+      for (const handle of timeouts.values()) {
         window.clearTimeout(handle);
       }
-      timeoutsRef.current.clear();
+      timeouts.clear();
     };
   }, []);
 

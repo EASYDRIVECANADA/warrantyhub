@@ -47,9 +47,7 @@ export function DealerRemittanceBatchPrintPage() {
   const batchId = id ?? "";
 
   const mode = useMemo(() => getAppMode(), []);
-
-  if (!user) return <Navigate to="/sign-in" replace />;
-  if (user.role !== "DEALER_ADMIN") return <Navigate to="/dealer-dashboard" replace />;
+  const isDealerAdmin = user?.role === "DEALER_ADMIN";
 
   const batchesApi = useMemo(() => getBatchesApi(), []);
   const contractsApi = useMemo(() => getContractsApi(), []);
@@ -57,16 +55,19 @@ export function DealerRemittanceBatchPrintPage() {
 
   const batchesQuery = useQuery({
     queryKey: ["batches"],
+    enabled: isDealerAdmin,
     queryFn: () => batchesApi.list(),
   });
 
   const contractsQuery = useQuery({
     queryKey: ["contracts"],
+    enabled: isDealerAdmin,
     queryFn: () => contractsApi.list(),
   });
 
   const productsQuery = useQuery({
     queryKey: ["marketplace-products"],
+    enabled: isDealerAdmin,
     queryFn: () => marketplaceApi.listPublishedProducts(),
   });
 
@@ -134,6 +135,9 @@ export function DealerRemittanceBatchPrintPage() {
     }, 250);
     return () => window.clearTimeout(t);
   }, [batch]);
+
+  if (!user) return <Navigate to="/sign-in" replace />;
+  if (!isDealerAdmin) return <Navigate to="/dealer-dashboard" replace />;
 
   if (batchesQuery.isLoading || contractsQuery.isLoading || productsQuery.isLoading) {
     return <div className="container mx-auto px-4 py-10 text-sm text-muted-foreground">Loading…</div>;

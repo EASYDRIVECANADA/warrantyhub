@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import DashboardLayout, { providerNavItems } from "../../components/dashboard/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
@@ -168,7 +168,7 @@ export default function ProviderProductEditorPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const api = getProductsV2Api();
+  const api = useMemo(() => getProductsV2Api(), []);
   const isNew = !id || id === "new";
   const showAI = searchParams.get("ai") === "true";
 
@@ -194,7 +194,7 @@ export default function ProviderProductEditorPage() {
         setLoading(false);
       });
     }
-  }, [id, isNew]);
+  }, [api, id, isNew]);
 
   const updateForm = (updates: Partial<ProductForm>) => setForm(prev => ({ ...prev, ...updates }));
 

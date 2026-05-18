@@ -107,11 +107,8 @@ export function DealerConfigurePage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const mode = useMemo(() => getAppMode(), []);
-
-  if (!user) return <Navigate to="/sign-in" replace />;
-  if (user.role !== "DEALER_ADMIN") return <Navigate to="/dealer-dashboard" replace />;
-
-  const dealerId = (mode === "local" ? (user.dealerId ?? user.id) : (user.dealerId ?? "")).trim();
+  const isDealerAdmin = user?.role === "DEALER_ADMIN";
+  const dealerId = (mode === "local" ? (user?.dealerId ?? user?.id ?? "") : (user?.dealerId ?? "")).trim();
 
   const { markupPct } = useDealerMarkupPct(dealerId);
 
@@ -119,10 +116,11 @@ export function DealerConfigurePage() {
 
   const productsQuery = useQuery({
     queryKey: ["marketplace-products"],
+    enabled: isDealerAdmin,
     queryFn: () => marketplaceApi.listPublishedProducts(),
   });
 
-  const products = (productsQuery.data ?? []) as MarketplaceProduct[];
+  const products = useMemo(() => (productsQuery.data ?? []) as MarketplaceProduct[], [productsQuery.data]);
 
   const providersApi = useMemo(() => getProvidersApi(), []);
   const providerIdsKey = useMemo(() => {
@@ -255,14 +253,14 @@ export function DealerConfigurePage() {
   const productPricingApi = useMemo(() => getProductPricingApi(), []);
   const pricingQuery = useQuery({
     queryKey: ["product-pricing-public", selectedProductId],
-    enabled: Boolean(selectedProductId),
+    enabled: isDealerAdmin && Boolean(selectedProductId),
     queryFn: () => productPricingApi.list({ productId: selectedProductId }),
   });
 
   const productAddonsApi = useMemo(() => getProductAddonsApi(), []);
   const addonsQuery = useQuery({
     queryKey: ["product-addons-public", selectedProductId],
-    enabled: Boolean(selectedProductId),
+    enabled: isDealerAdmin && Boolean(selectedProductId),
     queryFn: () => productAddonsApi.list({ productId: selectedProductId }),
   });
 
@@ -342,6 +340,9 @@ export function DealerConfigurePage() {
       return prev;
     });
   }, [addonIdsKey, addons, dealerId, retailOverridesVersion, selectedProduct]);
+
+  if (!user) return <Navigate to="/sign-in" replace />;
+  if (!isDealerAdmin) return <Navigate to="/dealer-dashboard" replace />;
 
   return (
     <PageShell

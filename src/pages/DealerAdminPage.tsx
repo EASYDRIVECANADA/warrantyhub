@@ -47,33 +47,35 @@ export function DealerAdminPage() {
   const { user } = useAuth();
 
   const mode = useMemo(() => getAppMode(), []);
-
-  if (!user) return <Navigate to="/sign-in" replace />;
-  if (user.role !== "DEALER_ADMIN") return <Navigate to="/dealer-dashboard" replace />;
+  const isDealerAdmin = user?.role === "DEALER_ADMIN";
 
   const contractsQuery = useQuery({
     queryKey: ["contracts"],
+    enabled: isDealerAdmin,
     queryFn: () => contractsApi.list(),
   });
 
   const batchesQuery = useQuery({
     queryKey: ["batches"],
+    enabled: isDealerAdmin,
     queryFn: () => batchesApi.list(),
   });
 
   const employeesQuery = useQuery({
     queryKey: ["employees"],
+    enabled: isDealerAdmin,
     queryFn: () => employeesApi.list(),
   });
 
   const productsQuery = useQuery({
     queryKey: ["marketplace-products"],
+    enabled: isDealerAdmin,
     queryFn: () => marketplaceApi.listPublishedProducts(),
   });
 
-  const contracts = (contractsQuery.data ?? []) as Contract[];
-  const batches = (batchesQuery.data ?? []) as Batch[];
-  const products = (productsQuery.data ?? []) as MarketplaceProduct[];
+  const contracts = useMemo(() => (contractsQuery.data ?? []) as Contract[], [contractsQuery.data]);
+  const batches = useMemo(() => (batchesQuery.data ?? []) as Batch[], [batchesQuery.data]);
+  const products = useMemo(() => (productsQuery.data ?? []) as MarketplaceProduct[], [productsQuery.data]);
 
   const productById = useMemo(() => new Map(products.map((p) => [p.id, p] as const)), [products]);
 
@@ -186,7 +188,10 @@ export function DealerAdminPage() {
     (mode !== "local" && employeesQuery.isLoading);
 
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-  const displayName = user.email?.split("@")[0] ?? "Admin";
+  const displayName = user?.email?.split("@")[0] ?? "Admin";
+
+  if (!user) return <Navigate to="/sign-in" replace />;
+  if (!isDealerAdmin) return <Navigate to="/dealer-dashboard" replace />;
 
   return (
     <PageShell

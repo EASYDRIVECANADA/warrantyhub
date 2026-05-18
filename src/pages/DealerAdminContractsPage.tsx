@@ -55,8 +55,7 @@ function downloadTextFile(filename: string, content: string, mime: string) {
 
 export function DealerAdminContractsPage() {
   const { user } = useAuth();
-  if (!user) return <Navigate to="/sign-in" replace />;
-  if (user.role !== "DEALER_ADMIN") return <Navigate to="/dealer-dashboard" replace />;
+  const isDealerAdmin = user?.role === "DEALER_ADMIN";
 
   const contractsApi = useMemo(() => getContractsApi(), []);
   const marketplaceApi = useMemo(() => getMarketplaceApi(), []);
@@ -66,19 +65,21 @@ export function DealerAdminContractsPage() {
 
   const listQuery = useQuery({
     queryKey: ["contracts"],
+    enabled: isDealerAdmin,
     queryFn: () => contractsApi.list(),
   });
 
   const productsQuery = useQuery({
     queryKey: ["marketplace-products"],
+    enabled: isDealerAdmin,
     queryFn: () => marketplaceApi.listPublishedProducts(),
   });
 
-  const products = (productsQuery.data ?? []) as Product[];
-  const productById = new Map(products.map((p) => [p.id, p] as const));
+  const products = useMemo(() => (productsQuery.data ?? []) as Product[], [productsQuery.data]);
+  const productById = useMemo(() => new Map(products.map((p) => [p.id, p] as const)), [products]);
 
-  const contracts = (listQuery.data ?? []) as Contract[];
-  const filteredByTab = tab === "ALL" ? contracts : contracts.filter((c) => c.status === tab);
+  const contracts = useMemo(() => (listQuery.data ?? []) as Contract[], [listQuery.data]);
+  const filteredByTab = useMemo(() => (tab === "ALL" ? contracts : contracts.filter((c) => c.status === tab)), [contracts, tab]);
 
   const query = q.trim().toLowerCase();
   const filtered = query
@@ -128,6 +129,9 @@ export function DealerAdminContractsPage() {
     const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
     downloadTextFile(`dealer-admin-contracts-${tab.toLowerCase()}-${ts}.csv`, csv, "text/csv");
   };
+
+  if (!user) return <Navigate to="/sign-in" replace />;
+  if (!isDealerAdmin) return <Navigate to="/dealer-dashboard" replace />;
 
   return (
     <PageShell
