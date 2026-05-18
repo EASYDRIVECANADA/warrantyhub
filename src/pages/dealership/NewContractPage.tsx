@@ -46,6 +46,9 @@ interface VehicleInfo {
   make: string | null;
   model: string | null;
   bodyClass?: string | null;
+  fuel?: string | null;
+  transmission?: string | null;
+  engineSize?: string | null;
   warning?: string;
 }
 
@@ -206,6 +209,14 @@ function parseTermSnapshot(term: string): { months?: number; km?: number | null 
 
 const fmt = (value: number) => `$${value.toLocaleString("en-CA", { maximumFractionDigits: 0 })}`;
 
+function addMonthsToDate(dateStr: string, months?: number) {
+  if (!dateStr || typeof months !== "number" || !Number.isFinite(months) || months <= 0) return undefined;
+  const d = new Date(`${dateStr}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return undefined;
+  d.setMonth(d.getMonth() + months);
+  return format(d, "yyyy-MM-dd");
+}
+
 const STEP_LABELS = ["Vehicle", "Product & Quote", "Customer", "Review"];
 const FINAL_STEP = STEP_LABELS.length;
 
@@ -227,6 +238,12 @@ export default function NewContractPage() {
   const [mileage, setMileage] = useState("");
   const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [vehicleInfo, setVehicleInfo] = useState<VehicleInfo | null>(null);
+  const [vehicleFuel, setVehicleFuel] = useState("");
+  const [vehicleTransmission, setVehicleTransmission] = useState("");
+  const [vehicleEngineSize, setVehicleEngineSize] = useState("");
+  const [vehicleColour, setVehicleColour] = useState("");
+  const [vehicleBodyType, setVehicleBodyType] = useState("");
+  const [lienholder, setLienholder] = useState("");
   const [vinLoading, setVinLoading] = useState(false);
   const [vinError, setVinError] = useState<string | null>(null);
 
@@ -250,13 +267,21 @@ export default function NewContractPage() {
   // Step 5 — Customer
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [initials, setInitials] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [businessPhone, setBusinessPhone] = useState("");
+  const [customerAddress, setCustomerAddress] = useState("");
+  const [customerCity, setCustomerCity] = useState("");
+  const [customerProvince, setCustomerProvince] = useState("");
+  const [customerPostalCode, setCustomerPostalCode] = useState("");
 
   // Meta
   const [saving, setSaving] = useState(false);
   const [providerName, setProviderName] = useState("");
   const [dealershipName, setDealershipName] = useState("");
+  const [dealershipPhone, setDealershipPhone] = useState("");
+  const [dealershipAddress, setDealershipAddress] = useState("");
   const lastSelectedProductIdRef = useRef("");
 
   // ── Load products ──────────────────────────────────────────────────────────
@@ -310,11 +335,16 @@ export default function NewContractPage() {
       });
   }, [dealershipId]);
 
-  // Load dealership name
+  // Load dealership details
   useEffect(() => {
     if (!dealershipId) return;
-    supabase.from("dealerships").select("name").eq("id", dealershipId).maybeSingle()
-      .then(({ data }) => { if (data) setDealershipName((data as any).name || ""); });
+    supabase.from("dealerships").select("name, phone, address").eq("id", dealershipId).maybeSingle()
+      .then(({ data }) => {
+        if (!data) return;
+        setDealershipName((data as any).name || "");
+        setDealershipPhone((data as any).phone || "");
+        setDealershipAddress((data as any).address || "");
+      });
   }, [dealershipId]);
 
   // When product changes, reset tier / add-ons and set provider name
@@ -477,7 +507,24 @@ export default function NewContractPage() {
         : (r.Make?.trim() || r.Model?.trim())
           ? "Some details couldn't be verified — year/make/model decoded successfully."
           : r.ErrorText || "Partial decode — some details may be incomplete.";
-      setVehicleInfo({ year: r.ModelYear ? parseInt(r.ModelYear) : null, make: r.Make || null, model: r.Model || null, bodyClass: r.BodyClass || null, warning });
+      const engineSize = [r.DisplacementL ? `${r.DisplacementL}L` : "", r.EngineCylinders ? `${r.EngineCylinders} cyl` : ""]
+        .filter(Boolean)
+        .join(" / ");
+      const decodedTransmission = r.TransmissionStyle || r.TransmissionSpeeds || "";
+      setVehicleInfo({
+        year: r.ModelYear ? parseInt(r.ModelYear) : null,
+        make: r.Make || null,
+        model: r.Model || null,
+        bodyClass: r.BodyClass || null,
+        fuel: r.FuelTypePrimary || null,
+        transmission: decodedTransmission || null,
+        engineSize: engineSize || null,
+        warning,
+      });
+      if (!vehicleFuel.trim() && r.FuelTypePrimary) setVehicleFuel(r.FuelTypePrimary);
+      if (!vehicleTransmission.trim() && decodedTransmission) setVehicleTransmission(decodedTransmission);
+      if (!vehicleEngineSize.trim() && engineSize) setVehicleEngineSize(engineSize);
+      if (!vehicleBodyType.trim() && r.BodyClass) setVehicleBodyType(r.BodyClass);
     } catch { setVinError("Network error — check your connection."); }
     finally { setVinLoading(false); }
   };
@@ -524,11 +571,17 @@ export default function NewContractPage() {
         customerLastName: lastName.trim(),
         customerEmail: email.trim() || undefined,
         customerPhone: phone.trim() || undefined,
+        customerAddress: customerAddress.trim() || undefined,
+        customerCity: customerCity.trim() || undefined,
+        customerProvince: customerProvince.trim() || undefined,
+        customerPostalCode: customerPostalCode.trim() || undefined,
         vehicleVin: vin.trim(),
         vehicleMake: vehicleInfo?.make ?? "",
         vehicleModel: vehicleInfo?.model ?? "",
         vehicleYear: vehicleInfo?.year ?? 0,
         vehicleMileage: mileage ? parseInt(mileage) : undefined,
+        vehicleEngine: vehicleEngineSize.trim() || undefined,
+        vehicleTransmission: vehicleTransmission.trim() || undefined,
         contractPrice: totalRetail || totalDealerCost || undefined,
         dealerCost: totalDealerCost || undefined,
         pricingVehicleClass: chosenRow?.vehicleClass || undefined,
@@ -540,6 +593,7 @@ export default function NewContractPage() {
         addonTotalRetailCents: Math.round(addOnRetailTotal * 100),
         addonTotalCostCents: Math.round(addOnDealerTotal * 100),
         startDate: startDate || undefined,
+        endDate: addMonthsToDate(startDate, pricingTermSnapshot.months),
       });
       toast({ title: "Contract saved", description: "Print the contract or close to view it in your contracts list." });
       const onAfterPrint = () => navigate("/dealership/contracts");
@@ -561,6 +615,7 @@ export default function NewContractPage() {
   const termsSections: Array<{ title: string; content: string }> = cd.termsSections || [];
   const exclusions: string[] = cd.exclusions || [];
   const previewContractNumber = `${CONTRACT_NUMBER_PREFIX}-${Date.now().toString(36).toUpperCase()}`;
+  const expiryDate = addMonthsToDate(startDate, pricingTermSnapshot.months);
 
   if (dLoading) return (
     <DashboardLayout navItems={dealershipNavItems} title="New Contract">
@@ -671,6 +726,32 @@ export default function NewContractPage() {
                 <div>
                   <Label className="text-xs text-muted-foreground">Start Date</Label>
                   <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="mt-1" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Fuel (optional)</Label>
+                  <Input value={vehicleFuel} onChange={e => setVehicleFuel(e.target.value)} placeholder="Gas" className="mt-1" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Transmission (optional)</Label>
+                  <Input value={vehicleTransmission} onChange={e => setVehicleTransmission(e.target.value)} placeholder="Automatic" className="mt-1" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Engine Size (optional)</Label>
+                  <Input value={vehicleEngineSize} onChange={e => setVehicleEngineSize(e.target.value)} placeholder="2.0L" className="mt-1" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Body Type (optional)</Label>
+                  <Input value={vehicleBodyType} onChange={e => setVehicleBodyType(e.target.value)} placeholder="SUV" className="mt-1" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Colour (optional)</Label>
+                  <Input value={vehicleColour} onChange={e => setVehicleColour(e.target.value)} placeholder="Black" className="mt-1" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Lienholder (optional)</Label>
+                  <Input value={lienholder} onChange={e => setLienholder(e.target.value)} placeholder="None" className="mt-1" />
                 </div>
               </div>
             </CardContent>
@@ -1186,12 +1267,40 @@ export default function NewContractPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
+                  <Label className="text-xs text-muted-foreground">Initials</Label>
+                  <Input value={initials} onChange={e => setInitials(e.target.value.toUpperCase())} placeholder="JS" className="mt-1" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Business Phone</Label>
+                  <Input value={businessPhone} onChange={e => setBusinessPhone(e.target.value)} placeholder="(555) 123-4567" className="mt-1" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
                   <Label className="text-xs text-muted-foreground">Email</Label>
                   <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="john@email.com" className="mt-1" />
                 </div>
                 <div>
                   <Label className="text-xs text-muted-foreground">Phone</Label>
                   <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 123-4567" className="mt-1" />
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Address</Label>
+                <Input value={customerAddress} onChange={e => setCustomerAddress(e.target.value)} placeholder="Street address" className="mt-1" />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <Label className="text-xs text-muted-foreground">City</Label>
+                  <Input value={customerCity} onChange={e => setCustomerCity(e.target.value)} placeholder="Toronto" className="mt-1" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Province</Label>
+                  <Input value={customerProvince} onChange={e => setCustomerProvince(e.target.value.toUpperCase())} placeholder="ON" className="mt-1" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Postal Code</Label>
+                  <Input value={customerPostalCode} onChange={e => setCustomerPostalCode(e.target.value.toUpperCase())} placeholder="M1M 1M1" className="mt-1" />
                 </div>
               </div>
             </CardContent>
@@ -1207,14 +1316,23 @@ export default function NewContractPage() {
               contractNumber={previewContractNumber}
               issueDate={format(new Date(), "MMMM d, yyyy")}
               purchaseDate={startDate ? safeDate(startDate) : format(new Date(), "yyyy-MM-dd")}
+              expiryDate={expiryDate ? safeDate(expiryDate) : undefined}
               customer={{
                 firstName: firstName.trim(),
                 lastName: lastName.trim(),
+                initials: initials.trim() || undefined,
                 email: email.trim() || undefined,
                 phone: phone.trim() || undefined,
+                businessPhone: businessPhone.trim() || undefined,
+                address: customerAddress.trim() || undefined,
+                city: customerCity.trim() || undefined,
+                province: customerProvince.trim() || undefined,
+                postalCode: customerPostalCode.trim() || undefined,
               }}
               dealer={{
                 name: dealershipName || "Dealer",
+                phone: dealershipPhone || undefined,
+                address: dealershipAddress || undefined,
               }}
               vehicle={{
                 year: vehicleInfo?.year,
@@ -1223,6 +1341,12 @@ export default function NewContractPage() {
                 vin: vin.trim(),
                 mileageKm: mileage ? `${parseInt(mileage).toLocaleString()} km` : undefined,
                 type: vehicleInfo?.bodyClass || "Personal",
+                fuel: vehicleFuel.trim() || vehicleInfo?.fuel || undefined,
+                transmission: vehicleTransmission.trim() || vehicleInfo?.transmission || undefined,
+                engineSize: vehicleEngineSize.trim() || vehicleInfo?.engineSize || undefined,
+                bodyType: vehicleBodyType.trim() || vehicleInfo?.bodyClass || undefined,
+                colour: vehicleColour.trim() || undefined,
+                lienholder: lienholder.trim() || undefined,
               }}
               warranty={{
                 productName: selectedProduct?.name,

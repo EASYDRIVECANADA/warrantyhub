@@ -6,6 +6,11 @@ type CustomerInfo = {
   initials?: string;
   email?: string;
   phone?: string;
+  businessPhone?: string;
+  address?: string;
+  city?: string;
+  province?: string;
+  postalCode?: string;
 };
 
 type DealerInfo = {
@@ -24,6 +29,9 @@ type VehicleInfo = {
   colour?: string;
   fuel?: string;
   transmission?: string;
+  engineSize?: string;
+  bodyType?: string;
+  lienholder?: string;
 };
 
 type WarrantyInfo = {
@@ -136,12 +144,12 @@ export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicati
                 <Field label="Last Name:" className="col-span-4">{value(props.customer.lastName)}</Field>
                 <Field label="First Name:" className="col-span-4">{value(props.customer.firstName)}</Field>
                 <Field label="Initials:" className="col-span-4">{value(props.customer.initials)}</Field>
-                <Field label="Address:" className="col-span-6">N/A</Field>
-                <Field label="City:" className="col-span-3">N/A</Field>
-                <Field label="Province:" className="col-span-3">N/A</Field>
-                <Field label="Postal Code:" className="col-span-3">N/A</Field>
+                <Field label="Address:" className="col-span-6">{value(props.customer.address)}</Field>
+                <Field label="City:" className="col-span-3">{value(props.customer.city)}</Field>
+                <Field label="Province:" className="col-span-3">{value(props.customer.province)}</Field>
+                <Field label="Postal Code:" className="col-span-3">{value(props.customer.postalCode)}</Field>
                 <Field label="Home phone:" className="col-span-3">{value(props.customer.phone)}</Field>
-                <Field label="Business phone:" className="col-span-3">N/A</Field>
+                <Field label="Business phone:" className="col-span-3">{value(props.customer.businessPhone)}</Field>
                 <Field label="Email:" className="col-span-3">{value(props.customer.email)}</Field>
               </div>
 
@@ -157,11 +165,11 @@ export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicati
                 <Field label="Purchase Price:" className="col-span-2">{value(props.warranty.totalPriceLabel)}</Field>
                 <Field label="Fuel:" className="col-span-2">{value(props.vehicle.fuel)}</Field>
                 <Field label="Transmission:" className="col-span-3">{value(props.vehicle.transmission)}</Field>
-                <Field label="Engine Size:" className="col-span-2">N/A</Field>
-                <Field label="Body Type:" className="col-span-3">{vehicleLabel || "N/A"}</Field>
+                <Field label="Engine Size:" className="col-span-2">{value(props.vehicle.engineSize)}</Field>
+                <Field label="Body Type:" className="col-span-3">{value(props.vehicle.bodyType ?? props.vehicle.type ?? vehicleLabel)}</Field>
                 <Field label="Colour:" className="col-span-2">{value(props.vehicle.colour)}</Field>
                 <Field label="V.I.N.:" className="col-span-8">{value(props.vehicle.vin)}</Field>
-                <Field label="Lienholder:" className="col-span-4">N/A</Field>
+                <Field label="Lienholder:" className="col-span-4">{value(props.vehicle.lienholder)}</Field>
               </div>
 
               <SectionBar>FACTORY WARRANTY (IF STILL IN EFFECT)</SectionBar>

@@ -56,4 +56,58 @@ describe("BridgeWarrantyApplicationContract", () => {
     expect(screen.getByText("POWERTRAIN PROTECTION")).toBeInTheDocument();
     expect(screen.getByText("APPLICANT:")).toBeInTheDocument();
   });
+
+  it("prints provided customer, dealer, and optional vehicle details without requiring every vehicle field", () => {
+    render(
+      <BridgeWarrantyApplicationContract
+        brandName="Bridge Warranty"
+        contractNumber="BW76022"
+        issueDate="May 18, 2026"
+        purchaseDate="May 18, 2026"
+        customer={{
+          firstName: "Cyril",
+          lastName: "Warren",
+          initials: "CW",
+          email: "buyer@example.com",
+          phone: "555-123-4567",
+          address: "123 Main Street",
+          city: "Toronto",
+          province: "ON",
+          postalCode: "M1M 1M1",
+        }}
+        dealer={{
+          name: "Easy Drive Canada",
+          phone: "416-555-0000",
+          address: "99 Dealer Road",
+        }}
+        vehicle={{
+          vin: "5N1YT4M98RB503974",
+          mileageKm: "72,000 km",
+          type: "Personal",
+          fuel: "Gas",
+        }}
+        warranty={{
+          productName: "Powertrain Protection",
+          termLabel: "6 Months / Unlimited KM",
+          deductibleLabel: "$100",
+          totalPriceLabel: "$609",
+          basePriceLabel: "$589",
+          startDateLabel: "May 18, 2026",
+        }}
+        coverage={{
+          title: "POWERTRAIN PROTECTION",
+          components: ["Engine"],
+          addOns: [],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("123 Main Street")).toBeInTheDocument();
+    expect(screen.getByText("Toronto")).toBeInTheDocument();
+    expect(screen.getByText("ON")).toBeInTheDocument();
+    expect(screen.getByText("M1M 1M1")).toBeInTheDocument();
+    expect(screen.getByText("416-555-0000")).toBeInTheDocument();
+    expect(screen.getByText("Gas")).toBeInTheDocument();
+    expect(screen.getAllByText("Personal").length).toBeGreaterThan(0);
+  });
 });
