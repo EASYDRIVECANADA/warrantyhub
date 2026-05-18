@@ -51,6 +51,7 @@ type CoverageAddOn = {
 
 type CoverageInfo = {
   title?: string;
+  productType?: string;
   components: string[];
   addOns: CoverageAddOn[];
 };
@@ -81,6 +82,104 @@ function value(text?: string | number | null): string {
   return normalized || "N/A";
 }
 
+function nonEmptyUnique(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values
+    .map((item) => item.trim())
+    .filter((item) => {
+      if (!item || seen.has(item.toLowerCase())) return false;
+      seen.add(item.toLowerCase());
+      return true;
+    });
+}
+
+function normalizedProductType(type?: string): string {
+  return (type ?? "").trim().toLowerCase().replace(/[_-]+/g, " ");
+}
+
+function productFamily(type?: string): "vsc" | "gap" | "tireRim" | "ppf" | "ceramic" | "undercoating" | "key" | "dent" | "other" {
+  const normalized = normalizedProductType(type);
+  if (!normalized) return "vsc";
+  if (["vsc", "extended warranty", "warranty"].includes(normalized)) return "vsc";
+  if (normalized === "gap") return "gap";
+  if (["tire & rim", "tire rim", "tire and rim"].includes(normalized)) return "tireRim";
+  if (normalized === "ppf" || normalized.includes("paint protection")) return "ppf";
+  if (normalized.includes("ceramic")) return "ceramic";
+  if (normalized.includes("undercoating")) return "undercoating";
+  if (normalized.includes("key")) return "key";
+  if (normalized.includes("dent")) return "dent";
+  return "other";
+}
+
+function productLabel(type?: string, fallbackTitle?: string): string {
+  switch (productFamily(type)) {
+    case "vsc":
+      return "extended limited warranty";
+    case "gap":
+      return "GAP protection";
+    case "tireRim":
+      return "road hazard tire and rim protection";
+    case "ppf":
+      return "paint protection film";
+    case "ceramic":
+      return "ceramic coating protection";
+    case "undercoating":
+      return "undercoating protection";
+    case "key":
+      return "key replacement protection";
+    case "dent":
+      return "dent repair protection";
+    case "other":
+      return value(fallbackTitle).toLowerCase() === "n/a" ? "vehicle protection product or service" : value(fallbackTitle);
+  }
+}
+
+function applicationTitle(type?: string): string {
+  switch (productFamily(type)) {
+    case "vsc":
+      return "EXTENDED LIMITED WARRANTY APPLICATION";
+    case "gap":
+      return "GAP PROTECTION APPLICATION";
+    case "tireRim":
+      return "TIRE AND RIM PROTECTION APPLICATION";
+    case "ppf":
+      return "PAINT PROTECTION FILM APPLICATION";
+    case "ceramic":
+      return "CERAMIC COATING APPLICATION";
+    case "undercoating":
+      return "UNDERCOATING PROTECTION APPLICATION";
+    case "key":
+      return "KEY REPLACEMENT APPLICATION";
+    case "dent":
+      return "DENT REPAIR APPLICATION";
+    case "other":
+      return "PROTECTION PRODUCT APPLICATION";
+  }
+}
+
+function documentSubtitle(type?: string): string {
+  switch (productFamily(type)) {
+    case "vsc":
+      return "Vehicle Service Contract";
+    case "gap":
+      return "GAP Protection Contract";
+    case "tireRim":
+      return "Tire and Rim Protection Contract";
+    case "ppf":
+      return "Paint Protection Film Contract";
+    case "ceramic":
+      return "Ceramic Coating Contract";
+    case "undercoating":
+      return "Undercoating Protection Contract";
+    case "key":
+      return "Key Replacement Contract";
+    case "dent":
+      return "Dent Repair Contract";
+    case "other":
+      return "Protection Product Contract";
+  }
+}
+
 function SectionBar({ children }: { children: ReactNode }) {
   return (
     <div className="bg-[#073f82] px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-white">
@@ -109,28 +208,17 @@ function CheckLine({ checked = true, children }: { checked?: boolean; children: 
   );
 }
 
-const BRIDGE_WARRANTY_TERMS: ContractTermSection[] = [
+const BRIDGE_WARRANTY_ADMIN_TERMS: ContractTermSection[] = [
   {
-    title: "This Is Not An Insurance Policy",
+    title: "Product And Provider Terms",
     paragraphs: [
-      "This application and any issued contract are a service agreement for vehicle protection benefits. Bridge Warranty administers the marketplace and contract documentation. Product obligations, claim decisions, benefit approvals, and payments remain subject to the selected provider terms.",
+      "This application and any issued contract document the selected vehicle protection product or service. Bridge Warranty administers the marketplace and contract documentation. Product obligations, claim decisions, benefit approvals, and payments remain subject to the selected provider terms.",
     ],
   },
   {
     title: "Definitions",
     paragraphs: [
       "Agreement means the issued service contract, this application, the selected provider terms, and any approved endorsements or add-ons. Covered Vehicle means the vehicle identified by VIN on the application. Provider means the company responsible for the selected protection product.",
-    ],
-  },
-  {
-    title: "Covered Components",
-    paragraphs: [
-      "Coverage applies only to components, limits, deductibles, waiting periods, and term rules shown on this application and in the selected provider terms. If a component or service is not listed as covered, it is not covered unless the provider terms state otherwise.",
-    ],
-    bullets: [
-      "Engine, transmission, transfer case, differential, turbo or supercharger, and roadside benefits may apply when selected.",
-      "Optional benefits such as seals, gaskets, unlimited kilometres, or other add-ons apply only when shown on the application.",
-      "Coverage is limited by the selected term, mileage band, vehicle class, deductible, claim limit, and provider rules.",
     ],
   },
   {
@@ -177,13 +265,119 @@ const BRIDGE_WARRANTY_TERMS: ContractTermSection[] = [
   },
 ];
 
-function TermsPageHeader({ brandName, contractNumber }: { brandName: string; contractNumber: string }) {
+function selectedProductTerms(props: BridgeWarrantyApplicationContractProps): ContractTermSection[] {
+  const productName = value(props.coverage.title ?? props.warranty.productName);
+  const type = props.coverage.productType;
+  const label = productLabel(type, productName);
+  const components = nonEmptyUnique(props.coverage.components);
+  const addOns = props.coverage.addOns
+    .map((addOn) => `${addOn.name.trim()}${addOn.priceLabel ? ` - ${addOn.priceLabel.trim()}` : ""}`)
+    .filter((line) => line.trim().length > 0);
+
+  const productScopeBullets: string[] = [];
+  switch (productFamily(type)) {
+    case "vsc":
+      productScopeBullets.push(
+        "Coverage is for covered mechanical or electrical breakdowns listed by component category and provider terms.",
+        "Normal maintenance, wear items, cosmetic items, and non-covered diagnosis apply only if the provider terms expressly include them.",
+      );
+      break;
+    case "gap":
+      productScopeBullets.push(
+        "Benefits relate to an eligible finance or lease deficiency after a covered total loss, subject to the provider terms.",
+        "This product does not cover mechanical repairs, maintenance, cosmetic repairs, or vehicle service work.",
+      );
+      break;
+    case "tireRim":
+      productScopeBullets.push(
+        "Benefits relate to eligible tire and rim repair or replacement caused by covered road hazard events.",
+        "Mounting, balancing, valve stems, towing, cosmetic rim repair, or replacement limits apply only when shown on the application or provider terms.",
+      );
+      break;
+    case "ppf":
+      productScopeBullets.push(
+        "Benefits relate to eligible paint protection film products and services shown on the application and provider terms.",
+        "Coverage is limited to the protected areas, installation requirements, care requirements, and remedy limits stated by the provider.",
+      );
+      break;
+    case "ceramic":
+      productScopeBullets.push(
+        "Benefits relate to eligible ceramic coating products and services shown on the application and provider terms.",
+        "Coverage is limited to approved surfaces, maintenance requirements, inspection rules, and remedy limits stated by the provider.",
+      );
+      break;
+    case "undercoating":
+      productScopeBullets.push(
+        "Benefits relate to eligible undercoating or corrosion protection products and services shown on the application and provider terms.",
+        "Coverage is limited by application requirements, inspection rules, excluded corrosion causes, and remedy limits stated by the provider.",
+      );
+      break;
+    case "key":
+      productScopeBullets.push(
+        "Benefits relate to eligible key, remote, fob, programming, and replacement services shown on the application and provider terms.",
+        "Coverage is limited by claim frequency, replacement limits, locksmith rules, programming rules, and proof requirements stated by the provider.",
+      );
+      break;
+    case "dent":
+      productScopeBullets.push(
+        "Benefits relate to eligible paintless dent repair or dent repair services shown on the application and provider terms.",
+        "Coverage is limited by dent size, location, paint condition, panel eligibility, repair method, and provider remedy limits.",
+      );
+      break;
+    case "other":
+      productScopeBullets.push(
+        "Benefits apply only to the selected product or service shown on the application and in the provider terms.",
+        "Coverage, eligibility, claim requirements, exclusions, and remedy limits are controlled by the provider terms.",
+      );
+      break;
+  }
+
+  return [
+    {
+      title: "Selected Product And Services",
+      paragraphs: [
+        `This contract is for ${productName}, a ${label}. The selected term, deductible, selling price, vehicle information, provider, and add-ons shown on the application form part of the contract record.`,
+      ],
+      bullets: productScopeBullets,
+    },
+    {
+      title: "Selected Coverage Categories",
+      paragraphs: [
+        components.length > 0
+          ? "The following coverage categories were selected or supplied by the product record for this contract."
+          : "No component categories were supplied by the product record for this contract. The selected provider terms remain the controlling coverage source.",
+      ],
+      bullets: components.length > 0 ? components : undefined,
+    },
+    {
+      title: "Selected Add-Ons",
+      paragraphs: [
+        addOns.length > 0
+          ? "The following add-ons were selected for this contract and are included in the printed price snapshot."
+          : "No optional add-ons were selected for this contract.",
+      ],
+      bullets: addOns.length > 0 ? addOns : undefined,
+    },
+  ];
+}
+
+function bridgeWarrantyTerms(props: BridgeWarrantyApplicationContractProps): ContractTermSection[] {
+  const [productAndProvider, definitions, ...remainingAdminTerms] = BRIDGE_WARRANTY_ADMIN_TERMS;
+  return [
+    productAndProvider,
+    definitions,
+    ...selectedProductTerms(props),
+    ...remainingAdminTerms,
+  ];
+}
+
+function TermsPageHeader({ brandName, contractNumber, subtitle }: { brandName: string; contractNumber: string; subtitle: string }) {
   return (
     <div className="mb-3 border-b border-slate-300 pb-2">
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="text-[12px] font-extrabold text-[#073f82]">{brandName}</div>
-          <div className="text-[8px] text-slate-600">Vehicle Service Contract</div>
+          <div className="text-[8px] text-slate-600">{subtitle}</div>
         </div>
         <div className="text-right text-[8px] text-slate-600">
           <div>Application / Contract #</div>
@@ -220,6 +414,10 @@ export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicati
   const customerName = `${props.customer.firstName ?? ""} ${props.customer.lastName ?? ""}`.trim();
   const vehicleLabel = [props.vehicle.year, props.vehicle.make, props.vehicle.model].map(value).filter((v) => v !== "N/A").join(" ");
   const coverageTitle = value(props.coverage.title ?? props.warranty.productName).toUpperCase();
+  const productType = props.coverage.productType;
+  const printedApplicationTitle = applicationTitle(productType);
+  const printedDocumentSubtitle = documentSubtitle(productType);
+  const terms = bridgeWarrantyTerms(props);
   const hasProviderDetails = (props.termsSections?.length ?? 0) > 0 || (props.exclusions?.length ?? 0) > 0;
 
   return (
@@ -247,7 +445,7 @@ export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicati
           </div>
 
           <div className="mt-1 text-center text-[12px] font-extrabold uppercase tracking-wide text-[#073f82]">
-            EXTENDED LIMITED WARRANTY APPLICATION
+            {printedApplicationTitle}
           </div>
 
           <div className="mt-1 grid grid-cols-[1fr_38mm] gap-2">
@@ -292,19 +490,19 @@ export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicati
                 <Field label="In Service Date:" className="col-span-4">{value(props.warranty.startDateLabel)}</Field>
               </div>
 
-              <SectionBar>COST OF WARRANTY</SectionBar>
+              <SectionBar>COST OF COVERAGE</SectionBar>
               <div className="grid grid-cols-12 border-l border-t border-slate-400">
-                <Field label="Cost of warranty:" className="col-span-3">{value(props.warranty.basePriceLabel)}</Field>
+                <Field label="Coverage price:" className="col-span-3">{value(props.warranty.basePriceLabel)}</Field>
                 <Field label="HST:" className="col-span-3">$0.00</Field>
                 <Field label="HST Exempt:" className="col-span-3">No</Field>
-                <Field label="Cost of warranty Total:" className="col-span-3">{value(props.warranty.totalPriceLabel)}</Field>
+                <Field label="Coverage Total:" className="col-span-3">{value(props.warranty.totalPriceLabel)}</Field>
               </div>
 
               <SectionBar>CUSTOMER ACKNOWLEDGMENT</SectionBar>
               <div className="border border-t-0 border-slate-400 bg-slate-200 px-2 py-1.5 text-[7.5px] leading-snug">
                 <div>- I acknowledge that I have read, reviewed, and understood this Bridge Warranty application and the terms provided by the product provider.</div>
                 <div>- I confirm that all information provided on this application is true, complete, and accurate to the best of my knowledge.</div>
-                <div>- I understand that this agreement is a service agreement and not an insurance policy.</div>
+                <div>- I understand that this agreement documents the selected protection product or service and is governed by the provider terms.</div>
                 <div>- I authorize Bridge Warranty and the listed provider to process this application and related contract documents.</div>
                 <div>- I understand that claims, approvals, and payments are administered according to the provider terms and conditions.</div>
               </div>
@@ -363,12 +561,12 @@ export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicati
         </div>
 
         <div className="mt-5 min-h-[260mm] text-[8px] leading-tight print:break-before-page">
-          <TermsPageHeader brandName={props.brandName} contractNumber={props.contractNumber} />
+          <TermsPageHeader brandName={props.brandName} contractNumber={props.contractNumber} subtitle={printedDocumentSubtitle} />
           <div className="mb-3 text-center text-[13px] font-extrabold uppercase tracking-wide text-[#073f82]">
-            Bridge Warranty Service Contract Terms
+            Bridge Warranty Product Terms
           </div>
           <div className="grid grid-cols-2 gap-x-5">
-            {BRIDGE_WARRANTY_TERMS.map((section) => (
+            {terms.map((section) => (
               <ContractTermBlock key={section.title} section={section} />
             ))}
           </div>
@@ -379,7 +577,7 @@ export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicati
 
         {hasProviderDetails ? (
           <div className="mt-5 border-t border-slate-300 pt-4 text-[9px] leading-snug print:break-before-page">
-            <TermsPageHeader brandName={props.brandName} contractNumber={props.contractNumber} />
+            <TermsPageHeader brandName={props.brandName} contractNumber={props.contractNumber} subtitle={printedDocumentSubtitle} />
             <div className="mb-2 border-b border-[#073f82] pb-2 text-[11px] font-bold text-[#073f82]">Provider-Specific Terms</div>
             {props.termsSections?.map((section) => (
               <section key={section.title} className="mb-2">

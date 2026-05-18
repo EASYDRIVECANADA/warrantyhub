@@ -51,7 +51,7 @@ describe("BridgeWarrantyApplicationContract", () => {
     expect(screen.getAllByText("Bridge Warranty").length).toBeGreaterThan(0);
     expect(screen.getByText("CUSTOMER / LESSEE INFORMATION")).toBeInTheDocument();
     expect(screen.getByText("DEALERSHIP / VEHICLE INFORMATION")).toBeInTheDocument();
-    expect(screen.getByText("COST OF WARRANTY")).toBeInTheDocument();
+    expect(screen.getByText("COST OF COVERAGE")).toBeInTheDocument();
     expect(screen.getByText("CUSTOMER ACKNOWLEDGMENT")).toBeInTheDocument();
     expect(screen.getByText("POWERTRAIN PROTECTION")).toBeInTheDocument();
     expect(screen.getByText("APPLICANT:")).toBeInTheDocument();
@@ -138,12 +138,50 @@ describe("BridgeWarrantyApplicationContract", () => {
       />,
     );
 
-    expect(screen.getByText("Bridge Warranty Service Contract Terms")).toBeInTheDocument();
-    expect(screen.getByText("This Is Not An Insurance Policy")).toBeInTheDocument();
+    expect(screen.getByText("Bridge Warranty Product Terms")).toBeInTheDocument();
+    expect(screen.getByText("Product And Provider Terms")).toBeInTheDocument();
     expect(screen.getByText("Claims And Authorization")).toBeInTheDocument();
     expect(screen.getByText("General Exclusions")).toBeInTheDocument();
     expect(screen.getByText("Cancellation And Transfer")).toBeInTheDocument();
     expect(screen.getByText("Provider-Specific Terms")).toBeInTheDocument();
     expect(screen.getByText("Provider Eligibility")).toBeInTheDocument();
+  });
+
+  it("prints product-aware application titles and terms for non-VSC products", () => {
+    render(
+      <BridgeWarrantyApplicationContract
+        brandName="Bridge Warranty"
+        contractNumber="BW76024"
+        issueDate="May 18, 2026"
+        purchaseDate="May 18, 2026"
+        customer={{ firstName: "Cyril", lastName: "Warren" }}
+        dealer={{ name: "Easy Drive Canada" }}
+        vehicle={{ vin: "5N1YT4M98RB503974" }}
+        warranty={{
+          productName: "Road Hazard Tire and Rim",
+          termLabel: "24 Months",
+          deductibleLabel: "$0",
+          totalPriceLabel: "$499",
+          basePriceLabel: "$449",
+        }}
+        coverage={{
+          title: "Road Hazard Tire and Rim",
+          productType: "Tire & Rim",
+          components: ["Tires", "Rims", "Mounting and balancing"],
+          addOns: [{ name: "Cosmetic rim repair", priceLabel: "$50" }],
+        }}
+        termsSections={[{ title: "Provider Road Hazard Terms", content: "Provider tire and rim terms apply." }]}
+        exclusions={["Cosmetic damage unless selected"]}
+      />,
+    );
+
+    expect(screen.getByText("TIRE AND RIM PROTECTION APPLICATION")).toBeInTheDocument();
+    expect(screen.getAllByText(/Road Hazard Tire and Rim/i).length).toBeGreaterThan(0);
+    expect(screen.getByText("Selected Product And Services")).toBeInTheDocument();
+    expect(screen.getByText(/road hazard tire and rim protection/i)).toBeInTheDocument();
+    expect(screen.getByText("Selected Coverage Categories")).toBeInTheDocument();
+    expect(screen.getAllByText("Tires").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Cosmetic rim repair - $50").length).toBeGreaterThan(0);
+    expect(screen.getByText("Provider Road Hazard Terms")).toBeInTheDocument();
   });
 });

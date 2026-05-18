@@ -1359,6 +1359,7 @@ export default function NewContractPage() {
               }}
               coverage={{
                 title: selectedProduct?.name || "Extended Warranty",
+                productType: selectedProduct?.product_type,
                 components: categories,
                 addOns: selectedAddOnRows.map((ao) => {
                   const retailValue = resolveCustomerRetail(ao, dealerPricingConfig);
