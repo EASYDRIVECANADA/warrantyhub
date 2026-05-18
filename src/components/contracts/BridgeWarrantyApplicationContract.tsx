@@ -55,6 +55,12 @@ type CoverageInfo = {
   addOns: CoverageAddOn[];
 };
 
+type ContractTermSection = {
+  title: string;
+  paragraphs: string[];
+  bullets?: string[];
+};
+
 export type BridgeWarrantyApplicationContractProps = {
   brandName: string;
   contractNumber: string;
@@ -103,11 +109,118 @@ function CheckLine({ checked = true, children }: { checked?: boolean; children: 
   );
 }
 
+const BRIDGE_WARRANTY_TERMS: ContractTermSection[] = [
+  {
+    title: "This Is Not An Insurance Policy",
+    paragraphs: [
+      "This application and any issued contract are a service agreement for vehicle protection benefits. Bridge Warranty administers the marketplace and contract documentation. Product obligations, claim decisions, benefit approvals, and payments remain subject to the selected provider terms.",
+    ],
+  },
+  {
+    title: "Definitions",
+    paragraphs: [
+      "Agreement means the issued service contract, this application, the selected provider terms, and any approved endorsements or add-ons. Covered Vehicle means the vehicle identified by VIN on the application. Provider means the company responsible for the selected protection product.",
+    ],
+  },
+  {
+    title: "Covered Components",
+    paragraphs: [
+      "Coverage applies only to components, limits, deductibles, waiting periods, and term rules shown on this application and in the selected provider terms. If a component or service is not listed as covered, it is not covered unless the provider terms state otherwise.",
+    ],
+    bullets: [
+      "Engine, transmission, transfer case, differential, turbo or supercharger, and roadside benefits may apply when selected.",
+      "Optional benefits such as seals, gaskets, unlimited kilometres, or other add-ons apply only when shown on the application.",
+      "Coverage is limited by the selected term, mileage band, vehicle class, deductible, claim limit, and provider rules.",
+    ],
+  },
+  {
+    title: "Claims And Authorization",
+    paragraphs: [
+      "The customer must obtain provider authorization before repairs begin. Unauthorized repairs, teardown, diagnosis, storage, or replacement work may be declined. The repair facility may be required to provide estimates, photos, maintenance records, diagnostic reports, and failed parts for inspection.",
+      "Bridge Warranty may assist with routing documentation, but claim approval and payment are controlled by the provider terms.",
+    ],
+  },
+  {
+    title: "Customer Responsibilities",
+    paragraphs: [
+      "The customer is responsible for maintaining the vehicle according to manufacturer recommendations, keeping maintenance records, protecting the vehicle from further damage after a failure, and paying deductibles, taxes, betterment, non-covered diagnosis, and any amount above provider limits.",
+    ],
+  },
+  {
+    title: "General Exclusions",
+    paragraphs: [
+      "Coverage does not apply to pre-existing conditions, failures caused by misuse, neglect, collision, overheating, contamination, lack of maintenance, unauthorized modifications, commercial/racing use unless accepted by the provider, or repairs started without authorization.",
+    ],
+    bullets: [
+      "Normal maintenance items, fluids, filters, batteries, belts, hoses, brake friction material, tires, glass, trim, upholstery, and cosmetic items are excluded unless specifically listed as covered.",
+      "Diagnostic charges, teardown, rental, towing, lodging, and other incidental expenses are excluded unless the selected benefit expressly includes them.",
+      "Consequential damage, loss of use, loss of income, diminished value, and penalties are excluded to the fullest extent allowed by applicable law.",
+    ],
+  },
+  {
+    title: "Limits Of Liability",
+    paragraphs: [
+      "The provider's liability is limited to the benefits, per-claim caps, aggregate caps, deductibles, labour rates, part rules, and term limits stated in the selected provider terms. Bridge Warranty is not responsible for any amount declined by the provider or outside the selected product terms.",
+    ],
+  },
+  {
+    title: "Cancellation And Transfer",
+    paragraphs: [
+      "Cancellation, refund, transfer, and reinstatement rights are governed by the selected provider terms and applicable law. Any approved refund may be reduced by earned coverage, claims paid, administrative fees, remittances, or amounts owed to a lienholder.",
+    ],
+  },
+  {
+    title: "Privacy And Consent",
+    paragraphs: [
+      "The customer authorizes Bridge Warranty, the dealership, the provider, and repair facilities to collect, use, and exchange information needed to administer this application, verify eligibility, process claims, support audits, and communicate about the contract.",
+    ],
+  },
+];
+
+function TermsPageHeader({ brandName, contractNumber }: { brandName: string; contractNumber: string }) {
+  return (
+    <div className="mb-3 border-b border-slate-300 pb-2">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="text-[12px] font-extrabold text-[#073f82]">{brandName}</div>
+          <div className="text-[8px] text-slate-600">Vehicle Service Contract</div>
+        </div>
+        <div className="text-right text-[8px] text-slate-600">
+          <div>Application / Contract #</div>
+          <div className="font-bold text-slate-900">{contractNumber}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ContractTermBlock({ section }: { section: ContractTermSection }) {
+  return (
+    <section className="mb-3 break-inside-avoid">
+      <div className="mb-1 bg-slate-100 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-[#073f82]">
+        {section.title}
+      </div>
+      <div className="space-y-1 px-1 text-[8px] leading-snug text-slate-800">
+        {section.paragraphs.map((paragraph) => (
+          <p key={paragraph}>{paragraph}</p>
+        ))}
+        {section.bullets?.length ? (
+          <ul className="list-disc space-y-0.5 pl-4">
+            {section.bullets.map((bullet) => (
+              <li key={bullet}>{bullet}</li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicationContractProps) {
   const customerName = `${props.customer.firstName ?? ""} ${props.customer.lastName ?? ""}`.trim();
   const vehicleLabel = [props.vehicle.year, props.vehicle.make, props.vehicle.model].map(value).filter((v) => v !== "N/A").join(" ");
   const coverageTitle = value(props.coverage.title ?? props.warranty.productName).toUpperCase();
-  const hasLegalDetails = (props.termsSections?.length ?? 0) > 0 || (props.exclusions?.length ?? 0) > 0;
+  const hasProviderDetails = (props.termsSections?.length ?? 0) > 0 || (props.exclusions?.length ?? 0) > 0;
 
   return (
     <div className="print-contract-root bg-white text-slate-950">
@@ -249,9 +362,25 @@ export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicati
           </div>
         </div>
 
-        {hasLegalDetails ? (
+        <div className="mt-5 min-h-[260mm] text-[8px] leading-tight print:break-before-page">
+          <TermsPageHeader brandName={props.brandName} contractNumber={props.contractNumber} />
+          <div className="mb-3 text-center text-[13px] font-extrabold uppercase tracking-wide text-[#073f82]">
+            Bridge Warranty Service Contract Terms
+          </div>
+          <div className="grid grid-cols-2 gap-x-5">
+            {BRIDGE_WARRANTY_TERMS.map((section) => (
+              <ContractTermBlock key={section.title} section={section} />
+            ))}
+          </div>
+          <div className="mt-3 border-t border-slate-300 pt-2 text-[7px] text-slate-600">
+            These Bridge Warranty administrative terms are intended to support the application and selected product terms. If there is a conflict between this page and the provider terms for coverage, limits, deductibles, exclusions, claims, or refunds, the provider terms control unless applicable law requires otherwise.
+          </div>
+        </div>
+
+        {hasProviderDetails ? (
           <div className="mt-5 border-t border-slate-300 pt-4 text-[9px] leading-snug print:break-before-page">
-            <div className="mb-2 border-b border-[#073f82] pb-2 text-[11px] font-bold text-[#073f82]">{props.brandName} Vehicle Service Contract</div>
+            <TermsPageHeader brandName={props.brandName} contractNumber={props.contractNumber} />
+            <div className="mb-2 border-b border-[#073f82] pb-2 text-[11px] font-bold text-[#073f82]">Provider-Specific Terms</div>
             {props.termsSections?.map((section) => (
               <section key={section.title} className="mb-2">
                 <div className="font-bold uppercase">{section.title}</div>

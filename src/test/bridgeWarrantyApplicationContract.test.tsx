@@ -48,7 +48,7 @@ describe("BridgeWarrantyApplicationContract", () => {
     );
 
     expect(screen.getByText("EXTENDED LIMITED WARRANTY APPLICATION")).toBeInTheDocument();
-    expect(screen.getByText("Bridge Warranty")).toBeInTheDocument();
+    expect(screen.getAllByText("Bridge Warranty").length).toBeGreaterThan(0);
     expect(screen.getByText("CUSTOMER / LESSEE INFORMATION")).toBeInTheDocument();
     expect(screen.getByText("DEALERSHIP / VEHICLE INFORMATION")).toBeInTheDocument();
     expect(screen.getByText("COST OF WARRANTY")).toBeInTheDocument();
@@ -109,5 +109,41 @@ describe("BridgeWarrantyApplicationContract", () => {
     expect(screen.getByText("416-555-0000")).toBeInTheDocument();
     expect(screen.getByText("Gas")).toBeInTheDocument();
     expect(screen.getAllByText("Personal").length).toBeGreaterThan(0);
+  });
+
+  it("adds Bridge Warranty contract terms pages and keeps provider-specific terms separate", () => {
+    render(
+      <BridgeWarrantyApplicationContract
+        brandName="Bridge Warranty"
+        contractNumber="BW76023"
+        issueDate="May 18, 2026"
+        purchaseDate="May 18, 2026"
+        customer={{ firstName: "Cyril", lastName: "Warren" }}
+        dealer={{ name: "Easy Drive Canada" }}
+        vehicle={{ vin: "5N1YT4M98RB503974" }}
+        warranty={{
+          productName: "Powertrain Protection",
+          termLabel: "6 Months / Unlimited KM",
+          deductibleLabel: "$100",
+          totalPriceLabel: "$609",
+          basePriceLabel: "$589",
+        }}
+        coverage={{
+          title: "POWERTRAIN PROTECTION",
+          components: ["Engine", "Transmission"],
+          addOns: [],
+        }}
+        termsSections={[{ title: "Provider Eligibility", content: "Provider eligibility rules apply." }]}
+        exclusions={["Provider exclusion"]}
+      />,
+    );
+
+    expect(screen.getByText("Bridge Warranty Service Contract Terms")).toBeInTheDocument();
+    expect(screen.getByText("This Is Not An Insurance Policy")).toBeInTheDocument();
+    expect(screen.getByText("Claims And Authorization")).toBeInTheDocument();
+    expect(screen.getByText("General Exclusions")).toBeInTheDocument();
+    expect(screen.getByText("Cancellation And Transfer")).toBeInTheDocument();
+    expect(screen.getByText("Provider-Specific Terms")).toBeInTheDocument();
+    expect(screen.getByText("Provider Eligibility")).toBeInTheDocument();
   });
 });
