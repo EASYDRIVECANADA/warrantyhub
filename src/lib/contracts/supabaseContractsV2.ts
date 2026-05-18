@@ -5,6 +5,14 @@ import type { ContractV2, ContractStatusV2, CreateContractV2Input } from "./type
 
 const CONTRACT_NUMBER_PREFIX = "BW";
 
+function isMissingContractDateColumnError(error: any): boolean {
+  const message = String(error?.message ?? "");
+  return (
+    message.includes("schema cache") &&
+    (message.includes("'start_date'") || message.includes("'end_date'"))
+  );
+}
+
 function toContract(r: any): ContractV2 {
   return {
     id: r.id,
@@ -140,19 +148,35 @@ export const supabaseContractsV2Api: ContractsV2Api = {
       addon_total_cost_cents: input.addonTotalCostCents ?? null,
       status: "DRAFT",
       status_new: "draft",
-      start_date: input.startDate ?? null,
       created_by_user_id: uid,
     };
+
+    if (input.startDate !== undefined) {
+      insertRow.start_date = input.startDate;
+    }
 
     if (input.endDate !== undefined) {
       insertRow.end_date = input.endDate;
     }
 
-    const { data, error } = await supabase
-      .from("contracts")
-      .insert(insertRow)
-      .select("*")
-      .single();
+    const insertContract = (row: Record<string, unknown>) =>
+      supabase
+        .from("contracts")
+        .insert(row)
+        .select("*")
+        .single();
+
+    const { data, error } = await insertContract(insertRow);
+
+    if (error && isMissingContractDateColumnError(error)) {
+      const fallbackRow = { ...insertRow };
+      delete fallbackRow.start_date;
+      delete fallbackRow.end_date;
+
+      const fallback = await insertContract(fallbackRow);
+      if (fallback.error) throw fallback.error;
+      return toContract(fallback.data);
+    }
 
     if (error) throw error;
     return toContract(data);
