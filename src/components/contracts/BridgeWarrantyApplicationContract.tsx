@@ -82,6 +82,10 @@ function value(text?: string | number | null): string {
   return normalized || "N/A";
 }
 
+function articleForProvider(name: string): "a" | "an" {
+  return /^[aeiou]/i.test(name.trim()) ? "an" : "a";
+}
+
 function nonEmptyUnique(values: string[]): string[] {
   const seen = new Set<string>();
   return values
@@ -267,6 +271,7 @@ const BRIDGE_WARRANTY_ADMIN_TERMS: ContractTermSection[] = [
 
 function selectedProductTerms(props: BridgeWarrantyApplicationContractProps): ContractTermSection[] {
   const productName = value(props.coverage.title ?? props.warranty.productName);
+  const providerName = value(props.warranty.providerName ?? "Selected Provider");
   const type = props.coverage.productType;
   const label = productLabel(type, productName);
   const components = nonEmptyUnique(props.coverage.components);
@@ -336,7 +341,7 @@ function selectedProductTerms(props: BridgeWarrantyApplicationContractProps): Co
     {
       title: "Selected Product And Services",
       paragraphs: [
-        `This contract is for ${productName}, a ${label}. The selected term, deductible, selling price, vehicle information, provider, and add-ons shown on the application form part of the contract record.`,
+        `This contract is for ${productName}, a ${label}. The customer is purchasing ${articleForProvider(providerName)} ${providerName} warranty product through Bridge Warranty. ${providerName} is the warranty provider responsible for coverage, claims, approvals, and benefit payments under the provider terms. The selected term, deductible, selling price, vehicle information, provider, and add-ons shown on the application form part of the contract record.`,
       ],
       bullets: productScopeBullets,
     },
@@ -415,6 +420,7 @@ export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicati
   const vehicleLabel = [props.vehicle.year, props.vehicle.make, props.vehicle.model].map(value).filter((v) => v !== "N/A").join(" ");
   const coverageTitle = value(props.coverage.title ?? props.warranty.productName).toUpperCase();
   const productType = props.coverage.productType;
+  const warrantyProviderName = value(props.warranty.providerName ?? "Selected Provider");
   const printedApplicationTitle = applicationTitle(productType);
   const printedDocumentSubtitle = documentSubtitle(productType);
   const terms = bridgeWarrantyTerms(props);
@@ -431,6 +437,7 @@ export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicati
             </div>
             <div className="text-center text-[7px] leading-tight">
               <div className="font-bold">Sold through {props.brandName}</div>
+              <div>Warranty Provider: {warrantyProviderName}</div>
               <div>Toronto, ON</div>
               <div>Canada</div>
               <div>www.bridgewarranty.com</div>
@@ -504,6 +511,7 @@ export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicati
                 <div>- I acknowledge that I have read, reviewed, and understood this Bridge Warranty application and the terms provided by the product provider.</div>
                 <div>- I confirm that all information provided on this application is true, complete, and accurate to the best of my knowledge.</div>
                 <div>- I understand that this agreement documents the selected protection product or service and is governed by the provider terms.</div>
+                <div>- I understand I am purchasing {articleForProvider(warrantyProviderName)} {warrantyProviderName} warranty product through {props.brandName}, and that {warrantyProviderName} is the warranty provider responsible for coverage, claims, approvals, and benefit payments.</div>
                 <div>- I understand Bridge Warranty is a marketplace reseller and is not the warranty provider, obligor, insurer, underwriter, or claims administrator.</div>
                 <div>- I authorize Bridge Warranty and the listed provider to process this application and related contract documents.</div>
                 <div>- I understand that claims, approvals, obligations, and payments are handled according to the provider terms and conditions.</div>
@@ -558,7 +566,7 @@ export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicati
           </div>
 
           <div className="mt-2 text-[7px] text-slate-700">
-            This application is sold through {props.brandName}, a marketplace reseller. The selected provider is the warranty company responsible for product obligations, claim decisions, approvals, and benefit payments under the provider terms and conditions.
+            This application is sold through {props.brandName}, a marketplace reseller. The customer is purchasing {articleForProvider(warrantyProviderName)} {warrantyProviderName} warranty product through {props.brandName}. {warrantyProviderName} is the warranty company responsible for product obligations, claim decisions, approvals, and benefit payments under the provider terms and conditions.
           </div>
         </div>
 

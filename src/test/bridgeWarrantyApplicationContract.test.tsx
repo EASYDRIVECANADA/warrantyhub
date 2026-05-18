@@ -246,4 +246,36 @@ describe("BridgeWarrantyApplicationContract", () => {
     expect(screen.getAllByText(/not the warranty provider/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Administered by Bridge Warranty Corp/i)).not.toBeInTheDocument();
   });
+
+  it("tells the customer they are buying the named provider warranty through Bridge Warranty", () => {
+    render(
+      <BridgeWarrantyApplicationContract
+        brandName="Bridge Warranty"
+        contractNumber="BW76027"
+        issueDate="May 18, 2026"
+        purchaseDate="May 18, 2026"
+        customer={{ firstName: "Cyril", lastName: "Warren" }}
+        dealer={{ name: "Easy Drive Canada" }}
+        vehicle={{ vin: "5N1YT4M98RB503974" }}
+        warranty={{
+          productName: "Powertrain Protection",
+          providerName: "A Protect",
+          termLabel: "6 Months / Unlimited KM",
+          deductibleLabel: "$100",
+          totalPriceLabel: "$609",
+          basePriceLabel: "$589",
+        }}
+        coverage={{
+          title: "Powertrain Protection",
+          productType: "VSC",
+          components: ["Engine"],
+          addOns: [],
+        }}
+      />,
+    );
+
+    expect(screen.getAllByText("Warranty Provider: A Protect").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/I understand I am purchasing an A Protect warranty product through Bridge Warranty/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/A Protect is the warranty provider responsible for coverage, claims, approvals, and benefit payments/i).length).toBeGreaterThan(0);
+  });
 });
