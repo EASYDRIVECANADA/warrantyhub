@@ -213,4 +213,37 @@ describe("BridgeWarrantyApplicationContract", () => {
 
     expect(container.innerHTML).not.toContain("min-h-[260mm]");
   });
+
+  it("identifies Bridge Warranty as a reseller marketplace, not the warranty obligor", () => {
+    render(
+      <BridgeWarrantyApplicationContract
+        brandName="Bridge Warranty"
+        contractNumber="BW76026"
+        issueDate="May 18, 2026"
+        purchaseDate="May 18, 2026"
+        customer={{ firstName: "Cyril", lastName: "Warren" }}
+        dealer={{ name: "Easy Drive Canada" }}
+        vehicle={{ vin: "5N1YT4M98RB503974" }}
+        warranty={{
+          productName: "Powertrain Protection",
+          providerName: "Aprotect Warranty",
+          termLabel: "6 Months / Unlimited KM",
+          deductibleLabel: "$100",
+          totalPriceLabel: "$609",
+          basePriceLabel: "$589",
+        }}
+        coverage={{
+          title: "Powertrain Protection",
+          productType: "VSC",
+          components: ["Engine"],
+          addOns: [],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Sold through Bridge Warranty")).toBeInTheDocument();
+    expect(screen.getAllByText(/marketplace reseller/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/not the warranty provider/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Administered by Bridge Warranty Corp/i)).not.toBeInTheDocument();
+  });
 });

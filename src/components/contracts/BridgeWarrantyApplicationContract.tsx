@@ -212,20 +212,20 @@ const BRIDGE_WARRANTY_ADMIN_TERMS: ContractTermSection[] = [
   {
     title: "Product And Provider Terms",
     paragraphs: [
-      "This application and any issued contract document the selected vehicle protection product or service. Bridge Warranty administers the marketplace and contract documentation. Product obligations, claim decisions, benefit approvals, and payments remain subject to the selected provider terms.",
+      "This application and any issued contract document the selected vehicle protection product or service. Bridge Warranty is a marketplace reseller that facilitates the sale and documentation of provider products. Bridge Warranty is not the warranty provider, obligor, insurer, underwriter, or claims administrator. Product obligations, claim decisions, benefit approvals, and payments remain the responsibility of the selected provider and are subject to the provider terms.",
     ],
   },
   {
     title: "Definitions",
     paragraphs: [
-      "Agreement means the issued service contract, this application, the selected provider terms, and any approved endorsements or add-ons. Covered Vehicle means the vehicle identified by VIN on the application. Provider means the company responsible for the selected protection product.",
+      "Agreement means the issued provider contract, this application, the selected provider terms, and any approved endorsements or add-ons. Covered Vehicle means the vehicle identified by VIN on the application. Provider means the independent warranty company responsible for the selected protection product.",
     ],
   },
   {
     title: "Claims And Authorization",
     paragraphs: [
       "The customer must obtain provider authorization before repairs begin. Unauthorized repairs, teardown, diagnosis, storage, or replacement work may be declined. The repair facility may be required to provide estimates, photos, maintenance records, diagnostic reports, and failed parts for inspection.",
-      "Bridge Warranty may assist with routing documentation, but claim approval and payment are controlled by the provider terms.",
+      "Bridge Warranty may help route documents between the customer, dealership, repair facility, and provider, but claim authorization, claim approval, payment, and benefit interpretation are handled by the selected provider.",
     ],
   },
   {
@@ -248,7 +248,7 @@ const BRIDGE_WARRANTY_ADMIN_TERMS: ContractTermSection[] = [
   {
     title: "Limits Of Liability",
     paragraphs: [
-      "The provider's liability is limited to the benefits, per-claim caps, aggregate caps, deductibles, labour rates, part rules, and term limits stated in the selected provider terms. Bridge Warranty is not responsible for any amount declined by the provider or outside the selected product terms.",
+      "The provider's liability is limited to the benefits, per-claim caps, aggregate caps, deductibles, labour rates, part rules, and term limits stated in the selected provider terms. Bridge Warranty is not the warranty company and is not responsible for any amount declined by the provider or outside the selected product terms.",
     ],
   },
   {
@@ -260,7 +260,7 @@ const BRIDGE_WARRANTY_ADMIN_TERMS: ContractTermSection[] = [
   {
     title: "Privacy And Consent",
     paragraphs: [
-      "The customer authorizes Bridge Warranty, the dealership, the provider, and repair facilities to collect, use, and exchange information needed to administer this application, verify eligibility, process claims, support audits, and communicate about the contract.",
+      "The customer authorizes Bridge Warranty, the dealership, the provider, and repair facilities to collect, use, and exchange information needed to facilitate the purchase, verify eligibility, process provider claims, support audits, and communicate about the contract.",
     ],
   },
 ];
@@ -430,10 +430,11 @@ export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicati
               <div className="text-[16px] font-bold text-[#e340a1]">{props.contractNumber}</div>
             </div>
             <div className="text-center text-[7px] leading-tight">
-              <div className="font-bold">Administered by {props.brandName} Corp.</div>
+              <div className="font-bold">Sold through {props.brandName}</div>
               <div>Toronto, ON</div>
               <div>Canada</div>
               <div>www.bridgewarranty.com</div>
+              <div>Marketplace reseller only</div>
             </div>
             <div className="text-[7px] leading-tight">
               <div>Tel: 416-000-0000</div>
@@ -503,8 +504,9 @@ export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicati
                 <div>- I acknowledge that I have read, reviewed, and understood this Bridge Warranty application and the terms provided by the product provider.</div>
                 <div>- I confirm that all information provided on this application is true, complete, and accurate to the best of my knowledge.</div>
                 <div>- I understand that this agreement documents the selected protection product or service and is governed by the provider terms.</div>
+                <div>- I understand Bridge Warranty is a marketplace reseller and is not the warranty provider, obligor, insurer, underwriter, or claims administrator.</div>
                 <div>- I authorize Bridge Warranty and the listed provider to process this application and related contract documents.</div>
-                <div>- I understand that claims, approvals, and payments are administered according to the provider terms and conditions.</div>
+                <div>- I understand that claims, approvals, obligations, and payments are handled according to the provider terms and conditions.</div>
               </div>
             </div>
 
@@ -556,7 +558,7 @@ export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicati
           </div>
 
           <div className="mt-2 text-[7px] text-slate-700">
-            This application is issued through {props.brandName}. Product obligations, claims decisions, and benefit payments remain subject to the provider terms and conditions.
+            This application is sold through {props.brandName}, a marketplace reseller. The selected provider is the warranty company responsible for product obligations, claim decisions, approvals, and benefit payments under the provider terms and conditions.
           </div>
         </div>
 
@@ -571,7 +573,7 @@ export function BridgeWarrantyApplicationContract(props: BridgeWarrantyApplicati
             ))}
           </div>
           <div className="mt-2 border-t border-slate-300 pt-1.5 text-[7px] text-slate-600">
-            These Bridge Warranty administrative terms are intended to support the application and selected product terms. If there is a conflict between this page and the provider terms for coverage, limits, deductibles, exclusions, claims, or refunds, the provider terms control unless applicable law requires otherwise.
+            These Bridge Warranty marketplace terms are intended to support the application and selected provider terms. Bridge Warranty is not the warranty provider, obligor, insurer, underwriter, or claims administrator. If there is a conflict between this page and the provider terms for coverage, limits, deductibles, exclusions, claims, or refunds, the provider terms control unless applicable law requires otherwise.
           </div>
         </div>
 
