@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import DashboardLayout, { dealershipNavItems } from "../../components/dashboard/DashboardLayout";
+import { BridgeWarrantyApplicationContract } from "../../components/contracts/BridgeWarrantyApplicationContract";
 import { Card, CardContent } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -74,8 +75,8 @@ interface AddOn {
 
 type DealerProductOrder = Record<string, ProductOrderConfig>;
 
-const CONTRACT_BRAND_SUBTITLE = "Extended Warranty";
 const CONTRACT_NUMBER_PREFIX = "BW";
+const LEGACY_PRICE_STEPS_ENABLED = false;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1054,7 +1055,7 @@ export default function NewContractPage() {
           </div>
         )}
 
-        {false && currentStep === 3 && (
+        {LEGACY_PRICE_STEPS_ENABLED && currentStep === 3 && (
           <div className="space-y-3">
             <div className="flex items-center gap-2 mb-4">
               <DollarSign className="w-5 h-5 text-primary" />
@@ -1095,7 +1096,7 @@ export default function NewContractPage() {
         )}
 
         {/* ── Step 4: Add-Ons ── */}
-        {false && currentStep === 4 && (
+        {LEGACY_PRICE_STEPS_ENABLED && currentStep === 4 && (
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-4">
               <Shield className="w-5 h-5 text-primary" />
@@ -1201,133 +1202,52 @@ export default function NewContractPage() {
         {currentStep === 4 && (
           <>
             {/* Printable contract document */}
-            <div className="print-contract-root bg-white">
-              <div className="max-w-4xl mx-auto p-8 print:p-6 space-y-6">
-
-                {/* Header */}
-                <div className="flex items-start justify-between pb-5 border-b-2 border-primary">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center shrink-0">
-                      <span className="text-primary-foreground font-bold text-sm">BW</span>
-                    </div>
-                    <div>
-                      <p className="font-bold text-lg leading-tight">{BRAND.name}</p>
-                      <p className="text-xs text-muted-foreground">{CONTRACT_BRAND_SUBTITLE}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-base">Extended Warranty</p>
-                    <p className="text-xs text-muted-foreground mt-1">Contract #: {previewContractNumber}</p>
-                    <p className="text-xs text-muted-foreground">Date: {format(new Date(), "MMMM d, yyyy")}</p>
-                    {dealershipName && <p className="text-xs text-muted-foreground">Dealer: {dealershipName}</p>}
-                  </div>
-                </div>
-
-                {/* Contract Holder + Vehicle */}
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div className="space-y-1.5">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b pb-1">Contract Holder</p>
-                    <p className="font-semibold">{firstName} {lastName}</p>
-                    {email && <p className="text-sm text-muted-foreground">{email}</p>}
-                    {phone && <p className="text-sm text-muted-foreground">{phone}</p>}
-                  </div>
-                  <div className="space-y-1.5">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b pb-1">Covered Vehicle</p>
-                    <p className="font-semibold">{vehicleInfo?.year} {vehicleInfo?.make} {vehicleInfo?.model}</p>
-                    <p className="text-sm text-muted-foreground font-mono">VIN: {vin}</p>
-                    {mileage && <p className="text-sm text-muted-foreground">Odometer: {parseInt(mileage).toLocaleString()} km</p>}
-                    {startDate && <p className="text-sm text-muted-foreground">Start Date: {safeDate(startDate)}</p>}
-                  </div>
-                </div>
-
-                {/* Coverage Details */}
-                <div className="rounded-lg border p-4 bg-muted/20">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Coverage Details</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div><p className="text-xs text-muted-foreground">Plan</p><p className="font-semibold text-sm">{selectedProduct?.name}</p></div>
-                    <div><p className="text-xs text-muted-foreground">Provider</p><p className="font-semibold text-sm">{providerName || "—"}</p></div>
-                    <div><p className="text-xs text-muted-foreground">Term</p><p className="font-semibold text-sm">{chosenRow?.label || "—"}</p></div>
-                    {deductible && <div><p className="text-xs text-muted-foreground">Deductible</p><p className="font-semibold text-sm">${deductible}</p></div>}
-                  </div>
-                </div>
-
-                {/* Pricing */}
-                <div className="rounded-lg border p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Pricing Breakdown</p>
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Base Price</span>
-                      <span className="font-semibold">${baseRetail.toLocaleString()}</span>
-                    </div>
-                    {selectedAddOnRows.map(ao => {
-                      const retailValue = resolveCustomerRetail(ao, dealerPricingConfig);
-                      const retailAmount = numericPrice(retailValue);
-                      return (
-                        <div key={ao.name} className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">{ao.name}</span>
-                          <span className="font-semibold">{retailValue === "Included" ? "Included" : `+$${retailAmount.toLocaleString()}`}</span>
-                        </div>
-                      );
-                    })}
-                    <div className="flex justify-between font-bold pt-2 border-t">
-                      <span>Total Contract Price</span>
-                      <span className="text-primary text-lg">{totalRetail > 0 ? fmt(totalRetail) : "—"}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Covered Components */}
-                {categories.length > 0 && (
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Covered Components</p>
-                    <div className="flex flex-wrap gap-2">
-                      {categories.map(c => <Badge key={c} variant="secondary" className="text-xs">{c}</Badge>)}
-                    </div>
-                  </div>
-                )}
-
-                {/* Terms & Conditions */}
-                {(termsSections.length > 0 || exclusions.length > 0) && (
-                  <div className="space-y-3">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b pb-2">Terms & Conditions</p>
-                    {termsSections.map((s, i) => (
-                      <div key={i}>
-                        <p className="text-xs font-semibold mb-1">{s.title}</p>
-                        <p className="text-xs text-muted-foreground whitespace-pre-wrap">{s.content}</p>
-                      </div>
-                    ))}
-                    {exclusions.length > 0 && (
-                      <div>
-                        <p className="text-xs font-semibold text-destructive mb-1">Exclusions</p>
-                        <ul className="space-y-0.5">{exclusions.map((ex, i) => <li key={i} className="text-xs text-muted-foreground">• {ex}</li>)}</ul>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Signatures */}
-                <div className="pt-4 border-t-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-6">Authorization & Signatures</p>
-                  <div className="grid grid-cols-2 gap-12">
-                    {[["Client", `${firstName} ${lastName}`], ["Authorized Dealer", dealershipName || "Dealer"]].map(([role, name]) => (
-                      <div key={role} className="space-y-3">
-                        <p className="text-sm font-semibold">{role} Signature</p>
-                        <div className="border-b border-foreground pt-10" />
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>Signature</span><span>Date: ___________</span>
-                        </div>
-                        <div className="border-b border-muted pt-4" />
-                        <p className="text-xs text-muted-foreground">Print Name: {name}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <p className="text-[9px] text-muted-foreground text-center pt-3 border-t">
-                  {BRAND.name} acts as a marketplace platform. This contract is issued by {providerName || "the named provider"} and is subject to full terms and conditions. Contract #{previewContractNumber}.
-                </p>
-              </div>
-            </div>
+            <BridgeWarrantyApplicationContract
+              brandName={BRAND.name}
+              contractNumber={previewContractNumber}
+              issueDate={format(new Date(), "MMMM d, yyyy")}
+              purchaseDate={startDate ? safeDate(startDate) : format(new Date(), "yyyy-MM-dd")}
+              customer={{
+                firstName: firstName.trim(),
+                lastName: lastName.trim(),
+                email: email.trim() || undefined,
+                phone: phone.trim() || undefined,
+              }}
+              dealer={{
+                name: dealershipName || "Dealer",
+              }}
+              vehicle={{
+                year: vehicleInfo?.year,
+                make: vehicleInfo?.make,
+                model: vehicleInfo?.model,
+                vin: vin.trim(),
+                mileageKm: mileage ? `${parseInt(mileage).toLocaleString()} km` : undefined,
+                type: vehicleInfo?.bodyClass || "Personal",
+              }}
+              warranty={{
+                productName: selectedProduct?.name,
+                providerName: providerName || "Provider",
+                termLabel: chosenRow?.label || "Selected Term",
+                deductibleLabel: deductible ? `$${deductible}` : "N/A",
+                basePriceLabel: baseRetail > 0 ? fmt(baseRetail) : "N/A",
+                totalPriceLabel: totalRetail > 0 ? fmt(totalRetail) : "N/A",
+                startDateLabel: startDate ? safeDate(startDate) : undefined,
+              }}
+              coverage={{
+                title: selectedProduct?.name || "Extended Warranty",
+                components: categories,
+                addOns: selectedAddOnRows.map((ao) => {
+                  const retailValue = resolveCustomerRetail(ao, dealerPricingConfig);
+                  const retailAmount = numericPrice(retailValue);
+                  return {
+                    name: ao.name,
+                    priceLabel: retailValue === "Included" ? "Included" : retailAmount > 0 ? fmt(retailAmount) : undefined,
+                  };
+                }),
+              }}
+              termsSections={termsSections}
+              exclusions={exclusions}
+            />
 
             {/* Action bar — hidden on print */}
             <div className="print:hidden flex items-center justify-between pt-4 mt-2 border-t">

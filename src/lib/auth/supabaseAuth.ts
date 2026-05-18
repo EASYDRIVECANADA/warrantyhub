@@ -87,6 +87,14 @@ async function getProfileAuthState(userId: string, email: string): Promise<Profi
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error("Supabase is not configured");
 
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("role, is_active")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
   // Try V2 user_roles table first
   try {
     const { data: roleRows } = await supabase
@@ -98,20 +106,13 @@ async function getProfileAuthState(userId: string, email: string): Promise<Profi
       const v2Role = (roleRows[0] as any).role as string;
       const mapped = V2_TO_V1_ROLE[v2Role];
       if (mapped) {
-        return { effectiveRole: mapped, rawRole: v2Role, isActive: true };
+        const isActive = data ? (data as any).is_active !== false : true;
+        return { effectiveRole: mapped, rawRole: v2Role, isActive };
       }
     }
   } catch {
     // user_roles table may not exist yet; fall through to profiles
   }
-
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("role, is_active")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
 
   if (data) {
     const rawRole = (data as any).role ?? "UNASSIGNED";

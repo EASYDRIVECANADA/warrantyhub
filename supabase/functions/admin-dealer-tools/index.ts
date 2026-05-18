@@ -103,6 +103,14 @@ function normalizeDealerMemberStatus(status: string) {
   return null;
 }
 
+function v2DealershipRole(role: string) {
+  return role === "DEALER_ADMIN" ? "admin" : "employee";
+}
+
+function v2UserRole(role: string) {
+  return role === "DEALER_ADMIN" ? "dealership_admin" : "dealership_employee";
+}
+
 async function findAuthUserIdByEmail(svc: ReturnType<typeof getServiceSupabaseClient>, email: string) {
   const pageSize = 1000;
   for (let page = 1; page <= 50; page++) {
@@ -127,9 +135,19 @@ async function assertSuperAdmin(jwt: string) {
   const profile = await svc.from("profiles").select("role").eq("id", userId).maybeSingle();
   if (profile.error) throw new Error(profile.error.message);
   const role = ((profile.data as any)?.role ?? "").toString();
-  if (role !== "SUPER_ADMIN") throw new Error("Forbidden");
+  if (role === "SUPER_ADMIN") return { userId, svc };
 
-  return { userId, svc };
+  const v2Role = await svc
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("role", "super_admin")
+    .maybeSingle();
+  if (v2Role.error) throw new Error(v2Role.error.message);
+  const userRole = ((v2Role.data as any)?.role ?? "").toString();
+  if (userRole === "super_admin") return { userId, svc };
+
+  throw new Error("Forbidden");
 }
 
 Deno.serve(async (req: Request) => {
@@ -256,6 +274,15 @@ Deno.serve(async (req: Request) => {
 
       const upd = await svc.from("dealers").update(updateRow).eq("id", dealerId);
       if (upd.error) return json(400, { error: upd.error.message });
+
+      const dealershipUpdate: Record<string, unknown> = {};
+      if (typeof updateRow.name === "string") dealershipUpdate.name = updateRow.name;
+      if (typeof updateRow.updated_at === "string") dealershipUpdate.updated_at = updateRow.updated_at;
+      if (Object.keys(dealershipUpdate).length > 0) {
+        const v2Upd = await svc.from("dealerships").update(dealershipUpdate).eq("legacy_dealer_id", dealerId);
+        if (v2Upd.error) return json(400, { error: v2Upd.error.message });
+      }
+
       return json(200, { ok: true });
     }
 
@@ -276,6 +303,10 @@ Deno.serve(async (req: Request) => {
       if (dealerRow.error) return json(500, { error: dealerRow.error.message });
       if (!dealerRow.data) return json(404, { error: "Dealer not found" });
       const dealerName = safeTrim((dealerRow.data as any).name) || undefined;
+
+      const dealershipRow = await svc.from("dealerships").select("id").eq("legacy_dealer_id", dealerId).maybeSingle();
+      if (dealershipRow.error) return json(500, { error: dealershipRow.error.message });
+      const dealershipId = safeTrim((dealershipRow.data as any)?.id);
 
       let profile = await svc.from("profiles").select("id, email, role").eq("email", email).maybeSingle();
       if (profile.error) return json(500, { error: profile.error.message });
@@ -329,6 +360,25 @@ Deno.serve(async (req: Request) => {
         .single();
       if (insert.error) return json(400, { error: insert.error.message });
 
+      if (dealershipId) {
+        const dealershipMember = await svc
+          .from("dealership_members")
+          .upsert(
+            {
+              dealership_id: dealershipId,
+              user_id: userId,
+              role: v2DealershipRole(role),
+            } as any,
+            { onConflict: "user_id,dealership_id" },
+          );
+        if (dealershipMember.error) return json(400, { error: dealershipMember.error.message });
+      }
+
+      const userRole = await svc
+        .from("user_roles")
+        .upsert({ user_id: userId, role: v2UserRole(role) } as any, { onConflict: "user_id,role" });
+      if (userRole.error) return json(400, { error: userRole.error.message });
+
       return json(200, { dealerMemberId: (insert.data as any)?.id ?? null, userId });
     }
 
@@ -339,26 +389,45 @@ Deno.serve(async (req: Request) => {
       const memberRow = await svc.from("dealer_members").select("id, dealer_id, user_id").eq("id", dealerMemberId).maybeSingle();
       if (memberRow.error) return json(400, { error: memberRow.error.message });
       const userId = safeTrim((memberRow.data as any)?.user_id);
+      const dealerId = safeTrim((memberRow.data as any)?.dealer_id);
       if (!userId) return json(404, { error: "Dealer member not found" });
 
-      const memberships = await svc.from("dealer_members").select("id").eq("user_id", userId);
-      if (memberships.error) return json(500, { error: memberships.error.message });
-      const membershipCount = Array.isArray(memberships.data) ? memberships.data.length : 0;
-      if (membershipCount > 1) {
-        return json(400, {
-          error:
-            "This user belongs to multiple dealerships. Remove the other memberships first before deleting the account.",
-        });
-      }
+      const dealershipRow = dealerId
+        ? await svc.from("dealerships").select("id").eq("legacy_dealer_id", dealerId).maybeSingle()
+        : null;
+      if (dealershipRow?.error) return json(500, { error: dealershipRow.error.message });
+      const dealershipId = safeTrim((dealershipRow?.data as any)?.id);
 
       const delMember = await svc.from("dealer_members").delete().eq("id", dealerMemberId);
       if (delMember.error) return json(400, { error: delMember.error.message });
 
-      const delProfile = await svc.from("profiles").delete().eq("id", userId);
-      if (delProfile.error) return json(500, { error: delProfile.error.message });
+      if (dealershipId) {
+        const delDealershipMember = await svc
+          .from("dealership_members")
+          .delete()
+          .eq("dealership_id", dealershipId)
+          .eq("user_id", userId);
+        if (delDealershipMember.error) return json(400, { error: delDealershipMember.error.message });
+      }
 
-      const delUser = await svc.auth.admin.deleteUser(userId);
-      if (delUser.error) return json(400, { error: delUser.error.message });
+      const remainingLegacyMemberships = await svc.from("dealer_members").select("id").eq("user_id", userId);
+      if (remainingLegacyMemberships.error) return json(500, { error: remainingLegacyMemberships.error.message });
+      const remainingV2Memberships = await svc.from("dealership_members").select("id").eq("user_id", userId);
+      if (remainingV2Memberships.error) return json(500, { error: remainingV2Memberships.error.message });
+
+      const hasRemainingMemberships =
+        (Array.isArray(remainingLegacyMemberships.data) && remainingLegacyMemberships.data.length > 0) ||
+        (Array.isArray(remainingV2Memberships.data) && remainingV2Memberships.data.length > 0);
+
+      if (!hasRemainingMemberships) {
+        await svc.from("user_roles").delete().eq("user_id", userId).in("role", ["dealership_admin", "dealership_employee"]);
+
+        const delProfile = await svc.from("profiles").delete().eq("id", userId);
+        if (delProfile.error) return json(500, { error: delProfile.error.message });
+
+        const delUser = await svc.auth.admin.deleteUser(userId);
+        if (delUser.error) return json(400, { error: delUser.error.message });
+      }
 
       return json(200, { ok: true, userId });
     }
@@ -386,6 +455,7 @@ Deno.serve(async (req: Request) => {
       if (upd.error) return json(400, { error: upd.error.message });
 
       const userId = safeTrim((upd.data as any)?.user_id);
+      const dealerId = safeTrim((upd.data as any)?.dealer_id);
       const role = safeTrim((upd.data as any)?.role);
       const status = safeTrim((upd.data as any)?.status);
       if (userId) {
@@ -394,6 +464,34 @@ Deno.serve(async (req: Request) => {
           .update({ role, is_active: status !== "DISABLED" } as any)
           .eq("id", userId);
         if (profUpd.error) return json(500, { error: profUpd.error.message });
+
+        const dealershipRow = dealerId
+          ? await svc.from("dealerships").select("id").eq("legacy_dealer_id", dealerId).maybeSingle()
+          : null;
+        if (dealershipRow?.error) return json(500, { error: dealershipRow.error.message });
+        const dealershipId = safeTrim((dealershipRow?.data as any)?.id);
+        if (dealershipId && role) {
+          const dealershipMember = await svc
+            .from("dealership_members")
+            .upsert(
+              {
+                dealership_id: dealershipId,
+                user_id: userId,
+                role: v2DealershipRole(role),
+              } as any,
+              { onConflict: "user_id,dealership_id" },
+            );
+          if (dealershipMember.error) return json(400, { error: dealershipMember.error.message });
+        }
+
+        if (role) {
+          const nextRole = v2UserRole(role);
+          const previousRole = nextRole === "dealership_admin" ? "dealership_employee" : "dealership_admin";
+          const userRole = await svc.from("user_roles").upsert({ user_id: userId, role: nextRole } as any, { onConflict: "user_id,role" });
+          if (userRole.error) return json(400, { error: userRole.error.message });
+          const oldRoleDelete = await svc.from("user_roles").delete().eq("user_id", userId).eq("role", previousRole);
+          if (oldRoleDelete.error) return json(400, { error: oldRoleDelete.error.message });
+        }
       }
 
       return json(200, { ok: true });

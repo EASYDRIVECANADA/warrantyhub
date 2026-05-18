@@ -98,9 +98,9 @@ Deno.serve(async (req: Request) => {
       dealerRow = legacyDealer.data;
     }
 
-    const status = ((dealerRow.data as any).subscription_status ?? "").toString();
-    const planKey = ((dealerRow.data as any).subscription_plan_key ?? "").toString();
-    const periodEndRaw = (dealerRow.data as any).subscription_current_period_end as string | null;
+    const status = ((dealerRow as any).subscription_status ?? "").toString();
+    const planKey = ((dealerRow as any).subscription_plan_key ?? "").toString();
+    const periodEndRaw = (dealerRow as any).subscription_current_period_end as string | null;
     const periodEnd = periodEndRaw ? new Date(periodEndRaw).getTime() : null;
 
     const now = Date.now();
@@ -118,8 +118,8 @@ Deno.serve(async (req: Request) => {
     }
 
     // Charge per contract for Standard
-    const feeCents = Number((dealerRow.data as any).contract_fee_cents ?? 0) || 0;
-    const customerId = ((dealerRow.data as any).stripe_customer_id ?? "").toString().trim();
+    const feeCents = Number((dealerRow as any).contract_fee_cents ?? 0) || 0;
+    const customerId = ((dealerRow as any).stripe_customer_id ?? "").toString().trim();
 
     let paymentIntentId: string | null = null;
     let paymentIntentStatus: string | null = null;

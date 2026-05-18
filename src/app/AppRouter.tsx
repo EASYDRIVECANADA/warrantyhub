@@ -43,7 +43,6 @@ import { AdminSupportInboxPage } from "../pages/AdminSupportInboxPage";
 
 // --- New V2 stub pages ---
 import AdminOverviewPage from "../pages/admin/AdminOverviewPage";
-import AdminDealershipsPage2 from "../pages/admin/AdminDealershipsPage2";
 import AdminProvidersPage2 from "../pages/admin/AdminProvidersPage2";
 import AdminUsersPage2 from "../pages/admin/AdminUsersPage2";
 import AdminContractsPage from "../pages/admin/AdminContractsPage";
@@ -187,7 +186,7 @@ export function AppRouter() {
         path="/admin/dealerships"
         element={
           <ProtectedRouteV2 allowedRoles={["super_admin"]}>
-            <AdminDealershipsPage2 />
+            <AdminDealershipsPage />
           </ProtectedRouteV2>
         }
       />
