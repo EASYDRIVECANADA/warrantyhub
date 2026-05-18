@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, FileText, Loader2, Printer } from "lucide-react";
+
+import { BridgeWarrantyApplicationContract } from "../../components/contracts/BridgeWarrantyApplicationContract";
 import DashboardLayout, { dealershipNavItems } from "../../components/dashboard/DashboardLayout";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { useToast } from "../../hooks/use-toast";
 import { supabase } from "../../integrations/supabase/client";
 import { BRAND } from "../../lib/brand";
+import { buildSavedBridgeWarrantyContractProps } from "../../lib/contracts/bridgeWarrantyPrintProps";
 import { cn } from "../../lib/utils";
-import { ArrowLeft, Printer, Loader2, FileText } from "lucide-react";
-import { format } from "date-fns";
 
 interface ContractRow {
   id: string;
@@ -16,11 +18,17 @@ interface ContractRow {
   customer_last_name: string;
   customer_email: string | null;
   customer_phone: string | null;
+  customer_address?: string | null;
+  customer_city?: string | null;
+  customer_province?: string | null;
+  customer_postal_code?: string | null;
   vin: string;
   vehicle_year: number;
   vehicle_make: string;
   vehicle_model: string;
   vehicle_mileage: number | null;
+  vehicle_engine?: string | null;
+  vehicle_transmission?: string | null;
   contract_price: number | null;
   dealer_cost_dollars: number | null;
   pricing_vehicle_class: string | null;
@@ -42,21 +50,23 @@ interface ContractRow {
   status_new: string | null;
   status: string | null;
   start_date: string | null;
+  end_date?: string | null;
   created_at: string;
   product_id: string;
   dealership_id: string;
   provider_entity_id: string | null;
 }
 
+type DealershipInfo = {
+  name?: string;
+  phone?: string;
+  address?: string;
+};
+
 function resolveStatus(c: ContractRow): string {
   if (c.status_new) return c.status_new;
   const legacyMap: Record<string, string> = { DRAFT: "draft", SOLD: "submitted", REMITTED: "active", PAID: "active" };
   return legacyMap[c.status ?? ""] ?? "draft";
-}
-
-function safeDate(dateStr: string | null): string {
-  if (!dateStr) return "—";
-  try { return format(new Date(dateStr + "T12:00:00"), "MMMM d, yyyy"); } catch { return dateStr; }
 }
 
 const statusColors: Record<string, string> = {
@@ -67,19 +77,6 @@ const statusColors: Record<string, string> = {
   cancelled: "bg-destructive/10 text-destructive",
 };
 
-const CONTRACT_BRAND_SUBTITLE = "Extended Warranty";
-const CONTRACT_NUMBER_PREFIX = "BW";
-
-function centsToDollars(value: number | null | undefined): number | null {
-  return typeof value === "number" ? value / 100 : null;
-}
-
-function formatPricingTerm(months: number | null, km: number | null): string | null {
-  if (!months) return null;
-  const kmLabel = km == null ? "Unlimited km" : `${km.toLocaleString()} km`;
-  return `${months} Months / ${kmLabel}`;
-}
-
 export default function ContractDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -88,7 +85,7 @@ export default function ContractDetailPage() {
   const [contract, setContract] = useState<ContractRow | null>(null);
   const [product, setProduct] = useState<any>(null);
   const [providerName, setProviderName] = useState("");
-  const [dealershipName, setDealershipName] = useState("");
+  const [dealership, setDealership] = useState<DealershipInfo>({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -108,7 +105,6 @@ export default function ContractDetailPage() {
       }
       setContract(c as ContractRow);
 
-      // Load product
       if (c.product_id) {
         const { data: p } = await supabase
           .from("products")
@@ -117,7 +113,6 @@ export default function ContractDetailPage() {
           .maybeSingle();
         if (p) setProduct(p);
 
-        // Load provider name
         const provId = (c as any).provider_entity_id ?? p?.provider_entity_id;
         if (provId) {
           const { data: prov } = await supabase
@@ -129,14 +124,19 @@ export default function ContractDetailPage() {
         }
       }
 
-      // Load dealership name
       if (c.dealership_id) {
         const { data: d } = await supabase
           .from("dealerships")
-          .select("name")
+          .select("name, phone, address")
           .eq("id", c.dealership_id)
           .maybeSingle();
-        if (d) setDealershipName((d as any).name || "");
+        if (d) {
+          setDealership({
+            name: (d as any).name || "",
+            phone: (d as any).phone || "",
+            address: (d as any).address || "",
+          });
+        }
       }
 
       setLoading(false);
@@ -151,7 +151,7 @@ export default function ContractDetailPage() {
         .from("contracts")
         .update({ status_new: "submitted", status: "SOLD" })
         .eq("id", contract.id);
-      setContract(prev => prev ? { ...prev, status_new: "submitted" } : prev);
+      setContract((prev) => prev ? { ...prev, status_new: "submitted" } : prev);
       toast({ title: "Contract submitted" });
     } catch {
       toast({ title: "Error", description: "Could not submit contract.", variant: "destructive" });
@@ -163,7 +163,9 @@ export default function ContractDetailPage() {
   if (loading) {
     return (
       <DashboardLayout navItems={dealershipNavItems} title="Contract">
-        <div className="flex justify-center py-24"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
+        <div className="flex justify-center py-24">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
       </DashboardLayout>
     );
   }
@@ -171,42 +173,21 @@ export default function ContractDetailPage() {
   if (!contract) return null;
 
   const status = resolveStatus(contract);
-  const cd = product?.coverage_details_json ?? {};
-  const pr = product?.pricing_json ?? {};
-  const deductible = pr.deductible;
-  const categories: string[] = (cd.categories || []).map((c: any) => c.name);
-  const termsSections: Array<{ title: string; content: string }> = cd.termsSections || [];
-  const exclusions: string[] = cd.exclusions || [];
-
-  // Find the matching tier label from pricing rows if we have a tier stored
-  const pricingRows: Array<{ label: string; vehicleClass: string; dealerCost: number; retail: number }> =
-    (pr.rows || pr.tiers || [])
-      .filter((r: any) => r?.kind !== "addon" && r?.type !== "addon" && !r?.addonName)
-      .map((r: any) => ({
-      label: r.term || r.label || "Standard",
-      vehicleClass: r.vehicleClass || r.vehicle_class || "",
-      dealerCost: Number(r.dealerCost ?? r.dealer_cost ?? 0),
-      retail: Number(r.suggestedRetail ?? r.suggested_retail ?? r.retail ?? 0),
-    }));
-
-  const addonSnapshot = Array.isArray(contract.addon_snapshot) ? contract.addon_snapshot : [];
-  const baseRetailDollars = centsToDollars(contract.pricing_base_price_cents);
-  const baseDealerDollars = centsToDollars(contract.pricing_dealer_cost_cents);
-  const addonRetailDollars = centsToDollars(contract.addon_total_retail_cents);
-  const addonCostDollars = centsToDollars(contract.addon_total_cost_cents);
-  const hasPricingSnapshot = baseRetailDollars != null || baseDealerDollars != null || addonSnapshot.length > 0;
-  const pricingTermLabel = formatPricingTerm(contract.pricing_term_months, contract.pricing_term_km);
-  const contractNumber = `${CONTRACT_NUMBER_PREFIX}-${contract.id.substring(0, 8).toUpperCase()}`;
+  const printProps = buildSavedBridgeWarrantyContractProps({
+    brandName: BRAND.name,
+    contract,
+    product,
+    dealer: dealership,
+    providerName,
+  });
 
   return (
     <DashboardLayout navItems={dealershipNavItems} title="Contract">
-      <div className="max-w-4xl mx-auto space-y-4">
-
-        {/* Action bar — hidden on print */}
+      <div className="mx-auto max-w-5xl space-y-4">
         <div className="print:hidden flex items-center justify-between gap-4 pb-2">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="sm" onClick={() => navigate("/dealership/contracts")}>
-              <ArrowLeft className="w-4 h-4 mr-1" /> Contracts
+              <ArrowLeft className="mr-1 h-4 w-4" /> Contracts
             </Button>
             <Badge className={cn("capitalize", statusColors[status] || "")} variant="secondary">
               {status}
@@ -215,208 +196,17 @@ export default function ContractDetailPage() {
           <div className="flex gap-2">
             {status === "draft" && (
               <Button variant="outline" onClick={handleSubmit} disabled={submitting}>
-                {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileText className="w-4 h-4 mr-2" />}
+                {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
                 Submit Contract
               </Button>
             )}
             <Button onClick={() => window.print()}>
-              <Printer className="w-4 h-4 mr-2" /> Print Contract
+              <Printer className="mr-2 h-4 w-4" /> Print Contract
             </Button>
           </div>
         </div>
 
-        {/* Printable contract */}
-        <div className="print-contract-root bg-white">
-          <div className="max-w-4xl mx-auto p-8 print:p-6 space-y-6">
-
-            {/* Header */}
-            <div className="flex items-start justify-between pb-5 border-b-2 border-primary">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center shrink-0">
-                  <span className="text-primary-foreground font-bold text-sm">BW</span>
-                </div>
-                <div>
-                  <p className="font-bold text-lg leading-tight">{BRAND.name}</p>
-                  <p className="text-xs text-muted-foreground">{CONTRACT_BRAND_SUBTITLE}</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="font-bold text-base">Extended Warranty</p>
-                <p className="text-xs text-muted-foreground mt-1">Contract #: {contractNumber}</p>
-                <p className="text-xs text-muted-foreground">Date: {format(new Date(contract.created_at), "MMMM d, yyyy")}</p>
-                {dealershipName && <p className="text-xs text-muted-foreground">Dealer: {dealershipName}</p>}
-              </div>
-            </div>
-
-            {/* Contract Holder + Vehicle */}
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className="space-y-1.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b pb-1">Contract Holder</p>
-                <p className="font-semibold">{contract.customer_first_name} {contract.customer_last_name}</p>
-                {contract.customer_email && <p className="text-sm text-muted-foreground">{contract.customer_email}</p>}
-                {contract.customer_phone && <p className="text-sm text-muted-foreground">{contract.customer_phone}</p>}
-              </div>
-              <div className="space-y-1.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b pb-1">Covered Vehicle</p>
-                <p className="font-semibold">{contract.vehicle_year} {contract.vehicle_make} {contract.vehicle_model}</p>
-                <p className="text-sm text-muted-foreground font-mono">VIN: {contract.vin}</p>
-                {contract.vehicle_mileage && (
-                  <p className="text-sm text-muted-foreground">Odometer: {contract.vehicle_mileage.toLocaleString()} km</p>
-                )}
-                {contract.start_date && (
-                  <p className="text-sm text-muted-foreground">Start Date: {safeDate(contract.start_date)}</p>
-                )}
-              </div>
-            </div>
-
-            {/* Coverage Details */}
-            <div className="rounded-lg border p-4 bg-muted/20">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Coverage Details</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <p className="text-xs text-muted-foreground">Plan</p>
-                  <p className="font-semibold text-sm">{product?.name || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Provider</p>
-                  <p className="font-semibold text-sm">{providerName || "—"}</p>
-                </div>
-                {pricingRows.length > 0 && (
-                  <div>
-                    <p className="text-xs text-muted-foreground">Type</p>
-                    <p className="font-semibold text-sm">{product?.product_type || "—"}</p>
-                  </div>
-                )}
-                {contract.pricing_vehicle_class && (
-                  <div>
-                    <p className="text-xs text-muted-foreground">Selected Coverage</p>
-                    <p className="font-semibold text-sm">{contract.pricing_vehicle_class}</p>
-                  </div>
-                )}
-                {pricingTermLabel && (
-                  <div>
-                    <p className="text-xs text-muted-foreground">Term</p>
-                    <p className="font-semibold text-sm">{pricingTermLabel}</p>
-                  </div>
-                )}
-                {deductible && (
-                  <div>
-                    <p className="text-xs text-muted-foreground">Deductible</p>
-                    <p className="font-semibold text-sm">${deductible}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Pricing */}
-            <div className="rounded-lg border p-4">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Pricing Breakdown</p>
-              <div className="space-y-1.5">
-                {hasPricingSnapshot ? (
-                  <>
-                    {baseRetailDollars != null && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Base Price</span>
-                        <span className="font-semibold">${baseRetailDollars.toLocaleString()}</span>
-                      </div>
-                    )}
-                    {addonSnapshot.map((addon, index) => (
-                      <div key={`${addon.name || "addon"}-${index}`} className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">
-                          {addon.name || "Add-on"}
-                          {addon.term ? <span className="text-[10px]"> ({addon.term})</span> : null}
-                        </span>
-                        <span className="font-semibold">
-                          {addon.retailDisplay === "Included" ? "Included" : `+$${Number(addon.retail || 0).toLocaleString()}`}
-                        </span>
-                      </div>
-                    ))}
-                    {addonRetailDollars != null && addonRetailDollars > 0 && addonSnapshot.length === 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Add-ons</span>
-                        <span className="font-semibold">+${addonRetailDollars.toLocaleString()}</span>
-                      </div>
-                    )}
-                    {(baseDealerDollars != null || addonCostDollars != null || contract.dealer_cost_dollars != null) && (
-                      <div className="flex justify-between text-xs text-muted-foreground border-t pt-2">
-                        <span>Dealer Cost</span>
-                        <span>${Number(contract.dealer_cost_dollars ?? ((baseDealerDollars || 0) + (addonCostDollars || 0))).toLocaleString()}</span>
-                      </div>
-                    )}
-                  </>
-                ) : contract.dealer_cost_dollars != null && contract.dealer_cost_dollars > 0 ? (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Dealer Cost</span>
-                    <span className="font-semibold">${Number(contract.dealer_cost_dollars).toLocaleString()}</span>
-                  </div>
-                ) : null}
-                <div className="flex justify-between font-bold pt-2 border-t">
-                  <span>Total Contract Price</span>
-                  <span className="text-primary text-lg">${Number(contract.contract_price || 0).toLocaleString()}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Covered Components */}
-            {categories.length > 0 && (
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Covered Components</p>
-                <div className="flex flex-wrap gap-2">
-                  {categories.map(c => (
-                    <span key={c} className="text-xs bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full border">{c}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Terms & Conditions */}
-            {(termsSections.length > 0 || exclusions.length > 0) && (
-              <div className="space-y-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b pb-2">Terms & Conditions</p>
-                {termsSections.map((s, i) => (
-                  <div key={i}>
-                    <p className="text-xs font-semibold mb-1">{s.title}</p>
-                    <p className="text-xs text-muted-foreground whitespace-pre-wrap">{s.content}</p>
-                  </div>
-                ))}
-                {exclusions.length > 0 && (
-                  <div>
-                    <p className="text-xs font-semibold text-destructive mb-1">Exclusions</p>
-                    <ul className="space-y-0.5">
-                      {exclusions.map((ex, i) => <li key={i} className="text-xs text-muted-foreground">• {ex}</li>)}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Signatures */}
-            <div className="pt-4 border-t-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-6">Authorization & Signatures</p>
-              <div className="grid grid-cols-2 gap-12">
-                {[
-                  ["Client", `${contract.customer_first_name} ${contract.customer_last_name}`],
-                  ["Authorized Dealer", dealershipName || "Dealer"],
-                ].map(([role, name]) => (
-                  <div key={role} className="space-y-3">
-                    <p className="text-sm font-semibold">{role} Signature</p>
-                    <div className="border-b border-foreground pt-10" />
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>Signature</span><span>Date: ___________</span>
-                    </div>
-                    <div className="border-b border-muted pt-4" />
-                    <p className="text-xs text-muted-foreground">Print Name: {name}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <p className="text-[9px] text-muted-foreground text-center pt-3 border-t">
-              {BRAND.name} acts as a marketplace platform. This contract is issued by {providerName || "the named provider"} and is subject to full terms and conditions. Contract #{contractNumber}.
-            </p>
-          </div>
-        </div>
-
+        <BridgeWarrantyApplicationContract {...printProps} />
       </div>
     </DashboardLayout>
   );
