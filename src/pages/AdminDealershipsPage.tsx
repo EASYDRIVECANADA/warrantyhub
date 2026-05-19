@@ -1,15 +1,18 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Building2, Users, ChevronRight, ArrowLeft, Mail, Shield, UserCog, UserX, Search, DollarSign, Percent, Calendar, Plus } from "lucide-react";
+import { Building2, Users, ChevronRight, ArrowLeft, Mail, Shield, UserCog, UserX, Search, DollarSign, Percent, Calendar, Plus, KeyRound, Check, Copy } from "lucide-react";
 
 import { Button } from "../components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { PageShell } from "../components/PageShell";
 import { getAppMode } from "../lib/runtime";
 import { getSupabaseClient } from "../lib/supabase/client";
 import { invokeEdgeFunction } from "../lib/supabase/functions";
 import { alertMissing, confirmProceed, sanitizeWordsOnly } from "../lib/utils";
+import { useAuth } from "../providers/AuthProvider";
+import { markTemporaryPasswordEmail } from "../lib/auth/temporaryPasswordChange";
 
 type DealerRow = {
   id: string;
@@ -33,6 +36,21 @@ type DealerMemberRow = {
   } | null;
 };
 
+type AddDealerMemberResponse = {
+  dealerMemberId: string | null;
+  userId: string;
+  temporaryPassword?: string | null;
+};
+
+type GenerateTemporaryPasswordResponse = {
+  temporaryPassword: string;
+};
+
+type CreatedEmployeeCredentials = {
+  email: string;
+  temporaryPassword: string;
+};
+
 function moneyCentsToDollarsString(cents: number | null) {
   const v = typeof cents === "number" && Number.isFinite(cents) ? cents : 0;
   const dollars = v / 100;
@@ -53,6 +71,7 @@ function roleBadgeClass(role: string) {
 export function AdminDealershipsPage() {
   const mode = useMemo(() => getAppMode(), []);
   const qc = useQueryClient();
+  const { user, refreshUser } = useAuth();
 
   const [search, setSearch] = useState("");
   const [selectedDealerId, setSelectedDealerId] = useState<string | null>(null);
@@ -61,6 +80,9 @@ export function AdminDealershipsPage() {
   const [newEmployeeRole, setNewEmployeeRole] = useState<"DEALER_ADMIN" | "DEALER_EMPLOYEE">("DEALER_EMPLOYEE");
 
   const [emailEditByUserId, setEmailEditByUserId] = useState<Record<string, string>>({});
+  const [createdCredentials, setCreatedCredentials] = useState<CreatedEmployeeCredentials | null>(null);
+  const [passwordCopied, setPasswordCopied] = useState(false);
+  const [resettingPasswordUserId, setResettingPasswordUserId] = useState<string | null>(null);
 
   const dealersQuery = useQuery({
     queryKey: ["superadmin-dealers", mode],
@@ -123,7 +145,7 @@ export function AdminDealershipsPage() {
   const addMemberMutation = useMutation({
     mutationFn: async (input: { dealerId: string; email: string; role: "DEALER_ADMIN" | "DEALER_EMPLOYEE" }) => {
       if (mode !== "supabase") throw new Error("Supabase mode required");
-      await invokeEdgeFunction("admin-dealer-tools", {
+      const response = await invokeEdgeFunction<AddDealerMemberResponse>("admin-dealer-tools", {
         action: "add_dealer_member",
         dealerId: input.dealerId,
         email: input.email,
@@ -131,9 +153,18 @@ export function AdminDealershipsPage() {
         status: "ACTIVE",
         redirectTo: `${window.location.origin}/reset-password`,
       });
+      return { ...response, email: input.email };
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       setNewEmployeeEmail("");
+      setPasswordCopied(false);
+      if (result.temporaryPassword) {
+        markTemporaryPasswordEmail(result.email);
+        setCreatedCredentials({
+          email: result.email,
+          temporaryPassword: result.temporaryPassword,
+        });
+      }
       await qc.invalidateQueries({ queryKey: ["superadmin-dealer-members", mode, selectedDealerId] });
       await qc.invalidateQueries({ queryKey: ["admin-profiles", mode] });
     },
@@ -197,13 +228,40 @@ export function AdminDealershipsPage() {
     },
   });
 
+  const generatePasswordMutation = useMutation({
+    mutationFn: async (input: { userId: string; email: string }) => {
+      if (mode !== "supabase") throw new Error("Supabase mode required");
+      setResettingPasswordUserId(input.userId);
+      const response = await invokeEdgeFunction<GenerateTemporaryPasswordResponse>("admin-dealer-tools", {
+        action: "generate_temporary_password",
+        userId: input.userId,
+      });
+      if (input.userId === user?.id) {
+        await refreshUser();
+      }
+      markTemporaryPasswordEmail(input.email);
+      return { ...response, email: input.email };
+    },
+    onSuccess: (result) => {
+      setPasswordCopied(false);
+      setCreatedCredentials({
+        email: result.email,
+        temporaryPassword: result.temporaryPassword,
+      });
+    },
+    onSettled: () => {
+      setResettingPasswordUserId(null);
+    },
+  });
+
   const busy =
     dealerPatchMutation.isPending ||
     addMemberMutation.isPending ||
     removeMemberMutation.isPending ||
     updateMemberMutation.isPending ||
     updateUserEmailMutation.isPending ||
-    setUserDisabledMutation.isPending;
+    setUserDisabledMutation.isPending ||
+    generatePasswordMutation.isPending;
 
   const members = membersQuery.data ?? [];
   const adminCount = members.filter((m) => m.role === "DEALER_ADMIN").length;
@@ -236,6 +294,54 @@ export function AdminDealershipsPage() {
         </div>
       }
     >
+      <Dialog
+        open={Boolean(createdCredentials)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCreatedCredentials(null);
+            setPasswordCopied(false);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Temporary password created</DialogTitle>
+            <DialogDescription>
+              This password is shown once. Share it securely with the team member.
+            </DialogDescription>
+          </DialogHeader>
+
+          {createdCredentials && (
+            <div className="space-y-4">
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <div className="text-xs font-medium text-muted-foreground">Team member</div>
+                <div className="mt-1 text-sm font-medium break-all">{createdCredentials.email}</div>
+              </div>
+
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <div className="text-xs font-medium text-muted-foreground">Temporary password</div>
+                <div className="mt-2 flex items-center gap-2">
+                  <Input readOnly value={createdCredentials.temporaryPassword} className="font-mono" />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(createdCredentials.temporaryPassword).then(() => {
+                        setPasswordCopied(true);
+                      });
+                    }}
+                  >
+                    {passwordCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    {passwordCopied ? "Copied" : "Copy password"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {selectedDealer ? (
         <div className="space-y-6">
           <Button variant="ghost" size="sm" onClick={() => setSelectedDealerId(null)} className="gap-2">
@@ -482,8 +588,8 @@ export function AdminDealershipsPage() {
                         </Button>
                       </div>
 
-                      <div className="mt-4 grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-                        <div className="sm:col-span-5">
+                      <div className="mt-4 grid grid-cols-1 lg:grid-cols-[minmax(260px,1fr)_184px_184px] gap-3 items-end">
+                        <div>
                           <div className="text-xs text-muted-foreground mb-1">Change Email</div>
                           <Input
                             value={emailEdit}
@@ -492,7 +598,7 @@ export function AdminDealershipsPage() {
                             className="bg-background/70"
                           />
                         </div>
-                        <div className="sm:col-span-2">
+                        <div>
                           <div className="text-xs text-muted-foreground mb-1">Role</div>
                           <select
                             value={m.role === "DEALER" ? "DEALER_EMPLOYEE" : m.role}
@@ -510,7 +616,7 @@ export function AdminDealershipsPage() {
                             <option value="DEALER_ADMIN">Admin</option>
                           </select>
                         </div>
-                        <div className="sm:col-span-2">
+                        <div>
                           <div className="text-xs text-muted-foreground mb-1">Status</div>
                           <select
                             value={m.status}
@@ -529,40 +635,58 @@ export function AdminDealershipsPage() {
                             <option value="DISABLED">Disabled</option>
                           </select>
                         </div>
-                        <div className="sm:col-span-3 flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={busy || !emailEdit.trim() || emailEdit === email}
-                            onClick={() => {
-                              const nextEmail = emailEdit.trim();
-                              if (!nextEmail) return;
-                              void (async () => {
-                                if (!(await confirmProceed(`Change email to ${nextEmail}?`))) return;
-                                updateUserEmailMutation.mutate({ userId, email: nextEmail });
-                              })();
-                            }}
-                            className="flex-1"
-                          >
-                            Update Email
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={busy}
-                            onClick={() => {
-                              void (async () => {
-                                const currentlyActive = m.profiles?.is_active ?? true;
-                                const nextDisabled = currentlyActive;
-                                const label = nextDisabled ? "Disable" : "Enable";
-                                if (!(await confirmProceed(`${label} user ${email || userId}?`))) return;
-                                setUserDisabledMutation.mutate({ userId, disabled: nextDisabled });
-                              })();
-                            }}
-                          >
-                            {m.profiles?.is_active === false ? "Enable" : "Disable"}
-                          </Button>
-                        </div>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy || !emailEdit.trim() || emailEdit === email}
+                          onClick={() => {
+                            const nextEmail = emailEdit.trim();
+                            if (!nextEmail) return;
+                            void (async () => {
+                              if (!(await confirmProceed(`Change email to ${nextEmail}?`))) return;
+                              updateUserEmailMutation.mutate({ userId, email: nextEmail });
+                            })();
+                          }}
+                          className="h-9 whitespace-nowrap"
+                        >
+                          Update Email
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy || resettingPasswordUserId === userId}
+                          onClick={() => {
+                            void (async () => {
+                              const label = email || userId;
+                              if (!(await confirmProceed(`Generate a new temporary password for ${label}?`))) return;
+                              generatePasswordMutation.mutate({ userId, email: label });
+                            })();
+                          }}
+                          className="h-9 gap-1 whitespace-nowrap"
+                        >
+                          <KeyRound className="w-4 h-4" />
+                          {resettingPasswordUserId === userId ? "Generating" : "New password"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => {
+                            void (async () => {
+                              const currentlyActive = m.profiles?.is_active ?? true;
+                              const nextDisabled = currentlyActive;
+                              const label = nextDisabled ? "Disable" : "Enable";
+                              if (!(await confirmProceed(`${label} user ${email || userId}?`))) return;
+                              setUserDisabledMutation.mutate({ userId, disabled: nextDisabled });
+                            })();
+                          }}
+                          className="h-9 whitespace-nowrap"
+                        >
+                          {m.profiles?.is_active === false ? "Enable" : "Disable"}
+                        </Button>
                       </div>
                     </div>
                   );

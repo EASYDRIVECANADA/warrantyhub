@@ -5,6 +5,7 @@ type Action =
   | "invite_user"
   | "update_user_email"
   | "generate_password_reset_link"
+  | "generate_temporary_password"
   | "set_user_disabled"
   | "update_dealer"
   | "add_dealer_member"
@@ -32,6 +33,10 @@ type Body =
       action: "generate_password_reset_link";
       email: string;
       redirectTo?: string;
+    }
+  | {
+      action: "generate_temporary_password";
+      userId: string;
     }
   | {
       action: "set_user_disabled";
@@ -109,6 +114,48 @@ function v2DealershipRole(role: string) {
 
 function v2UserRole(role: string) {
   return role === "DEALER_ADMIN" ? "dealership_admin" : "dealership_employee";
+}
+
+const TEMP_PASSWORD_UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+const TEMP_PASSWORD_LOWER = "abcdefghijkmnopqrstuvwxyz";
+const TEMP_PASSWORD_DIGITS = "23456789";
+const TEMP_PASSWORD_SYMBOLS = "!@#$%^&*";
+const TEMP_PASSWORD_ALL = `${TEMP_PASSWORD_UPPER}${TEMP_PASSWORD_LOWER}${TEMP_PASSWORD_DIGITS}${TEMP_PASSWORD_SYMBOLS}`;
+
+function randomIndex(max: number) {
+  const values = new Uint32Array(1);
+  crypto.getRandomValues(values);
+  return values[0] % max;
+}
+
+function pickChar(chars: string) {
+  return chars[randomIndex(chars.length)]!;
+}
+
+function shuffleChars(chars: string[]) {
+  const next = [...chars];
+  for (let i = next.length - 1; i > 0; i -= 1) {
+    const j = randomIndex(i + 1);
+    const tmp = next[i]!;
+    next[i] = next[j]!;
+    next[j] = tmp;
+  }
+  return next;
+}
+
+function generateTemporaryPassword() {
+  const chars = [
+    pickChar(TEMP_PASSWORD_UPPER),
+    pickChar(TEMP_PASSWORD_LOWER),
+    pickChar(TEMP_PASSWORD_DIGITS),
+    pickChar(TEMP_PASSWORD_SYMBOLS),
+  ];
+
+  while (chars.length < 16) {
+    chars.push(pickChar(TEMP_PASSWORD_ALL));
+  }
+
+  return shuffleChars(chars).join("");
 }
 
 async function findAuthUserIdByEmail(svc: ReturnType<typeof getServiceSupabaseClient>, email: string) {
@@ -237,6 +284,22 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (action === "generate_temporary_password") {
+      const targetUserId = safeTrim((body as any).userId);
+      if (!targetUserId) return json(400, { error: "userId is required" });
+
+      const temporaryPassword = generateTemporaryPassword();
+      const upd = await svc.auth.admin.updateUserById(targetUserId, {
+        password: temporaryPassword,
+        user_metadata: { mustChangePassword: true },
+      } as any);
+      if (upd.error) return json(400, { error: upd.error.message });
+      const profile = await svc.from("profiles").update({ must_change_password: true } as any).eq("id", targetUserId);
+      if (profile.error) return json(500, { error: profile.error.message });
+
+      return json(200, { temporaryPassword });
+    }
+
     if (action === "set_user_disabled") {
       const userId = ((body as any).userId ?? "").toString().trim();
       const disabled = Boolean((body as any).disabled);
@@ -293,7 +356,6 @@ Deno.serve(async (req: Request) => {
       const statusRaw = safeTrim((body as any).status) || "ACTIVE";
       const status = normalizeDealerMemberStatus(statusRaw) ?? "ACTIVE";
       const displayName = typeof (body as any).displayName === "string" ? (body as any).displayName.trim() : "";
-      const redirectTo = safeTrim((body as any).redirectTo) || undefined;
 
       if (!dealerId) return json(400, { error: "dealerId is required" });
       if (!email) return json(400, { error: "email is required" });
@@ -308,10 +370,11 @@ Deno.serve(async (req: Request) => {
       if (dealershipRow.error) return json(500, { error: dealershipRow.error.message });
       const dealershipId = safeTrim((dealershipRow.data as any)?.id);
 
-      let profile = await svc.from("profiles").select("id, email, role").eq("email", email).maybeSingle();
+      const profile = await svc.from("profiles").select("id, email, role").eq("email", email).limit(1);
       if (profile.error) return json(500, { error: profile.error.message });
 
-      let userId: string | null = (profile.data as any)?.id ?? null;
+      let userId: string | null = ((profile.data as any[])?.[0]?.id ?? null) as string | null;
+      let temporaryPassword: string | null = null;
 
       if (!userId) {
         try {
@@ -323,42 +386,64 @@ Deno.serve(async (req: Request) => {
       }
 
       if (!userId) {
-        const invite = await svc.auth.admin.inviteUserByEmail(email, { redirectTo } as any);
-        if (invite.error) return json(400, { error: invite.error.message });
-        userId = (invite.data as any)?.user?.id ?? null;
-        if (!userId) return json(500, { error: "Failed to create invited user" });
-
+        temporaryPassword = generateTemporaryPassword();
+        const created = await svc.auth.admin.createUser({
+          email,
+          password: temporaryPassword,
+          email_confirm: true,
+          user_metadata: { mustChangePassword: true },
+        } as any);
+        if (created.error) return json(400, { error: created.error.message });
+        userId = (created.data as any)?.user?.id ?? null;
+        if (!userId) return json(500, { error: "Failed to create user" });
       }
+
+      const profileRow = {
+        id: userId,
+        email,
+        role,
+        company_name: dealerName ?? null,
+        display_name: displayName || null,
+        is_active: status !== "DISABLED",
+        ...(temporaryPassword ? { must_change_password: true } : {}),
+      } as any;
 
       const upsert = await svc
         .from("profiles")
-        .upsert(
-          {
-            id: userId,
-            email,
-            role,
-            company_name: dealerName ?? null,
-            display_name: displayName || null,
-            is_active: status !== "DISABLED",
-          } as any,
-          { onConflict: "id" },
-        );
+        .upsert(profileRow, { onConflict: "id" });
       if (upsert.error) return json(500, { error: upsert.error.message });
 
-      const insert = await svc
+      const existingMember = await svc
         .from("dealer_members")
-        .upsert(
-          {
-            dealer_id: dealerId,
-            user_id: userId,
-            role,
-            status,
-          } as any,
-          { onConflict: "dealer_id,user_id" },
-        )
         .select("id")
-        .single();
-      if (insert.error) return json(400, { error: insert.error.message });
+        .eq("dealer_id", dealerId)
+        .eq("user_id", userId)
+        .limit(1);
+      if (existingMember.error) return json(400, { error: existingMember.error.message });
+
+      let dealerMemberId = ((existingMember.data as any[])?.[0]?.id ?? null) as string | null;
+      if (dealerMemberId) {
+        const updateMember = await svc
+          .from("dealer_members")
+          .update({ role, status } as any)
+          .eq("dealer_id", dealerId)
+          .eq("user_id", userId);
+        if (updateMember.error) return json(400, { error: updateMember.error.message });
+      } else {
+        const insert = await svc
+          .from("dealer_members")
+          .insert(
+            {
+              dealer_id: dealerId,
+              user_id: userId,
+              role,
+              status,
+            } as any,
+          )
+          .select("id");
+        if (insert.error) return json(400, { error: insert.error.message });
+        dealerMemberId = ((insert.data as any[])?.[0]?.id ?? null) as string | null;
+      }
 
       if (dealershipId) {
         const dealershipMember = await svc
@@ -379,7 +464,7 @@ Deno.serve(async (req: Request) => {
         .upsert({ user_id: userId, role: v2UserRole(role) } as any, { onConflict: "user_id,role" });
       if (userRole.error) return json(400, { error: userRole.error.message });
 
-      return json(200, { dealerMemberId: (insert.data as any)?.id ?? null, userId });
+      return json(200, { dealerMemberId, userId, temporaryPassword });
     }
 
     if (action === "remove_dealer_member") {

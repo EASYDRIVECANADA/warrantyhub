@@ -5,9 +5,13 @@ export type DealerPricingConfig = {
   retail_price?: Record<string, number>;
   confidentiality_enabled?: boolean;
   selling_enabled?: boolean;
+  retail_strategy?: RetailStrategy;
 } | null | undefined;
 
+export type RetailStrategy = "conservative" | "standard" | "aggressive";
+
 export type NormalizedPricingRow = {
+  kind?: "base";
   term: string;
   label: string;
   vehicleClass: string;
@@ -19,6 +23,7 @@ export type NormalizedPricingRow = {
 };
 
 export type NormalizedAddOnRow = {
+  kind?: "addon";
   name: string;
   term: string;
   label: string;
@@ -139,17 +144,98 @@ export function numericPrice(value: PricingValue): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-export function resolveCustomerRetail(row: { retailKey?: string; suggestedRetail?: PricingValue; retail?: PricingValue }, config: DealerPricingConfig): PricingValue {
+function retailEnding(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.max(9, Math.ceil((value - 9) / 10) * 10 + 9);
+}
+
+export function standardRetailFromDealerCost(row: {
+  kind?: "base" | "addon";
+  term?: string;
+  vehicleClass?: string;
+  tierKey?: string;
+  dealerCost?: PricingValue;
+  dealer_cost?: PricingValue;
+  cost?: PricingValue;
+}, strategy: RetailStrategy = "standard"): number {
+  const cost = numericPrice(coercePrice(row.dealerCost ?? row.dealer_cost ?? row.cost ?? 0));
+  if (cost <= 0) return 0;
+
+  const isAddon = row.kind === "addon";
+  if (isAddon) {
+    const addonProfiles: Record<RetailStrategy, { multiplier: number; minProfit: number }> = {
+      conservative: { multiplier: 1.5, minProfit: 75 },
+      standard: { multiplier: 1.8, minProfit: 100 },
+      aggressive: { multiplier: 2.1, minProfit: 150 },
+    };
+    const profile = addonProfiles[strategy];
+    return retailEnding(Math.max(cost * profile.multiplier, cost + profile.minProfit));
+  }
+
+  const profiles: Record<RetailStrategy, Array<{ maxCost: number; multiplier: number; minProfit: number }>> = {
+    conservative: [
+      { maxCost: 199, multiplier: 2.6, minProfit: 500 },
+      { maxCost: 499, multiplier: 2.2, minProfit: 550 },
+      { maxCost: 999, multiplier: 1.9, minProfit: 650 },
+      { maxCost: 1999, multiplier: 1.65, minProfit: 800 },
+      { maxCost: Infinity, multiplier: 1.45, minProfit: 1000 },
+    ],
+    standard: [
+      { maxCost: 199, multiplier: 3.4, minProfit: 700 },
+      { maxCost: 499, multiplier: 2.5, minProfit: 700 },
+      { maxCost: 999, multiplier: 2.2, minProfit: 850 },
+      { maxCost: 1999, multiplier: 1.9, minProfit: 1100 },
+      { maxCost: Infinity, multiplier: 1.6, minProfit: 1400 },
+    ],
+    aggressive: [
+      { maxCost: 199, multiplier: 4.2, minProfit: 900 },
+      { maxCost: 499, multiplier: 2.8, minProfit: 850 },
+      { maxCost: 999, multiplier: 2.5, minProfit: 1050 },
+      { maxCost: 1999, multiplier: 2.15, minProfit: 1400 },
+      { maxCost: Infinity, multiplier: 1.8, minProfit: 1800 },
+    ],
+  };
+  const activeProfiles = profiles[strategy];
+  const profile = activeProfiles.find((p) => cost <= p.maxCost) ?? activeProfiles[activeProfiles.length - 1];
+  const months = parseQuoteMatrixTerm(row.term ?? "").months ?? 0;
+  const claimLimit = parsePerClaimAmount(row.tierKey ?? row.vehicleClass ?? "") ?? 0;
+  const termLift = months >= 48 ? 0.08 : months >= 36 ? 0.05 : months >= 24 ? 0.03 : 0;
+  const claimLift = claimLimit >= 20000 ? 0.08 : claimLimit >= 10000 ? 0.06 : claimLimit >= 5000 ? 0.04 : 0;
+  const raw = Math.max(cost * (profile.multiplier + termLift + claimLift), cost + profile.minProfit);
+  return retailEnding(raw);
+}
+
+export function resolveCustomerRetail(row: {
+  retailKey?: string;
+  suggestedRetail?: PricingValue;
+  retail?: PricingValue;
+  kind?: "base" | "addon";
+  term?: string;
+  vehicleClass?: string;
+  tierKey?: string;
+  dealerCost?: PricingValue;
+  dealer_cost?: PricingValue;
+  cost?: PricingValue;
+}, config: DealerPricingConfig): PricingValue {
   const key = row.retailKey;
   const retailMap = config?.retail_price ?? {};
   if (config?.confidentiality_enabled && key && retailMap[key] !== undefined) {
     return Number(retailMap[key]);
   }
-  return row.suggestedRetail ?? row.retail ?? 0;
+  const suppliedRetail = row.suggestedRetail ?? row.retail;
+  if (suppliedRetail === "Included") return suppliedRetail;
+  const generatedStandardRetail = standardRetailFromDealerCost(row, config?.retail_strategy ?? "standard");
+  if (generatedStandardRetail > 0) return generatedStandardRetail;
+  return numericPrice(coercePrice(suppliedRetail)) > 0 ? suppliedRetail ?? 0 : 0;
 }
 
-export function resolveCustomerRetailNumber(row: { retailKey?: string; suggestedRetail?: PricingValue; retail?: PricingValue }, config: DealerPricingConfig): number {
+export function resolveCustomerRetailNumber(row: Parameters<typeof resolveCustomerRetail>[0], config: DealerPricingConfig): number {
   return numericPrice(resolveCustomerRetail(row, config));
+}
+
+export function retailStrategyForProvider(providerName: string | null | undefined): RetailStrategy {
+  const normalized = (providerName ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return normalized.includes("aprotect") ? "conservative" : "standard";
 }
 
 export function resolveDealerCost(row: { retailKey?: string; dealerCost?: PricingValue; dealer_cost?: PricingValue; cost?: PricingValue }, config: DealerPricingConfig): PricingValue {
@@ -175,6 +261,7 @@ export function buildBasePricingRows(pricing: any): NormalizedPricingRow[] {
       const vehicleClass = (row.vehicleClass || row.vehicle_class || "").toString().trim();
       const parsed = parseVehicleClass(vehicleClass);
       return {
+        kind: "base" as const,
         term,
         label: term,
         vehicleClass,
@@ -225,6 +312,7 @@ export function buildAddOnPricingRowsFromRaw(baseRows: any[], addonRows: any[], 
     if (!isDisplayableAddOnPrice(suggestedRetail)) return;
 
     rows.push({
+      kind: "addon",
       name,
       term: termLabel,
       label: termLabel,

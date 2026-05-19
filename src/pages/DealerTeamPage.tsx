@@ -9,6 +9,7 @@ import { Input } from "../components/ui/input";
 import { PageShell } from "../components/PageShell";
 import { logAuditEvent } from "../lib/auditLog";
 import { generateTemporaryPassword } from "../lib/auth/temporaryPassword";
+import { markTemporaryPasswordEmail } from "../lib/auth/temporaryPasswordChange";
 import { getAppMode } from "../lib/runtime";
 import { getSupabaseClient } from "../lib/supabase/client";
 import { invokeEdgeFunction } from "../lib/supabase/functions";
@@ -294,6 +295,7 @@ export function DealerTeamPage() {
             lastName,
             phone,
             isActive: true,
+            mustChangePassword: true,
           },
           ...users,
         ]);
@@ -343,6 +345,7 @@ export function DealerTeamPage() {
       setDraft({ firstName: "", lastName: "", phone: "", email: "", role: "DEALER_EMPLOYEE" });
       setPasswordCopied(false);
       if (result?.temporaryPassword) {
+        markTemporaryPasswordEmail(result.email);
         setCreatedCredentials({ email: result.email, temporaryPassword: result.temporaryPassword });
       }
       await qc.invalidateQueries({ queryKey: ["dealer-team"] });

@@ -13,6 +13,7 @@ import { useDealership } from "../../../hooks/useDealership";
 import { useAuth } from "../../../providers/AuthProvider";
 import { useToast } from "../../../hooks/use-toast";
 import { generateTemporaryPassword } from "../../../lib/auth/temporaryPassword";
+import { markTemporaryPasswordEmail } from "../../../lib/auth/temporaryPasswordChange";
 import { invokeEdgeFunction } from "../../../lib/supabase/functions";
 import { format } from "date-fns";
 import { Check, Copy, Eye, KeyRound, Plus, Trash2, Users, Shield, UserCog } from "lucide-react";
@@ -66,7 +67,7 @@ function getEditableNameParts(name: string | undefined, email: string | undefine
 
 export default function TeamManagementPage() {
   const { dealershipId, memberRole, loading: dLoading } = useDealership();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { toast } = useToast();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -234,6 +235,7 @@ export default function TeamManagementPage() {
       }
 
       toast({ title: "Member Added", description: `${email} has been added to the team.` });
+      markTemporaryPasswordEmail(email);
       setCreatedCredentials({ email, temporaryPassword: response.temporaryPassword || fallbackTemporaryPassword });
       setPasswordCopied(false);
       setDialogOpen(false);
@@ -332,10 +334,14 @@ export default function TeamManagementPage() {
       });
 
       setPasswordCopied(false);
+      markTemporaryPasswordEmail(member.profile?.email || "");
       setCreatedCredentials({
         email: member.profile?.email || member.profile?.name || "Team member",
         temporaryPassword: response.temporaryPassword,
       });
+      if (member.user_id === user?.id) {
+        await refreshUser();
+      }
       toast({
         title: "Temporary Password Created",
         description: `A new temporary password was generated for ${member.profile?.name || "this team member"}.`,

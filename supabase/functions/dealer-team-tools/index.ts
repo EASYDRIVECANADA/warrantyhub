@@ -202,6 +202,7 @@ Deno.serve(async (req: Request) => {
         email,
         password: temporaryPassword,
         email_confirm: true,
+        user_metadata: { mustChangePassword: true },
       } as any);
 
       if (created.error) {
@@ -239,6 +240,7 @@ Deno.serve(async (req: Request) => {
             last_name: lastName,
             phone,
             is_active: true,
+            must_change_password: true,
           } as any,
           { onConflict: "id" },
         );
@@ -414,8 +416,11 @@ Deno.serve(async (req: Request) => {
       const temporaryPassword = generateTemporaryPassword();
       const updUser = await svc.auth.admin.updateUserById(targetUserId, {
         password: temporaryPassword,
+        user_metadata: { mustChangePassword: true },
       } as any);
       if (updUser.error) return json(400, { error: updUser.error.message });
+      const profUpd = await svc.from("profiles").update({ must_change_password: true } as any).eq("id", targetUserId);
+      if (profUpd.error) return json(500, { error: profUpd.error.message });
 
       return json(200, { temporaryPassword });
     }

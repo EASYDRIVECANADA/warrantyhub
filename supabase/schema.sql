@@ -7,6 +7,7 @@ create table if not exists public.profiles (
   display_name text,
   company_name text,
   is_active boolean not null default true,
+  must_change_password boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -37,6 +38,9 @@ alter table public.profiles
 
 alter table public.profiles
   add column if not exists is_active boolean not null default true;
+
+alter table public.profiles
+  add column if not exists must_change_password boolean not null default false;
 
 alter table public.profiles
   add column if not exists provider_company_id uuid;

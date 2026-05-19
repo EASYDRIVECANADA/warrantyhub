@@ -1,4 +1,4 @@
-import { buildBasePricingRows, numericPrice, type NormalizedPricingRow } from "./pricing/dealerPricing";
+import { buildBasePricingRows, numericPrice, standardRetailFromDealerCost, type NormalizedPricingRow } from "./pricing/dealerPricing";
 
 export type DealerProductAccessConfig = {
   dealer_cost?: Record<string, number>;
@@ -27,13 +27,22 @@ export function hasConfiguredBaseRetail(pricing: unknown, config: DealerProductA
   return buildBasePricingRows(pricing).some((row) => configuredRetailForKey(config, row.retailKey) > 0);
 }
 
+function hasStandardBaseRetail(pricing: unknown): boolean {
+  return buildBasePricingRows(pricing).some((row) => numericPrice(row.suggestedRetail) > 0 || standardRetailFromDealerCost(row) > 0);
+}
+
+function standardRetailForRow(row: (Pick<NormalizedPricingRow, "suggestedRetail"> & { retail?: unknown } & Partial<NormalizedPricingRow>) | null | undefined): number {
+  const value = row?.suggestedRetail ?? row?.retail ?? 0;
+  return numericPrice(value as number | string) || (row ? standardRetailFromDealerCost(row) : 0);
+}
+
 export function canSellDealerProduct(pricing: unknown, config: DealerProductAccessConfig | null | undefined): boolean {
-  return sellingEnabled(config) && hasConfiguredBaseRetail(pricing, config);
+  return hasStandardBaseRetail(pricing) || (sellingEnabled(config) && hasConfiguredBaseRetail(pricing, config));
 }
 
 export function canSellDealerProductPricingRow(
-  row: Pick<NormalizedPricingRow, "retailKey"> | null | undefined,
+  row: Pick<NormalizedPricingRow, "retailKey" | "suggestedRetail"> | null | undefined,
   config: DealerProductAccessConfig | null | undefined,
 ): boolean {
-  return Boolean(row && sellingEnabled(config) && numericPrice(configuredRetailForKey(config, row.retailKey)) > 0);
+  return Boolean(row && (standardRetailForRow(row) > 0 || (sellingEnabled(config) && configuredRetailForKey(config, row.retailKey) > 0)));
 }

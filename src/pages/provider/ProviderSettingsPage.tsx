@@ -15,6 +15,7 @@ import { useAuth } from "../../providers/AuthProvider";
 import { supabase } from "../../integrations/supabase/client";
 import { Building2, Users, Shield, Plus, Save, UserCog, KeyRound, Trash2, Check, Copy } from "lucide-react";
 import { invokeEdgeFunction } from "../../lib/supabase/functions";
+import { markTemporaryPasswordEmail } from "../../lib/auth/temporaryPasswordChange";
 
 interface TeamMember {
   id: string;
@@ -38,7 +39,7 @@ function splitFullName(fullName: string) {
 }
 
 export default function ProviderSettingsPage() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { toast } = useToast();
   const [providerId, setProviderId] = useState<string | null>(null);
   const [providerRole, setProviderRole] = useState<"admin" | "member" | null>(null);
@@ -192,6 +193,7 @@ export default function ProviderSettingsPage() {
       });
 
       toast({ title: "Member Added", description: `${email} has been added to the team.` });
+      markTemporaryPasswordEmail(email);
       setCreatedCredentials({ email, temporaryPassword: response.temporaryPassword });
       setPasswordCopied(false);
       setDialogOpen(false);
@@ -231,8 +233,12 @@ export default function ProviderSettingsPage() {
         companyId: providerId,
         userId: member.user_id,
       });
+      markTemporaryPasswordEmail(member.email);
       setCreatedCredentials({ email: member.email || member.name, temporaryPassword: response.temporaryPassword });
       setPasswordCopied(false);
+      if (member.user_id === user?.id) {
+        await refreshUser();
+      }
       toast({ title: "Temporary Password Created" });
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Could not generate password.", variant: "destructive" });

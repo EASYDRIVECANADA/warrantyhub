@@ -1,5 +1,6 @@
 import type { AuthApi } from "./api";
 import type { AuthUser, Role } from "./types";
+import { clearTemporaryPasswordEmail, isTemporaryPasswordEmailMarked } from "./temporaryPasswordChange";
 
 const STORAGE_USERS = "warrantyhub.local.users";
 const STORAGE_SESSION = "warrantyhub.local.session";
@@ -14,6 +15,7 @@ type LocalUserRecord = {
   companyName?: string;
   dealerId?: string;
   isActive?: boolean;
+  mustChangePassword?: boolean;
 };
 
 type LocalSession = {
@@ -127,7 +129,14 @@ function toAuthUser(u: LocalUserRecord): AuthUser {
     }
   }
 
-  return { id: u.id, email: u.email, role: effectiveRole, dealerId: effectiveDealerId, companyName: u.companyName };
+  return {
+    id: u.id,
+    email: u.email,
+    role: effectiveRole,
+    dealerId: effectiveDealerId,
+    companyName: u.companyName,
+    mustChangePassword: u.mustChangePassword === true || isTemporaryPasswordEmailMarked(u.email),
+  };
 }
 
 const listeners = new Set<() => void>();
@@ -216,8 +225,24 @@ export const localAuthApi: AuthApi = {
     throw new Error("Forgot password requires Supabase configuration");
   },
 
-  async updatePassword() {
-    throw new Error("Password reset requires Supabase configuration");
+  async updatePassword(newPassword) {
+    const session = readSession();
+    if (!session) throw new Error("No active session");
+    const p = newPassword.trim();
+    if (!p) throw new Error("Password is required");
+
+    const users = readUsers();
+    const index = users.findIndex((x) => x.id === session.userId);
+    if (index < 0) throw new Error("No active session");
+
+    users[index] = {
+      ...users[index],
+      passwordHash: await sha256(p),
+      mustChangePassword: false,
+    };
+    writeUsers(users);
+    clearTemporaryPasswordEmail(users[index].email);
+    notify();
   },
 
   async signOut() {

@@ -7,7 +7,6 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { getAppMode } from "../lib/runtime";
 import { getSupabaseClient } from "../lib/supabase/client";
-import type { Role } from "../lib/auth/types";
 import { useAuth } from "../providers/AuthProvider";
 
 const LOCAL_AUTH_NOTICE_KEY = "warrantyhub.local.auth_notice";
@@ -24,7 +23,7 @@ function roleToDashboardPath(role: string) {
 }
 
 export function SignInPage() {
-  const { signIn, isLoading, user, devSignInAs, refreshUser } = useAuth();
+  const { signIn, isLoading, user, refreshUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -244,28 +243,6 @@ export function SignInPage() {
                   </Link>
                 </div>
                 </form>
-
-                {import.meta.env.DEV ? (
-                  <div className="mt-6 rounded-lg border bg-white/90 p-4">
-                    <div className="text-sm font-medium">Dev bypass</div>
-                    <div className="text-xs text-muted-foreground mt-1">Temporarily enter a portal without logging in.</div>
-                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {(["ADMIN", "SUPER_ADMIN", "DEALER_ADMIN", "DEALER_EMPLOYEE", "PROVIDER"] as Role[]).map((r) => (
-                        <Button
-                          key={r}
-                          type="button"
-                          variant="outline"
-                          onClick={() => {
-                            devSignInAs(r);
-                            navigate(roleToDashboardPath(r), { replace: true });
-                          }}
-                        >
-                          Enter as {r}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
               </div>
             </div>
           </div>

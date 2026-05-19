@@ -11,6 +11,7 @@ export type AuthUser = {
   dealerSubscriptionCurrentPeriodEnd?: string | null;
   dealerSubscriptionTrialEnd?: string | null;
   dealerContractFeeCents?: number | null;
+  mustChangePassword?: boolean;
 };
 
 export type AuthState = {

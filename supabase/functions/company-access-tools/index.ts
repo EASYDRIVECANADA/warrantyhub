@@ -422,6 +422,7 @@ async function createOrUpdateAuthUser(
       email,
       password: temporaryPassword,
       email_confirm: true,
+      user_metadata: { mustChangePassword: true },
     } as any);
     if (created.error) throw new HttpError(400, created.error.message);
     userId = safeTrim((created.data as any)?.user?.id);
@@ -429,6 +430,7 @@ async function createOrUpdateAuthUser(
     const updated = await svc.auth.admin.updateUserById(userId, {
       email,
       password: temporaryPassword,
+      user_metadata: { mustChangePassword: true },
     } as any);
     if (updated.error) throw new HttpError(400, updated.error.message);
   }
@@ -446,6 +448,7 @@ async function createOrUpdateAuthUser(
       phone,
       company_name: companyName,
       is_active: true,
+      must_change_password: true,
     } as any,
     { onConflict: "id" },
   );
@@ -731,8 +734,13 @@ Deno.serve(async (req: Request) => {
       if (member.error) throw new Error(member.error.message);
       if (!member.data) return json(404, { error: "Member not found" });
       const temporaryPassword = generateTemporaryPassword();
-      const upd = await svc.auth.admin.updateUserById(targetUserId, { password: temporaryPassword } as any);
+      const upd = await svc.auth.admin.updateUserById(targetUserId, {
+        password: temporaryPassword,
+        user_metadata: { mustChangePassword: true },
+      } as any);
       if (upd.error) throw new Error(upd.error.message);
+      const profile = await svc.from("profiles").update({ must_change_password: true } as any).eq("id", targetUserId);
+      if (profile.error) throw new Error(profile.error.message);
       return json(200, { temporaryPassword });
     }
 

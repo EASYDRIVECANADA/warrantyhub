@@ -9,8 +9,8 @@ import { Search, RotateCcw, Car, Shield, Check, Loader2, AlertCircle, LayoutGrid
 import { supabase } from "../../integrations/supabase/client";
 import { useDealership } from "../../hooks/useDealership";
 import { cn } from "../../lib/utils";
-import { canSellDealerProduct } from "../../lib/dealerProductAccess";
-import { buildBasePricingRows, resolveCustomerRetailNumber, resolveDealerCostNumber } from "../../lib/pricing/dealerPricing";
+import { canSellDealerProduct, hasConfiguredBaseRetail } from "../../lib/dealerProductAccess";
+import { buildBasePricingRows, retailStrategyForProvider, resolveCustomerRetailNumber, resolveDealerCostNumber } from "../../lib/pricing/dealerPricing";
 import { compareProductsByConfiguredOrder } from "../../lib/products/defaultProductOrder";
 import { PRODUCT_TYPE_FILTERS, matchesProductTypeFilter } from "../../lib/products/productTypeFilters";
 
@@ -559,12 +559,14 @@ export default function FindProductsPage() {
             <div className="grid sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
               {filteredProducts.map((product) => {
                 const config = dealerPricing[product.id];
+                const retailConfig = { ...config, retail_strategy: retailStrategyForProvider(product.providerName) };
                 const canQuote = canSellDealerProduct(product.pricing_json, config);
                 const baseRows = buildBasePricingRows(product.pricing_json);
-                const showCustomerRetail = Boolean(config?.confidentiality_enabled);
+                const hasCustomBaseRetail = hasConfiguredBaseRetail(product.pricing_json, config);
+                const showCustomerRetail = Boolean(config?.confidentiality_enabled) || !hasCustomBaseRetail;
                 const visiblePrices = showCustomerRetail
                   ? baseRows
-                    .map((row) => resolveCustomerRetailNumber(row, config))
+                    .map((row) => resolveCustomerRetailNumber(row, retailConfig))
                     .filter((value) => value > 0)
                   : baseRows
                     .map((row) => resolveDealerCostNumber(row, config))

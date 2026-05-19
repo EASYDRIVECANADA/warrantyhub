@@ -9,20 +9,8 @@ import {
 
 import { getAppMode, type AppMode } from "../lib/runtime";
 import { getAuthApi } from "../lib/auth/auth";
-import type { AuthUser, Role } from "../lib/auth/types";
+import type { AuthUser } from "../lib/auth/types";
 import { syncDealerRetailOverridesFromSupabase } from "../lib/dealerProductRetail";
-
-const DEV_BYPASS_KEY = "warrantyhub.dev.bypass_user";
-
-function readDevBypassUser(): AuthUser | null {
-  const raw = localStorage.getItem(DEV_BYPASS_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as AuthUser;
-  } catch {
-    return null;
-  }
-}
 
 type AuthContextValue = {
   mode: AppMode;
@@ -32,8 +20,8 @@ type AuthContextValue = {
   signInWithGoogle(): Promise<void>;
   signIn(email: string, password: string): Promise<void>;
   signUp(email: string, password: string): Promise<void>;
+  updatePassword(newPassword: string): Promise<void>;
   signOut(): Promise<void>;
-  devSignInAs(role: Role): void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -48,13 +36,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshUser = useCallback(async () => {
     setIsLoading(true);
     try {
-      if (import.meta.env.DEV) {
-        const bypass = readDevBypassUser();
-        if (bypass) {
-          setUser(bypass);
-          return bypass;
-        }
-      }
       const u = await api.getCurrentUser();
       setUser(u);
 
@@ -116,12 +97,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [api],
   );
 
+  const updatePassword = useCallback(
+    async (newPassword: string) => {
+      setIsLoading(true);
+      try {
+        await api.updatePassword(newPassword);
+        await refreshUser();
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [api, refreshUser],
+  );
+
   const signOut = useCallback(async () => {
     setIsLoading(true);
     try {
-      if (import.meta.env.DEV) {
-        localStorage.removeItem(DEV_BYPASS_KEY);
-      }
       setUser(null);
       try {
         await Promise.race([
@@ -137,29 +128,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [api]);
 
-  const devSignInAs = useCallback((role: Role) => {
-    if (!import.meta.env.DEV) throw new Error("Dev bypass is only available in development");
-
-    const u: AuthUser = {
-      id: `dev-${role.toLowerCase()}`,
-      email: `${role.toLowerCase()}@dev.local`,
-      role,
-    };
-
-    if (role === "DEALER_ADMIN" || role === "DEALER_EMPLOYEE") {
-      u.dealerId = "dev-dealer";
-      u.companyName = "Dev Dealership";
-      u.dealerSubscriptionStatus = "trialing";
-      u.dealerSubscriptionPlanKey = "STANDARD";
-      u.dealerSubscriptionTrialEnd = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString();
-      u.dealerSubscriptionCurrentPeriodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      u.dealerContractFeeCents = 0;
-    }
-
-    localStorage.setItem(DEV_BYPASS_KEY, JSON.stringify(u));
-    setUser(u);
-  }, []);
-
   const value: AuthContextValue = {
     mode,
     user,
@@ -168,8 +136,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signInWithGoogle,
     signIn,
     signUp,
+    updatePassword,
     signOut,
-    devSignInAs,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

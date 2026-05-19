@@ -23,6 +23,8 @@ import {
   coercePrice,
   isAddonPricingRow,
   parseVehicleClass,
+  retailStrategyForProvider,
+  standardRetailFromDealerCost,
 } from "../../../lib/pricing/dealerPricing";
 
 // ─────────────────────── Types ───────────────────────
@@ -523,7 +525,9 @@ export default function ConfigurationPage() {
     setActiveTier(0);
     setActiveBand(0);
     setEditingCell(null);
-  }, [selectedProductId]);
+    const nextProduct = products.find((p) => p.id === selectedProductId);
+    setRecommendationStrategy(retailStrategyForProvider(nextProduct ? providers[nextProduct.provider_id] : ""));
+  }, [products, providers, selectedProductId]);
 
   // ── Provider groups ──
   const providerGroups = useMemo(() => {
@@ -567,6 +571,8 @@ export default function ConfigurationPage() {
   }, [pricingConfigs, selectedProductId]);
 
   const selectedPricingConfig = selectedProductId ? pricingConfigs[selectedProductId] : undefined;
+  const selectedProductProviderName = selectedProduct ? providers[selectedProduct.provider_id] : "";
+  const selectedProductRetailStrategy = retailStrategyForProvider(selectedProductProviderName);
   const selectedProductSellingEnabled = Boolean(selectedPricingConfig?.selling_enabled);
   const selectedProductHasBaseRetail = selectedProduct
     ? hasConfiguredBaseRetail(selectedProduct.pricing, { retail_price: retailMap })
@@ -1002,7 +1008,13 @@ export default function ConfigurationPage() {
 
     const defaultCost = typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
     const cost = customCost ?? defaultCost;
-    const suggested = customRetail ?? defaultSuggestedNumber ?? Math.round(cost * 1.4);
+    const standardRetail = standardRetailFromDealerCost({
+      kind: mr.isBase ? "base" : "addon",
+      term: currentTier?.terms[termIdx]?.label,
+      tierKey: currentTier?.label,
+      dealerCost: cost,
+    }, selectedProductRetailStrategy);
+    const suggested = customRetail ?? (standardRetail > 0 ? standardRetail : defaultSuggestedNumber ?? Math.round(cost * 1.4));
     const hasCustomCost = customCost != null;
     const hasCustom = customRetail != null;
     const markupPct = cost > 0 ? ((suggested - cost) / cost) * 100 : 0;

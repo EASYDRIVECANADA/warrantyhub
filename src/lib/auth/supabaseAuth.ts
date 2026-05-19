@@ -1,7 +1,8 @@
 import type { AuthApi } from "./api";
-import type { Role } from "./types";
+import type { AuthUser, Role } from "./types";
 
 import { getSupabaseClient } from "../supabase/client";
+import { clearTemporaryPasswordEmail, isTemporaryPasswordEmailMarked } from "./temporaryPasswordChange";
 
 const AUTH_NOTICE_KEY = "warrantyhub.local.auth_notice";
 
@@ -15,6 +16,7 @@ type ProfileAuthState = {
   effectiveRole: Role;
   rawRole: unknown;
   isActive: boolean;
+  mustChangePassword: boolean;
 };
 
 type DealerMembershipInfo = {
@@ -83,13 +85,27 @@ const V2_TO_V1_ROLE: Record<string, Role> = {
   provider: "PROVIDER",
 };
 
+function mustChangePasswordFromAuthUser(user: any): boolean {
+  const metadata = user?.user_metadata ?? {};
+  return metadata.mustChangePassword === true || metadata.must_change_password === true;
+}
+
+function baseAuthUser(user: { id: string; user_metadata?: any }, email: string, role: Role): AuthUser {
+  return {
+    id: user.id,
+    email,
+    role,
+    mustChangePassword: mustChangePasswordFromAuthUser(user) || isTemporaryPasswordEmailMarked(email),
+  };
+}
+
 async function getProfileAuthState(userId: string, email: string): Promise<ProfileAuthState> {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error("Supabase is not configured");
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("role, is_active")
+    .select("role, is_active, must_change_password")
     .eq("id", userId)
     .maybeSingle();
 
@@ -108,7 +124,8 @@ async function getProfileAuthState(userId: string, email: string): Promise<Profi
       const mapped = V2_TO_V1_ROLE[v2Role];
       if (mapped) {
         const isActive = data ? (data as any).is_active !== false : true;
-        return { effectiveRole: mapped, rawRole: v2Role, isActive };
+        const mustChangePassword = (data as any)?.must_change_password === true;
+        return { effectiveRole: mapped, rawRole: v2Role, isActive, mustChangePassword };
       }
     }
   } catch {
@@ -118,14 +135,22 @@ async function getProfileAuthState(userId: string, email: string): Promise<Profi
   if (data) {
     const rawRole = (data as any).role ?? "UNASSIGNED";
     const isActive = (data as any).is_active !== false;
+    const mustChangePassword = (data as any).must_change_password === true;
     const normalized = rawRole === "DEALER" ? "DEALER_ADMIN" : rawRole;
     const effectiveRole = (isActive ? (normalized ?? "UNASSIGNED") : "UNASSIGNED") as Role;
-    return { effectiveRole, rawRole, isActive };
+    return { effectiveRole, rawRole, isActive, mustChangePassword };
   }
 
   const insertRes = await supabase.from("profiles").insert({ id: userId, role: "UNASSIGNED", email, is_active: false });
   if (insertRes.error && (insertRes.error as any).code !== "23505") throw new Error(insertRes.error.message);
-  return { effectiveRole: "UNASSIGNED", rawRole: "UNASSIGNED", isActive: false };
+  return { effectiveRole: "UNASSIGNED", rawRole: "UNASSIGNED", isActive: false, mustChangePassword: false };
+}
+
+function withProfilePasswordRequirement(user: AuthUser, profileState: ProfileAuthState): AuthUser {
+  return {
+    ...user,
+    mustChangePassword: user.mustChangePassword === true || profileState.mustChangePassword === true,
+  };
 }
 
 export const supabaseAuthApi: AuthApi = {
@@ -136,7 +161,12 @@ export const supabaseAuthApi: AuthApi = {
     const { data, error } = await supabase.auth.getSession();
     if (error) throw error;
 
-    const user = data.session?.user;
+    if (!data.session?.user) return null;
+
+    const current = await supabase.auth.getUser();
+    if (current.error) throw current.error;
+
+    const user = current.data.user;
     if (!user?.email) return null;
 
     const state = await getProfileAuthState(user.id, user.email);
@@ -159,7 +189,7 @@ export const supabaseAuthApi: AuthApi = {
       return null;
     }
 
-    const base = { id: user.id, email: user.email, role: state.effectiveRole };
+    const base = withProfilePasswordRequirement(baseAuthUser(user, user.email, state.effectiveRole), state);
     if (state.effectiveRole !== "DEALER_ADMIN" && state.effectiveRole !== "DEALER_EMPLOYEE") return base;
 
     const membership = await getActiveDealerMembershipInfo(user.id);
@@ -217,7 +247,7 @@ export const supabaseAuthApi: AuthApi = {
       throw new Error("Access revoked");
     }
 
-    const base = { id: user.id, email: user.email, role: state.effectiveRole };
+    const base = withProfilePasswordRequirement(baseAuthUser(user, user.email, state.effectiveRole), state);
     if (state.effectiveRole !== "DEALER_ADMIN" && state.effectiveRole !== "DEALER_EMPLOYEE") return base;
 
     const membership = await getActiveDealerMembershipInfo(user.id);
@@ -295,8 +325,16 @@ export const supabaseAuthApi: AuthApi = {
     const p = newPassword.trim();
     if (!p) throw new Error("Password is required");
 
-    const { error } = await supabase.auth.updateUser({ password: p });
+    const current = await supabase.auth.getUser();
+    const email = current.data.user?.email ?? "";
+    const { error } = await supabase.auth.updateUser({ password: p, data: { mustChangePassword: false } });
     if (error) throw new Error(error.message);
+    const userId = current.data.user?.id ?? "";
+    if (userId) {
+      const profile = await supabase.from("profiles").update({ must_change_password: false } as any).eq("id", userId);
+      if (profile.error) throw new Error(profile.error.message);
+    }
+    clearTemporaryPasswordEmail(email);
   },
 
   async signOut() {

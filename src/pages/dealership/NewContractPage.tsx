@@ -23,6 +23,7 @@ import {
   buildQuotePricingMatrix,
   numericPrice,
   pricingRowKey,
+  retailStrategyForProvider,
   resolveDealerCost,
   resolveDealerCostNumber,
   resolveCustomerRetail,
@@ -469,6 +470,9 @@ export default function NewContractPage() {
   const quoteBaseRows = quoteRows.filter((row) => row.isBase);
   const quoteAddOnRows = quoteRows.filter((row) => !row.isBase);
   const pricingRows: NormalizedPricingRow[] = selectedProduct ? buildBasePricingRows(selectedProduct.pricing_json) : [];
+  const effectiveDealerPricingConfig = selectedProduct
+    ? { ...dealerPricingConfig, retail_strategy: retailStrategyForProvider(selectedProduct.providerName) }
+    : dealerPricingConfig;
   const chosenRow = pricingRows.find(r => pricingRowKey(r) === selectedPricingKey) ?? (pricingRows.length === 1 ? pricingRows[0] : null);
   const addOns: NormalizedAddOnRow[] = selectedProduct && chosenRow
     ? buildAddOnPricingRows(selectedProduct.pricing_json, chosenRow.vehicleClass)
@@ -477,15 +481,15 @@ export default function NewContractPage() {
   const explicitlySelectedAddOnRows = Array.from(selectedAddOns)
     .map((name) => addOns.find(a => a.name === name))
     .filter((row): row is NormalizedAddOnRow => Boolean(row));
-  const includedAddOnRows = addOns.filter((row) => resolveCustomerRetail(row, dealerPricingConfig) === "Included");
+  const includedAddOnRows = addOns.filter((row) => resolveCustomerRetail(row, effectiveDealerPricingConfig) === "Included");
   const selectedAddOnRows = [
     ...includedAddOnRows,
     ...explicitlySelectedAddOnRows.filter((row) => !includedAddOnRows.some((included) => included.name === row.name)),
   ];
-  const baseRetail = chosenRow ? resolveCustomerRetailNumber(chosenRow, dealerPricingConfig) : 0;
+  const baseRetail = chosenRow ? resolveCustomerRetailNumber(chosenRow, effectiveDealerPricingConfig) : 0;
   const baseDealerCost = chosenRow ? resolveDealerCostNumber(chosenRow, dealerPricingConfig) : 0;
   const addOnDealerTotal = selectedAddOnRows.reduce((sum, row) => sum + numericPrice(resolveDealerCost(row, dealerPricingConfig)), 0);
-  const addOnRetailTotal = selectedAddOnRows.reduce((sum, row) => sum + numericPrice(resolveCustomerRetail(row, dealerPricingConfig)), 0);
+  const addOnRetailTotal = selectedAddOnRows.reduce((sum, row) => sum + numericPrice(resolveCustomerRetail(row, effectiveDealerPricingConfig)), 0);
   const totalDealerCost = baseDealerCost + addOnDealerTotal;
   const totalRetail = baseRetail + addOnRetailTotal;
   const addonSnapshot: ContractAddonSnapshot[] = selectedAddOnRows.map((row) => ({
@@ -493,8 +497,8 @@ export default function NewContractPage() {
     term: row.term,
     vehicleClass: row.vehicleClass,
     dealerCost: numericPrice(resolveDealerCost(row, dealerPricingConfig)),
-    retail: numericPrice(resolveCustomerRetail(row, dealerPricingConfig)),
-    retailDisplay: resolveCustomerRetail(row, dealerPricingConfig) === "Included" ? "Included" : undefined,
+    retail: numericPrice(resolveCustomerRetail(row, effectiveDealerPricingConfig)),
+    retailDisplay: resolveCustomerRetail(row, effectiveDealerPricingConfig) === "Included" ? "Included" : undefined,
     retailKey: row.retailKey,
   }));
   const pricingTermSnapshot = chosenRow ? parseTermSnapshot(chosenRow.term) : {};
@@ -514,7 +518,7 @@ export default function NewContractPage() {
   };
 
   const quoteCellPrice = (cell: QuoteMatrixCell): string => {
-    const retailValue = resolveCustomerRetail(cell, dealerPricingConfig);
+    const retailValue = resolveCustomerRetail(cell, effectiveDealerPricingConfig);
     if (retailValue === "Included") return "Included";
     const retailAmount = numericPrice(retailValue);
     return retailAmount > 0 ? fmt(retailAmount) : "—";
@@ -974,7 +978,7 @@ export default function NewContractPage() {
                                 </td>
                                 {row.values.map((cell, termIdx) => {
                                   if (!cell) return <td key={termIdx} className="border-t px-3 py-2.5 text-muted-foreground/40">-</td>;
-                                  const retailValue = resolveCustomerRetail(cell, dealerPricingConfig);
+                                  const retailValue = resolveCustomerRetail(cell, effectiveDealerPricingConfig);
                                   const retailAmount = numericPrice(retailValue);
                                   const isSelectedBase = chosenRow && pricingRowKey(chosenRow) === pricingRowKey({ term: cell.term, vehicleClass: cell.vehicleClass });
                                   return (
@@ -1025,7 +1029,7 @@ export default function NewContractPage() {
                                   <td className="sticky left-0 z-20 w-[220px] min-w-[220px] max-w-[220px] border-r border-t bg-background px-3 py-2.5 font-medium shadow-[6px_0_10px_-8px_rgba(15,23,42,0.35)]">
                                     <div className="flex min-w-0 items-center gap-2">
                                       <Checkbox
-                                        checked={row.values.some((cell) => Boolean(cell && (selectedAddOns.has(cell.label) || resolveCustomerRetail(cell, dealerPricingConfig) === "Included")))}
+                                        checked={row.values.some((cell) => Boolean(cell && (selectedAddOns.has(cell.label) || resolveCustomerRetail(cell, effectiveDealerPricingConfig) === "Included")))}
                                         disabled
                                         className="h-3.5 w-3.5 shrink-0"
                                       />
@@ -1034,7 +1038,7 @@ export default function NewContractPage() {
                                   </td>
                                   {row.values.map((cell, termIdx) => {
                                     if (!cell) return <td key={termIdx} className="border-t px-3 py-2.5 text-muted-foreground/40">-</td>;
-                                    const retailValue = resolveCustomerRetail(cell, dealerPricingConfig);
+                                    const retailValue = resolveCustomerRetail(cell, effectiveDealerPricingConfig);
                                     const retailAmount = numericPrice(retailValue);
                                     const isEnabledAddon = chosenRow?.term === cell.term && chosenRow?.tierKey === cell.tierKey;
                                     const isIncluded = retailValue === "Included";
@@ -1097,7 +1101,7 @@ export default function NewContractPage() {
                                     <Badge className="h-4 shrink-0 bg-primary/15 px-1 py-0 text-[9px] text-primary hover:bg-primary/15">BASE</Badge>
                                   ) : (
                                     <Checkbox
-                                      checked={row.values.some((cell) => Boolean(cell && (selectedAddOns.has(cell.label) || resolveCustomerRetail(cell, dealerPricingConfig) === "Included")))}
+                                      checked={row.values.some((cell) => Boolean(cell && (selectedAddOns.has(cell.label) || resolveCustomerRetail(cell, effectiveDealerPricingConfig) === "Included")))}
                                       disabled
                                       className="h-3.5 w-3.5 shrink-0"
                                     />
@@ -1109,7 +1113,7 @@ export default function NewContractPage() {
                                 if (!cell) {
                                   return <td key={termIdx} className="border-t px-3 py-2.5 text-muted-foreground/40">—</td>;
                                 }
-                                const retailValue = resolveCustomerRetail(cell, dealerPricingConfig);
+                                const retailValue = resolveCustomerRetail(cell, effectiveDealerPricingConfig);
                                 const retailAmount = numericPrice(retailValue);
                                 const isSelectedBase = row.isBase && chosenRow && pricingRowKey(chosenRow) === pricingRowKey({ term: cell.term, vehicleClass: cell.vehicleClass });
                                 const isEnabledAddon = !row.isBase && chosenRow?.term === cell.term && chosenRow?.tierKey === cell.tierKey;
@@ -1159,7 +1163,7 @@ export default function NewContractPage() {
                     <span className="font-semibold">{baseRetail > 0 ? fmt(baseRetail) : "—"}</span>
                   </div>
                   {selectedAddOnRows.map((row) => {
-                    const retailValue = resolveCustomerRetail(row, dealerPricingConfig);
+                    const retailValue = resolveCustomerRetail(row, effectiveDealerPricingConfig);
                     const retailAmount = numericPrice(retailValue);
                     return (
                       <div key={row.name} className="flex justify-between text-sm">
@@ -1190,7 +1194,7 @@ export default function NewContractPage() {
             ) : (
               <div className="grid gap-3">
                 {pricingRows.map(row => {
-                  const rowRetail = resolveCustomerRetailNumber(row, dealerPricingConfig);
+                  const rowRetail = resolveCustomerRetailNumber(row, effectiveDealerPricingConfig);
                   const isSelected = chosenRow ? pricingRowKey(chosenRow) === pricingRowKey(row) : false;
                   return (
                     <button
@@ -1236,7 +1240,7 @@ export default function NewContractPage() {
               <div className="space-y-3">
                 {addOns.map(ao => {
                   const isSelected = selectedAddOns.has(ao.name);
-                  const retailValue = resolveCustomerRetail(ao, dealerPricingConfig);
+                  const retailValue = resolveCustomerRetail(ao, effectiveDealerPricingConfig);
                   const retailAmount = numericPrice(retailValue);
                   return (
                     <div
@@ -1404,7 +1408,7 @@ export default function NewContractPage() {
                 productType: selectedProduct?.product_type,
                 components: categories,
                 addOns: selectedAddOnRows.map((ao) => {
-                  const retailValue = resolveCustomerRetail(ao, dealerPricingConfig);
+                  const retailValue = resolveCustomerRetail(ao, effectiveDealerPricingConfig);
                   const retailAmount = numericPrice(retailValue);
                   return {
                     name: ao.name,

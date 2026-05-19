@@ -18,6 +18,7 @@ import {
   numericPrice,
   parseVehicleClass as parseSharedVehicleClass,
   pricingRowKey,
+  retailStrategyForProvider,
   resolveCustomerRetail,
   resolveCustomerRetailNumber,
 } from "../../lib/pricing/dealerPricing";
@@ -293,6 +294,7 @@ export default function ProductCoveragePage() {
     return resolveCustomerRetailNumber(row, {
       retail_price: customPricing,
       confidentiality_enabled: confidentialityEnabled,
+      retail_strategy: retailStrategyForProvider(providerName),
     });
   }
 
@@ -300,6 +302,7 @@ export default function ProductCoveragePage() {
     return resolveCustomerRetail(row, {
       retail_price: customPricing,
       confidentiality_enabled: confidentialityEnabled,
+      retail_strategy: retailStrategyForProvider(providerName),
     });
   }
 

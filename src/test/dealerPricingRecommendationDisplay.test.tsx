@@ -153,6 +153,16 @@ describe("dealer pricing recommendation display", () => {
       role: "DEALER_ADMIN",
     };
     pricingRows = defaultPricingRows;
+    productRows[0].pricing_json = {
+      rows: [
+        {
+          label: "12 Months / 20,000 km",
+          vehicleClass: "$1,000 Per Claim",
+          dealerCost: 189,
+          suggestedRetail: 889,
+        },
+      ],
+    };
     dealershipPricingUpsertMock.mockClear();
     dealershipPricingUpdateMock.mockClear();
     delete (window as any).__warrantyhub_confirm__;
@@ -183,7 +193,7 @@ describe("dealer pricing recommendation display", () => {
     expect(screen.queryByText("$889")).not.toBeInTheDocument();
   });
 
-  it("resets selected plan retail back to provider suggested retail", async () => {
+  it("resets selected plan retail back to generated standard retail", async () => {
     pricingRows = [
       {
         product_id: "product-1",
@@ -207,7 +217,7 @@ describe("dealer pricing recommendation display", () => {
     await user.click(screen.getByRole("button", { name: /reset retail/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("$889")).toBeInTheDocument();
+      expect(screen.getByText("$899")).toBeInTheDocument();
     });
     expect(screen.queryByText("$999")).not.toBeInTheDocument();
     expect(screen.getByText("Cost $199")).toBeInTheDocument();
@@ -215,6 +225,37 @@ describe("dealer pricing recommendation display", () => {
       "Reset retail prices for this plan back to provider suggested retail?",
       "Reset retail pricing",
     );
+  });
+
+  it("shows generated standard retail when provider suggested retail only repeats cost", async () => {
+    productRows[0].pricing_json = {
+      rows: [
+        {
+          label: "6 Months / 6,000 KM",
+          vehicleClass: "$1,000 Per Claim",
+          dealerCost: 149,
+          suggestedRetail: 149,
+        },
+      ],
+    };
+    pricingRows = [
+      {
+        product_id: "product-1",
+        dealer_cost: {},
+        retail_price: {},
+        confidentiality_enabled: true,
+        sort_order: null,
+      },
+    ];
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: /provider one/i }));
+    await user.click(await screen.findByRole("button", { name: /test warranty/i }));
+
+    expect(await screen.findByText("$849")).toBeInTheDocument();
+    expect(screen.queryByText("$149")).not.toBeInTheDocument();
   });
 
   it("does not expose dealer cost editing in dealership configuration", async () => {

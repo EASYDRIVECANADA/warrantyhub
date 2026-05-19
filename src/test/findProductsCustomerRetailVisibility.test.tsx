@@ -134,7 +134,7 @@ describe("FindProductsPage customer retail visibility", () => {
     expect(screen.queryByText("$189")).not.toBeInTheDocument();
   });
 
-  it("shows published products that need dealer setup without a quote action", async () => {
+  it("shows provider standard retail and quote action when dealer setup is missing", async () => {
     pricingRows = [];
 
     render(
@@ -144,7 +144,9 @@ describe("FindProductsPage customer retail visibility", () => {
     );
 
     expect(await screen.findByText("Customer Hidden Warranty")).toBeInTheDocument();
-    expect(screen.getByText("Setup required")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Quote$/i })).not.toBeInTheDocument();
+    expect(screen.getByText("$889")).toBeInTheDocument();
+    expect(screen.getByText("Retail price")).toBeInTheDocument();
+    expect(screen.queryByText("Setup required")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Quote$/i })).toBeInTheDocument();
   });
 });

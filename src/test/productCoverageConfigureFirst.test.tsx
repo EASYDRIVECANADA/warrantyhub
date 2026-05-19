@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -33,7 +33,7 @@ const product = {
         label: "Eesf",
         vehicleClass: "Class 1",
         dealerCost: 100,
-        suggestedRetail: 0,
+        suggestedRetail: 589,
       },
     ],
   },
@@ -75,13 +75,13 @@ vi.mock("../integrations/supabase/client", () => ({
   },
 }));
 
-describe("ProductCoveragePage configure-first pricing", () => {
+describe("ProductCoveragePage standard retail pricing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dealerPricing = null;
   });
 
-  it("does not show a zero-dollar base price before the dealer configures selling", async () => {
+  it("shows generated standard retail before the dealer configures selling", async () => {
     const user = userEvent.setup();
 
     render(
@@ -98,9 +98,46 @@ describe("ProductCoveragePage configure-first pricing", () => {
     const basePricing = screen.getByRole("heading", { name: /base pricing/i }).closest("div");
     expect(basePricing).not.toBeNull();
 
-    await waitFor(() => {
-      expect(within(basePricing as HTMLElement).queryByRole("button", { name: "$0" })).not.toBeInTheDocument();
+    expect(await within(basePricing as HTMLElement).findByRole("button", { name: "$809" })).toBeEnabled();
+    expect(within(basePricing as HTMLElement).queryByRole("button", { name: /setup required/i })).not.toBeInTheDocument();
+    screen.getAllByRole("button", { name: /get a quote/i }).forEach((button) => {
+      expect(button).toBeEnabled();
     });
-    expect(within(basePricing as HTMLElement).getByRole("button", { name: /setup required/i })).toBeDisabled();
+  });
+
+  it("shows generated standard retail when provider retail is not supplied", async () => {
+    const originalPricing = product.pricing_json;
+    product.pricing_json = {
+      deductible: "100",
+      rows: [
+        {
+          label: "12 Months / 20,000 km",
+          vehicleClass: "$3,000 Claim Max - Class 1/2/3",
+          dealerCost: 325,
+          suggestedRetail: "n/a" as any,
+        },
+      ],
+    };
+
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter initialEntries={["/dealership/products/product-1"]}>
+        <Routes>
+          <Route path="/dealership/products/:id" element={<ProductCoveragePage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: /test \$3,000 claim max/i });
+    await user.click(screen.getByRole("button", { name: /pricing & options/i }));
+
+    const basePricing = screen.getByRole("heading", { name: /base pricing/i }).closest("div");
+    expect(basePricing).not.toBeNull();
+
+    expect(await within(basePricing as HTMLElement).findByRole("button", { name: "$1,029" })).toBeEnabled();
+    expect(within(basePricing as HTMLElement).queryByRole("button", { name: /setup required/i })).not.toBeInTheDocument();
+
+    product.pricing_json = originalPricing;
   });
 });

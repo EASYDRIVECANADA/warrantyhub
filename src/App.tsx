@@ -1,7 +1,13 @@
 import { AppRouter } from "./app/AppRouter";
+import { ForcePasswordChangeDialog } from "./components/auth/ForcePasswordChangeDialog";
 
 function App() {
-  return <AppRouter />;
+  return (
+    <>
+      <AppRouter />
+      <ForcePasswordChangeDialog />
+    </>
+  );
 }
 
 export default App;

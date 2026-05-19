@@ -21,14 +21,10 @@ const pricing = {
 const [baseRow] = buildBasePricingRows(pricing);
 
 describe("dealer product access", () => {
-  it("does not treat provider suggested retail as dealership configuration", () => {
+  it("allows selling with provider standard retail when dealership setup is missing", () => {
     expect(
-      canSellDealerProduct(pricing, {
-        selling_enabled: true,
-        retail_price: {},
-        confidentiality_enabled: true,
-      }),
-    ).toBe(false);
+      canSellDealerProduct(pricing, undefined),
+    ).toBe(true);
   });
 
   it("allows selling when the dealership enabled the product and saved base retail", () => {
@@ -41,22 +37,48 @@ describe("dealer product access", () => {
     ).toBe(true);
   });
 
-  it("requires the selected base quote row to have configured retail", () => {
+  it("allows the selected base quote row when provider standard retail exists", () => {
     expect(
       canSellDealerProductPricingRow(baseRow, {
         selling_enabled: false,
-        retail_price: { [baseRow.retailKey]: 999 },
-        confidentiality_enabled: true,
-      }),
-    ).toBe(false);
-
-    expect(
-      canSellDealerProductPricingRow(baseRow, {
-        selling_enabled: true,
-        retail_price: { [baseRow.retailKey]: 999 },
-        confidentiality_enabled: true,
+        retail_price: {},
+        confidentiality_enabled: false,
       }),
     ).toBe(true);
+  });
+
+  it("does not allow selling when neither standard nor configured retail exists", () => {
+    const pricingWithoutRetail = {
+      rows: [
+        {
+          label: "12 Months / 20,000 km",
+          vehicleClass: "$1,000 Per Claim",
+          dealerCost: 0,
+          suggestedRetail: 0,
+        },
+      ],
+    };
+    const [rowWithoutRetail] = buildBasePricingRows(pricingWithoutRetail);
+
+    expect(canSellDealerProduct(pricingWithoutRetail, undefined)).toBe(false);
+    expect(canSellDealerProductPricingRow(rowWithoutRetail, undefined)).toBe(false);
+  });
+
+  it("allows selling with generated standard retail when provider retail is not supplied", () => {
+    const pricingWithoutProviderRetail = {
+      rows: [
+        {
+          label: "12 Months / 20,000 km",
+          vehicleClass: "$3,000 Claim Max - Class 1/2/3",
+          dealerCost: 325,
+          suggestedRetail: "n/a",
+        },
+      ],
+    };
+    const [rowWithoutProviderRetail] = buildBasePricingRows(pricingWithoutProviderRetail);
+
+    expect(canSellDealerProduct(pricingWithoutProviderRetail, undefined)).toBe(true);
+    expect(canSellDealerProductPricingRow(rowWithoutProviderRetail, undefined)).toBe(true);
   });
 
   it("reports whether any base retail has been configured before enabling selling", () => {

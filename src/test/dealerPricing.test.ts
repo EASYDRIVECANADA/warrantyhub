@@ -141,6 +141,49 @@ describe("dealer pricing parser", () => {
     })).toBe(1099);
   });
 
+  it("uses generated standard retail before provider suggested retail", () => {
+    const pricing = {
+      rows: [
+        {
+          label: "6 Months / 6,000 KM",
+          term: "6 Months / 6,000 KM",
+          vehicleClass: "$1,000 Per Claim",
+          dealerCost: 149,
+          suggestedRetail: 149,
+        },
+      ],
+    };
+
+    const [row] = buildBasePricingRows(pricing);
+
+    expect(resolveCustomerRetail(row, {
+      confidentiality_enabled: true,
+      retail_price: {},
+    })).toBe(849);
+  });
+
+  it("uses conservative generated retail for A-Protect pricing fallback", () => {
+    const pricing = {
+      rows: [
+        {
+          label: "12 Months / 12,000 km",
+          term: "12 Months / 12,000 km",
+          vehicleClass: "Bronze - $750 Per Claim",
+          dealerCost: 89,
+          suggestedRetail: 589,
+        },
+      ],
+    };
+
+    const [row] = buildBasePricingRows(pricing);
+
+    expect(resolveCustomerRetail(row, {
+      confidentiality_enabled: true,
+      retail_price: {},
+      retail_strategy: "conservative",
+    })).toBe(589);
+  });
+
   it("builds a quote matrix with base and add-on retail cells", () => {
     const pricing = {
       rows: [
