@@ -4,6 +4,7 @@ export type DealerPricingConfig = {
   dealer_cost?: Record<string, number>;
   retail_price?: Record<string, number>;
   confidentiality_enabled?: boolean;
+  selling_enabled?: boolean;
 } | null | undefined;
 
 export type NormalizedPricingRow = {

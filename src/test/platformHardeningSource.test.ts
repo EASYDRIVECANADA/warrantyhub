@@ -95,6 +95,20 @@ describe("Bridge Warranty platform hardening source checks", () => {
     expect(dashboardLayout).toContain("navItems === dealershipNavItems");
   });
 
+  it("exposes provider account management from the platform admin sidebar", () => {
+    const navStart = dashboardLayout.indexOf("export const platformAdminNavItems");
+    const navEnd = dashboardLayout.indexOf("export const dealershipNavItems", navStart);
+    const navSource = dashboardLayout.slice(navStart, navEnd);
+
+    expect(navSource).toContain('label: "Providers"');
+    expect(navSource).toContain('href: "/admin/providers"');
+  });
+
+  it("keeps provider account management inside the shared super admin shell", () => {
+    expect(router).toContain('path="admin/providers" element={<AdminProvidersPage2 />}');
+    expect(router).not.toContain('path="/admin/providers"');
+  });
+
   it("resolves EasyDrive super admin dealership membership as dealership admin", () => {
     expect(useDealership).toContain('user.role === "SUPER_ADMIN" ? "admin"');
     expect(useDealership).toContain("ilike(\"name\", \"%easy%drive%canada%\")");

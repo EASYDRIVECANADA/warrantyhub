@@ -14,6 +14,7 @@ describe("company access tools source", () => {
     for (const action of [
       "approve_access_request",
       "reject_access_request",
+      "create_provider_account",
       "create_company_member",
       "update_company_member_role",
       "generate_temporary_password",
@@ -37,6 +38,12 @@ describe("company access tools source", () => {
     expect(companyAccessTools).toContain(".from(\"provider_members\")");
     expect(companyAccessTools).toContain("PROVIDER");
     expect(companyAccessTools).toContain("provider");
+  });
+
+  it("lets super admins create provider accounts without an existing provider admin", () => {
+    expect(companyAccessTools).toContain('action === "create_provider_account"');
+    expect(companyAccessTools).toContain("assertSuperAdmin(jwt)");
+    expect(companyAccessTools).toContain("createProviderAccount");
   });
 
   it("removes broad authenticated insert policies for tenant tables", () => {

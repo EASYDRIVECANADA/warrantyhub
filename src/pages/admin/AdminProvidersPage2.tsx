@@ -1,11 +1,16 @@
-import { useEffect, useState } from "react";
-import DashboardLayout, { adminNavItems } from "../../components/dashboard/DashboardLayout";
+import { useCallback, useEffect, useState } from "react";
+import { PageShell } from "../../components/PageShell";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "../../components/ui/dialog";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
 import { supabase } from "../../integrations/supabase/client";
 import { useToast } from "../../hooks/use-toast";
+import { invokeEdgeFunction } from "../../lib/supabase/functions";
 import { format } from "date-fns";
+import { Check, Copy, Plus } from "lucide-react";
 
 interface Provider {
   id: string;
@@ -15,6 +20,15 @@ interface Provider {
   regions_served: string[] | null;
   status: string;
   created_at: string;
+}
+
+type CreatedProviderCredentials = {
+  email: string;
+  temporaryPassword: string;
+};
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -35,18 +49,74 @@ export default function AdminProvidersPage2() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [creatingProvider, setCreatingProvider] = useState(false);
+  const [passwordCopied, setPasswordCopied] = useState(false);
+  const [createdCredentials, setCreatedCredentials] = useState<CreatedProviderCredentials | null>(null);
+  const [newProvider, setNewProvider] = useState({
+    companyName: "",
+    adminFirstName: "",
+    adminLastName: "",
+    adminEmail: "",
+  });
+
+  const fetchProviders = useCallback(async () => {
+    const { data } = await supabase
+      .from("providers")
+      .select("id, company_name, contact_email, contact_phone, regions_served, status, created_at")
+      .order("created_at", { ascending: false });
+    setProviders(data ?? []);
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    const fetch = async () => {
-      const { data } = await supabase
-        .from("providers")
-        .select("id, company_name, contact_email, contact_phone, regions_served, status, created_at")
-        .order("created_at", { ascending: false });
-      setProviders(data ?? []);
-      setLoading(false);
-    };
-    fetch();
-  }, []);
+    void fetchProviders();
+  }, [fetchProviders]);
+
+  const handleCreateProviderAccount = async () => {
+    const companyName = newProvider.companyName.trim();
+    const firstName = newProvider.adminFirstName.trim();
+    const lastName = newProvider.adminLastName.trim();
+    const email = normalizeEmail(newProvider.adminEmail);
+
+    if (!companyName || !firstName || !lastName || !email) {
+      toast({ title: "Missing details", description: "Company name and admin contact are required.", variant: "destructive" });
+      return;
+    }
+
+    setCreatingProvider(true);
+    try {
+      const response = await invokeEdgeFunction<{ providerId: string; userId: string; temporaryPassword: string }>(
+        "company-access-tools",
+        {
+          action: "create_provider_account",
+          provider: {
+            companyName,
+            contactEmail: email,
+            status: "approved",
+          },
+          member: {
+            firstName,
+            lastName,
+            email,
+            phone: undefined,
+            role: "admin",
+          },
+        },
+      );
+
+      setCreatedCredentials({ email, temporaryPassword: response.temporaryPassword });
+      setPasswordCopied(false);
+      setNewProvider({ companyName: "", adminFirstName: "", adminLastName: "", adminEmail: "" });
+      setCreateDialogOpen(false);
+      toast({ title: "Provider Created", description: `${companyName} can now sign in with the temporary password.` });
+      await fetchProviders();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Could not create provider account.", variant: "destructive" });
+    } finally {
+      setCreatingProvider(false);
+    }
+  };
 
   const updateStatus = async (id: string, status: string) => {
     setUpdating(id);
@@ -61,10 +131,72 @@ export default function AdminProvidersPage2() {
   };
 
   return (
-    <DashboardLayout navItems={adminNavItems} title="Providers">
-      <Card>
-        <CardHeader>
+    <>
+      <PageShell
+        title="Providers"
+        subtitle="Create provider companies and initial provider admin accounts"
+        badge="Admin"
+      >
+      <Card className="rounded-2xl bg-card/80 backdrop-blur-sm shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
           <CardTitle className="text-base">All Providers</CardTitle>
+          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="gap-2">
+                <Plus className="h-4 w-4" />
+                Create Provider Account
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create Provider Account</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="provider-company-name">Company Name</Label>
+                  <Input
+                    id="provider-company-name"
+                    value={newProvider.companyName}
+                    onChange={(e) => setNewProvider((prev) => ({ ...prev, companyName: e.target.value }))}
+                    placeholder="Apex Warranty"
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="provider-admin-first-name">Admin First Name</Label>
+                    <Input
+                      id="provider-admin-first-name"
+                      value={newProvider.adminFirstName}
+                      onChange={(e) => setNewProvider((prev) => ({ ...prev, adminFirstName: e.target.value }))}
+                      placeholder="Pat"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="provider-admin-last-name">Admin Last Name</Label>
+                    <Input
+                      id="provider-admin-last-name"
+                      value={newProvider.adminLastName}
+                      onChange={(e) => setNewProvider((prev) => ({ ...prev, adminLastName: e.target.value }))}
+                      placeholder="Provider"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="provider-admin-email">Admin Email</Label>
+                  <Input
+                    id="provider-admin-email"
+                    type="email"
+                    value={newProvider.adminEmail}
+                    onChange={(e) => setNewProvider((prev) => ({ ...prev, adminEmail: e.target.value }))}
+                    placeholder="admin@provider.com"
+                  />
+                </div>
+                <Button className="w-full" onClick={handleCreateProviderAccount} disabled={creatingProvider}>
+                  {creatingProvider ? "Creating..." : "Create Account"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -132,6 +264,50 @@ export default function AdminProvidersPage2() {
           )}
         </CardContent>
       </Card>
-    </DashboardLayout>
+      </PageShell>
+
+      <Dialog
+        open={Boolean(createdCredentials)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCreatedCredentials(null);
+            setPasswordCopied(false);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Temporary password created</DialogTitle>
+          </DialogHeader>
+          {createdCredentials && (
+            <div className="space-y-4">
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <div className="text-xs font-medium text-muted-foreground">Provider admin</div>
+                <div className="mt-1 text-sm font-medium">{createdCredentials.email}</div>
+              </div>
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <div className="text-xs font-medium text-muted-foreground">Temporary password</div>
+                <div className="mt-2 flex items-center gap-2">
+                  <Input readOnly value={createdCredentials.temporaryPassword} className="font-mono" />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(createdCredentials.temporaryPassword).then(() => {
+                        setPasswordCopied(true);
+                      });
+                    }}
+                  >
+                    {passwordCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    {passwordCopied ? "Copied" : "Copy password"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

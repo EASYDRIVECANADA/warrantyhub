@@ -14,6 +14,7 @@ import { useDealership } from "../../hooks/useDealership";
 import { supabase } from "../../integrations/supabase/client";
 import { getContractsV2Api } from "../../lib/contracts/contractsV2";
 import { BRAND } from "../../lib/brand";
+import { canSellDealerProduct, canSellDealerProductPricingRow } from "../../lib/dealerProductAccess";
 import { compareProductsByConfiguredOrder, type ProductOrderConfig } from "../../lib/products/defaultProductOrder";
 import { cn } from "../../lib/utils";
 import {
@@ -287,6 +288,12 @@ export default function NewContractPage() {
   // ── Load products ──────────────────────────────────────────────────────────
   useEffect(() => {
     (async () => {
+      if (!dealershipId) {
+        setProducts([]);
+        setProductsLoading(false);
+        return;
+      }
+
       const { data: prods } = await supabase
         .from("products")
         .select("id, name, product_type, provider_entity_id, pricing_json, eligibility_rules, coverage_details_json")
@@ -302,7 +309,25 @@ export default function NewContractPage() {
         (provs || []).forEach((p: any) => { providerMap[p.id] = p.company_name; });
       }
 
-      const mapped: ProductOption[] = prods.map((p: any) => ({
+      const productIds = prods.map((p: any) => p.id).filter(Boolean);
+      const accessMap: Record<string, any> = {};
+      if (productIds.length > 0) {
+        const { data: configs } = await supabase
+          .from("dealership_product_pricing")
+          .select("product_id, dealer_cost, retail_price, confidentiality_enabled, selling_enabled, sort_order")
+          .eq("dealership_id", dealershipId)
+          .in("product_id", productIds);
+        (configs || []).forEach((config: any) => {
+          accessMap[config.product_id] = {
+            ...config,
+            selling_enabled: Boolean(config.selling_enabled),
+            retail_price: config.retail_price ?? {},
+            dealer_cost: config.dealer_cost ?? {},
+          };
+        });
+      }
+
+      const mapped: ProductOption[] = prods.filter((p: any) => canSellDealerProduct(p.pricing_json, accessMap[p.id])).map((p: any) => ({
         ...p,
         providerName: providerMap[p.provider_entity_id] || "Provider",
         coverage_details_json: p.coverage_details_json ?? {},
@@ -314,7 +339,7 @@ export default function NewContractPage() {
       const preId = searchParams.get("productId");
       if (preId && mapped.find(p => p.id === preId)) setSelectedProductId(preId);
     })();
-  }, [searchParams]);
+  }, [dealershipId, searchParams]);
 
   useEffect(() => {
     if (!dealershipId) {
@@ -405,7 +430,7 @@ export default function NewContractPage() {
 
     supabase
       .from("dealership_product_pricing")
-      .select("dealer_cost, retail_price, confidentiality_enabled")
+      .select("dealer_cost, retail_price, confidentiality_enabled, selling_enabled")
       .eq("dealership_id", dealershipId)
       .eq("product_id", selectedProductId)
       .maybeSingle()
@@ -414,6 +439,7 @@ export default function NewContractPage() {
           dealer_cost: ((data as any).dealer_cost ?? {}) as Record<string, number>,
           retail_price: ((data as any).retail_price ?? {}) as Record<string, number>,
           confidentiality_enabled: Boolean((data as any).confidentiality_enabled),
+          selling_enabled: Boolean((data as any).selling_enabled),
         } : null);
       });
   }, [dealershipId, selectedProductId]);
@@ -542,6 +568,14 @@ export default function NewContractPage() {
           return false;
         }
         if (!chosenRow) { toast({ title: "Select a base quote option to continue", variant: "destructive" }); return false; }
+        if (!canSellDealerProductPricingRow(chosenRow, dealerPricingConfig)) {
+          toast({
+            title: "Product setup required",
+            description: "A dealership admin must enable this product and save retail pricing before it can be quoted.",
+            variant: "destructive",
+          });
+          return false;
+        }
         return true;
       case 3:
         if (!firstName.trim() || !lastName.trim()) { toast({ title: "First and last name are required", variant: "destructive" }); return false; }
@@ -561,6 +595,14 @@ export default function NewContractPage() {
   // ── Save & Print ───────────────────────────────────────────────────────────
   const handleSaveAndPrint = async () => {
     if (!dealershipId) return;
+    if (!canSellDealerProductPricingRow(chosenRow, dealerPricingConfig)) {
+      toast({
+        title: "Product setup required",
+        description: "A dealership admin must enable this product and save retail pricing before it can be contracted.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
     try {
       await contractsApi.create({
@@ -798,7 +840,7 @@ export default function NewContractPage() {
             {productsLoading ? (
               <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
             ) : products.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">No published products available. Ask your provider to publish products first.</p>
+              <p className="text-sm text-muted-foreground py-8 text-center">No products are enabled for quotes yet. Ask a dealership admin to configure product pricing first.</p>
             ) : (
               <div className="grid gap-3">
                 {orderedProducts.map(p => {

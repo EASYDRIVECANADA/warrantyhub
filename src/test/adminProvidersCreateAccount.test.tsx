@@ -1,0 +1,113 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import AdminProvidersPage2 from "../pages/admin/AdminProvidersPage2";
+import { invokeEdgeFunction } from "../lib/supabase/functions";
+
+const toast = vi.fn();
+
+vi.mock("../providers/AuthProvider", () => ({
+  useAuth: () => ({
+    user: {
+      id: "super-admin-1",
+      email: "admin@bridge.test",
+      role: "SUPER_ADMIN",
+    },
+    signOut: vi.fn(),
+  }),
+}));
+
+vi.mock("../hooks/use-toast", () => ({
+  useToast: () => ({ toast }),
+}));
+
+vi.mock("../lib/supabase/functions", () => ({
+  invokeEdgeFunction: vi.fn().mockResolvedValue({
+    providerId: "provider-created-1",
+    userId: "provider-admin-created-1",
+    temporaryPassword: "ProviderTemp123!",
+  }),
+}));
+
+const providerRows = [
+  {
+    id: "provider-1",
+    company_name: "Existing Provider",
+    contact_email: "contact@provider.test",
+    contact_phone: null,
+    regions_served: ["Ontario"],
+    status: "approved",
+    created_at: "2026-05-19T00:00:00.000Z",
+  },
+];
+
+function makeSupabaseChain() {
+  const chain: Record<string, unknown> = {};
+  chain.select = vi.fn(() => chain);
+  chain.order = vi.fn(() => Promise.resolve({ data: providerRows, error: null }));
+  chain.update = vi.fn(() => chain);
+  chain.eq = vi.fn(() => Promise.resolve({ error: null }));
+  return chain;
+}
+
+vi.mock("../integrations/supabase/client", () => ({
+  supabase: {
+    from: vi.fn(() => makeSupabaseChain()),
+  },
+}));
+
+describe("AdminProvidersPage2 provider account creation", () => {
+  beforeEach(() => {
+    toast.mockClear();
+    vi.mocked(invokeEdgeFunction).mockClear();
+  });
+
+  it("lets superadmin create a provider company and initial admin account", async () => {
+    const user = userEvent.setup();
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <AdminProvidersPage2 />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("Existing Provider");
+    expect(screen.getByText("Create provider companies and initial provider admin accounts")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /create provider account/i }));
+    await user.type(screen.getByLabelText(/company name/i), "Apex Warranty");
+    await user.type(screen.getByLabelText(/admin first name/i), "Pat");
+    await user.type(screen.getByLabelText(/admin last name/i), "Provider");
+    await user.type(screen.getByLabelText(/admin email/i), "Admin@Apex.test");
+    await user.click(screen.getByRole("button", { name: /^create account$/i }));
+
+    await waitFor(() => {
+      expect(invokeEdgeFunction).toHaveBeenCalledWith("company-access-tools", {
+        action: "create_provider_account",
+        provider: {
+          companyName: "Apex Warranty",
+          contactEmail: "admin@apex.test",
+          status: "approved",
+        },
+        member: {
+          firstName: "Pat",
+          lastName: "Provider",
+          email: "admin@apex.test",
+          phone: undefined,
+          role: "admin",
+        },
+      });
+    });
+    expect(screen.getByText("Temporary password created")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("ProviderTemp123!")).toBeInTheDocument();
+  });
+});

@@ -6,7 +6,7 @@ import { Badge } from "../../components/ui/badge";
 import { Input } from "../../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus, Search, Package, Edit, ToggleLeft, ToggleRight, Sparkles, Copy, Loader2 } from "lucide-react";
+import { Plus, Search, Package, Edit, ToggleLeft, ToggleRight, Copy, Loader2 } from "lucide-react";
 import { useToast } from "../../hooks/use-toast";
 import { useAuth } from "../../providers/AuthProvider";
 import { getProductsV2Api } from "../../lib/products/productsV2";
@@ -133,12 +133,6 @@ export default function ProviderProductsPage2() {
           </div>
           {canManageProducts && (
             <div className="flex gap-2">
-              <Button variant="outline" asChild>
-                <Link to="/provider/products/new?ai=true">
-                  <Sparkles className="w-4 h-4 mr-1" />
-                  AI Import
-                </Link>
-              </Button>
               <Button asChild>
                 <Link to="/provider/products/new">
                   <Plus className="w-4 h-4 mr-1" />

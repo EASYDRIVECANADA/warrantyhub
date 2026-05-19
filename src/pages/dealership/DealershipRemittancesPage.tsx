@@ -25,7 +25,9 @@ interface SoldContract {
 
 interface Remittance {
   id: string;
+  remittance_number?: string | null;
   amount: number;
+  amount_cents?: number | null;
   status: string;
   due_date: string;
   paid_date: string | null;
@@ -34,14 +36,28 @@ interface Remittance {
 }
 
 const statusColors: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
-  submitted: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-  approved: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-  rejected: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+  pending: "bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-200 dark:text-amber-950 dark:border-amber-400",
   paid: "bg-green-200 text-green-900 dark:bg-green-900/50 dark:text-green-300",
 };
 
-const TABS = ["all", "pending", "submitted", "approved", "paid"];
+const statusLabels: Record<string, string> = {
+  all: "All",
+  pending: "Pending",
+  paid: "Paid",
+};
+
+const TABS = ["all", "pending", "paid"];
+
+function remittanceAmount(r: Remittance): number {
+  return Number(r.amount ?? ((r.amount_cents ?? 0) / 100)) || 0;
+}
+
+function remittanceStatus(r: Remittance): string {
+  const status = (r.status || "").toLowerCase();
+  if (status === "due") return "pending";
+  if (status === "paid") return "paid";
+  return status || "pending";
+}
 
 export default function DealershipRemittancesPage() {
   const { dealershipId, loading: dLoading } = useDealership();
@@ -88,19 +104,24 @@ export default function DealershipRemittancesPage() {
 
   const filteredRemittances = useMemo(() => {
     if (tab === "all") return remittances;
-    return remittances.filter((r) => r.status === tab);
+    return remittances.filter((r) => remittanceStatus(r) === tab);
   }, [remittances, tab]);
 
   const handleSubmitRemittance = async () => {
     if (!dealershipId) return;
 
     const selectedContracts = soldContracts.filter((c) => selected.includes(c.id));
-    const inserts = selectedContracts.map((c) => ({
-      contract_id: c.id,
-      amount: Number(c.dealer_cost_dollars) || 0,
-      due_date: new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0],
-      status: "pending",
-    }));
+    const remittanceBatchNumber = `REM-${Date.now().toString(36).toUpperCase()}`;
+    const inserts = selectedContracts.map((c, index) => {
+      const providerCost = Number(c.dealer_cost_dollars) || 0;
+      return {
+        remittance_number: selectedContracts.length === 1 ? remittanceBatchNumber : `${remittanceBatchNumber}-${index + 1}`,
+        contract_id: c.id,
+        amount: providerCost,
+        amount_cents: Math.round(providerCost * 100),
+        due_date: new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0],
+      };
+    });
 
     const { error } = await supabase.from("remittances").insert(inserts);
     if (error) {
@@ -138,9 +159,14 @@ export default function DealershipRemittancesPage() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">Ready to Remit</CardTitle>
               {selected.length > 0 && (
-                <Button size="sm" onClick={handleSubmitRemittance}>
-                  <Send className="w-4 h-4 mr-1" />
-                  Submit {selected.length} — ${selectedTotal.toLocaleString()}
+                <Button size="sm" onClick={handleSubmitRemittance} className="h-auto min-h-10 py-2">
+                  <Send className="w-4 h-4 shrink-0" />
+                  <span className="flex flex-col items-start leading-tight">
+                    <span>Submit Remittance</span>
+                    <span className="text-xs font-normal opacity-90">
+                      {selected.length} contract{selected.length !== 1 ? "s" : ""} • Provider cost ${selectedTotal.toLocaleString()}
+                    </span>
+                  </span>
                 </Button>
               )}
             </div>
@@ -155,7 +181,7 @@ export default function DealershipRemittancesPage() {
                     <TableHead className="w-10" />
                     <TableHead>Customer</TableHead>
                     <TableHead>Contract Price</TableHead>
-                    <TableHead>Dealer Cost</TableHead>
+                    <TableHead>Provider Cost</TableHead>
                     <TableHead>Date</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -187,7 +213,7 @@ export default function DealershipRemittancesPage() {
                 <CardTitle className="text-base">Remittance History</CardTitle>
                 <TabsList>
                   {TABS.map((t) => (
-                    <TabsTrigger key={t} value={t} className="capitalize">{t}</TabsTrigger>
+                    <TabsTrigger key={t} value={t}>{statusLabels[t] ?? t}</TabsTrigger>
                   ))}
                 </TabsList>
               </div>
@@ -199,7 +225,7 @@ export default function DealershipRemittancesPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Amount</TableHead>
+                      <TableHead>Provider Cost</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Due Date</TableHead>
                       <TableHead>Paid Date</TableHead>
@@ -209,9 +235,11 @@ export default function DealershipRemittancesPage() {
                   <TableBody>
                     {filteredRemittances.map((r) => (
                       <TableRow key={r.id}>
-                        <TableCell className="font-medium">${r.amount.toLocaleString()}</TableCell>
+                        <TableCell className="font-medium">${remittanceAmount(r).toLocaleString()}</TableCell>
                         <TableCell>
-                          <Badge className={statusColors[r.status] || ""} variant="secondary">{r.status}</Badge>
+                          <Badge className={statusColors[remittanceStatus(r)] || ""} variant="secondary">
+                            {statusLabels[remittanceStatus(r)] ?? remittanceStatus(r)}
+                          </Badge>
                         </TableCell>
                         <TableCell className="text-sm">{format(new Date(r.due_date), "MMM d, yyyy")}</TableCell>
                         <TableCell className="text-sm">{r.paid_date ? format(new Date(r.paid_date), "MMM d, yyyy") : "—"}</TableCell>

@@ -11,6 +11,7 @@ import { supabase } from "../../../integrations/supabase/client";
 import { useDealership } from "../../../hooks/useDealership";
 import { useToast } from "../../../hooks/use-toast";
 import { useAuth } from "../../../providers/AuthProvider";
+import { hasConfiguredBaseRetail } from "../../../lib/dealerProductAccess";
 import {
   Settings2, DollarSign, Pencil, Check, X, ChevronRight, ChevronLeft,
   Search, Package, Zap, Building2, Shield, GripVertical, Sparkles, RotateCcw,
@@ -41,6 +42,7 @@ interface PricingConfig {
   dealer_cost?: Record<string, number>;
   retail_price: Record<string, number>;
   confidentiality_enabled: boolean;
+  selling_enabled: boolean;
   sort_order?: number | null;
 }
 
@@ -494,12 +496,19 @@ export default function ConfigurationPage() {
       if (dealershipId) {
         const { data: configs } = await supabase
           .from("dealership_product_pricing")
-          .select("product_id, dealer_cost, retail_price, confidentiality_enabled, sort_order")
+          .select("product_id, dealer_cost, retail_price, confidentiality_enabled, selling_enabled, sort_order")
           .eq("dealership_id", dealershipId);
 
         const configMap: Record<string, PricingConfig> = {};
         (configs || []).forEach((c: any) => {
-        configMap[c.product_id] = c;
+          configMap[c.product_id] = {
+            ...c,
+            retail_price: c.retail_price ?? {},
+            dealer_cost: c.dealer_cost ?? {},
+            confidentiality_enabled: Boolean(c.confidentiality_enabled),
+            selling_enabled: Boolean(c.selling_enabled),
+            sort_order: c.sort_order ?? null,
+          };
           if (c.confidentiality_enabled) setConfidentialityEnabled(true);
         });
         setPricingConfigs(configMap);
@@ -557,6 +566,12 @@ export default function ConfigurationPage() {
     return (pricingConfigs[selectedProductId]?.dealer_cost || {}) as Record<string, number>;
   }, [pricingConfigs, selectedProductId]);
 
+  const selectedPricingConfig = selectedProductId ? pricingConfigs[selectedProductId] : undefined;
+  const selectedProductSellingEnabled = Boolean(selectedPricingConfig?.selling_enabled);
+  const selectedProductHasBaseRetail = selectedProduct
+    ? hasConfiguredBaseRetail(selectedProduct.pricing, { retail_price: retailMap })
+    : false;
+
   const storageKey = (bandIdx: number | null, rowIdx: number, termIdx: number) =>
     cellKey(activeTier, bandIdx, rowIdx, termIdx);
 
@@ -564,10 +579,14 @@ export default function ConfigurationPage() {
   const persistRetail = async (productId: string, newRetail: Record<string, number>) => {
     if (!dealershipId) return;
     const existing = pricingConfigs[productId];
+    const product = products.find((p) => p.id === productId);
+    const nextSellingEnabled = Boolean(
+      existing?.selling_enabled && product && hasConfiguredBaseRetail(product.pricing, { retail_price: newRetail }),
+    );
     if (existing) {
       await supabase
         .from("dealership_product_pricing")
-        .update({ retail_price: newRetail, confidentiality_enabled: confidentialityEnabled })
+        .update({ retail_price: newRetail, confidentiality_enabled: confidentialityEnabled, selling_enabled: nextSellingEnabled })
         .eq("dealership_id", dealershipId)
         .eq("product_id", productId);
     } else {
@@ -576,6 +595,7 @@ export default function ConfigurationPage() {
         product_id: productId,
         retail_price: newRetail,
         confidentiality_enabled: confidentialityEnabled,
+        selling_enabled: false,
       });
     }
     setPricingConfigs((prev) => ({
@@ -585,9 +605,16 @@ export default function ConfigurationPage() {
         dealer_cost: existing?.dealer_cost ?? {},
         retail_price: newRetail,
         confidentiality_enabled: confidentialityEnabled,
+        selling_enabled: nextSellingEnabled,
         sort_order: existing?.sort_order ?? null,
       },
     }));
+    if (existing?.selling_enabled && !nextSellingEnabled) {
+      toast({
+        title: "Selling disabled",
+        description: "Add at least one base retail price before enabling this product again.",
+      });
+    }
   };
 
   const persistCost = async (productId: string, newCost: Record<string, number>) => {
@@ -596,7 +623,7 @@ export default function ConfigurationPage() {
     if (existing) {
       await supabase
         .from("dealership_product_pricing")
-        .update({ dealer_cost: newCost, retail_price: existing.retail_price ?? {}, confidentiality_enabled: confidentialityEnabled })
+        .update({ dealer_cost: newCost, retail_price: existing.retail_price ?? {}, confidentiality_enabled: confidentialityEnabled, selling_enabled: existing.selling_enabled ?? false })
         .eq("dealership_id", dealershipId)
         .eq("product_id", productId);
     } else {
@@ -606,6 +633,7 @@ export default function ConfigurationPage() {
         dealer_cost: newCost,
         retail_price: {},
         confidentiality_enabled: confidentialityEnabled,
+        selling_enabled: false,
       });
     }
     setPricingConfigs((prev) => ({
@@ -615,9 +643,68 @@ export default function ConfigurationPage() {
         dealer_cost: newCost,
         retail_price: existing?.retail_price ?? {},
         confidentiality_enabled: confidentialityEnabled,
+        selling_enabled: existing?.selling_enabled ?? false,
         sort_order: existing?.sort_order ?? null,
       },
     }));
+  };
+
+  const persistSellingEnabled = async (product: Product, enabled: boolean) => {
+    if (!dealershipId || !isAdmin) return;
+    const existing = pricingConfigs[product.id];
+    const retail = existing?.retail_price ?? {};
+
+    if (enabled && !hasConfiguredBaseRetail(product.pricing, { retail_price: retail })) {
+      toast({
+        title: "Add retail pricing first",
+        description: "Save at least one base customer retail price before enabling this product for quotes.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (existing) {
+      const { error } = await supabase
+        .from("dealership_product_pricing")
+        .update({
+          selling_enabled: enabled,
+          retail_price: retail,
+          confidentiality_enabled: existing.confidentiality_enabled ?? confidentialityEnabled,
+        })
+        .eq("dealership_id", dealershipId)
+        .eq("product_id", product.id);
+
+      if (error) {
+        toast({ title: "Could not update selling access", description: error.message, variant: "destructive" });
+        return;
+      }
+    } else {
+      const { error } = await supabase.from("dealership_product_pricing").insert({
+        dealership_id: dealershipId,
+        product_id: product.id,
+        retail_price: retail,
+        confidentiality_enabled: confidentialityEnabled,
+        selling_enabled: enabled,
+      });
+
+      if (error) {
+        toast({ title: "Could not update selling access", description: error.message, variant: "destructive" });
+        return;
+      }
+    }
+
+    setPricingConfigs((prev) => ({
+      ...prev,
+      [product.id]: {
+        product_id: product.id,
+        dealer_cost: existing?.dealer_cost ?? {},
+        retail_price: retail,
+        confidentiality_enabled: existing?.confidentiality_enabled ?? confidentialityEnabled,
+        selling_enabled: enabled,
+        sort_order: existing?.sort_order ?? null,
+      },
+    }));
+    toast({ title: enabled ? "Product enabled for quotes" : "Product disabled for quotes" });
   };
 
   const persistPlanOrder = async (orderedPlans: Product[]) => {
@@ -628,6 +715,7 @@ export default function ConfigurationPage() {
       product_id: product.id,
       retail_price: pricingConfigs[product.id]?.retail_price ?? {},
       confidentiality_enabled: confidentialityEnabled,
+      selling_enabled: pricingConfigs[product.id]?.selling_enabled ?? false,
       sort_order: index,
     }));
 
@@ -649,6 +737,7 @@ export default function ConfigurationPage() {
           dealer_cost: existing?.dealer_cost ?? {},
           retail_price: existing?.retail_price ?? {},
           confidentiality_enabled: existing?.confidentiality_enabled ?? confidentialityEnabled,
+          selling_enabled: existing?.selling_enabled ?? false,
           sort_order: index,
         };
       });
@@ -839,6 +928,7 @@ export default function ConfigurationPage() {
           product_id: product.id,
           retail_price: existing?.retail_price ?? {},
           confidentiality_enabled: enabled,
+          selling_enabled: existing?.selling_enabled ?? false,
           sort_order: existing?.sort_order ?? null,
         };
       });
@@ -858,6 +948,7 @@ export default function ConfigurationPage() {
           dealer_cost: existing?.dealer_cost ?? {},
           retail_price: existing?.retail_price ?? {},
           confidentiality_enabled: enabled,
+          selling_enabled: existing?.selling_enabled ?? false,
           sort_order: existing?.sort_order ?? null,
         };
       });
@@ -1270,7 +1361,7 @@ export default function ConfigurationPage() {
                 {/* Plan header */}
                 <Card>
                   <CardContent className="py-5 px-6">
-                    <div className="flex items-start gap-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
                       <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                         <DollarSign className="w-6 h-6 text-primary" />
                       </div>
@@ -1292,8 +1383,28 @@ export default function ConfigurationPage() {
                           <Badge variant="outline" className="font-normal">
                             {structured.tiers.length} tier{structured.tiers.length !== 1 ? "s" : ""}
                           </Badge>
+                          <Badge
+                            variant={selectedProductSellingEnabled ? "default" : "secondary"}
+                            className={selectedProductSellingEnabled ? "bg-green-600 text-white" : ""}
+                          >
+                            {selectedProductSellingEnabled ? "Selling enabled" : "Setup required"}
+                          </Badge>
                         </div>
                       </div>
+                      {isAdmin && (
+                        <div className="ml-auto flex min-w-[260px] items-center justify-between gap-3 rounded-xl border bg-muted/30 px-4 py-3">
+                          <div>
+                            <p className="text-sm font-semibold">Enable for quotes</p>
+                            <p className="text-xs text-muted-foreground">Requires saved base retail.</p>
+                          </div>
+                          <Switch
+                            aria-label="Enable product for quotes"
+                            checked={selectedProductSellingEnabled}
+                            disabled={!selectedProductHasBaseRetail && !selectedProductSellingEnabled}
+                            onCheckedChange={(enabled) => persistSellingEnabled(selectedProduct, enabled)}
+                          />
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

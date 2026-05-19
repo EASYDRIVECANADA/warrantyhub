@@ -45,6 +45,7 @@ let pricingRows: Array<{
   product_id: string;
   retail_price: Record<string, number>;
   confidentiality_enabled: boolean;
+  selling_enabled: boolean;
   sort_order: number | null;
 }> = [];
 
@@ -88,6 +89,7 @@ describe("FindProductsPage customer retail visibility", () => {
         product_id: "product-1",
         retail_price: { "t0|m-|r0|term0": 999 },
         confidentiality_enabled: false,
+        selling_enabled: true,
         sort_order: null,
       },
     ];
@@ -114,6 +116,7 @@ describe("FindProductsPage customer retail visibility", () => {
         product_id: "product-1",
         retail_price: { "t0|m-|r0|term0": 999 },
         confidentiality_enabled: true,
+        selling_enabled: true,
         sort_order: null,
       },
     ];
@@ -129,5 +132,19 @@ describe("FindProductsPage customer retail visibility", () => {
     expect(screen.getByText("Retail price")).toBeInTheDocument();
     expect(screen.queryByText("$889")).not.toBeInTheDocument();
     expect(screen.queryByText("$189")).not.toBeInTheDocument();
+  });
+
+  it("shows published products that need dealer setup without a quote action", async () => {
+    pricingRows = [];
+
+    render(
+      <MemoryRouter>
+        <FindProductsPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Customer Hidden Warranty")).toBeInTheDocument();
+    expect(screen.getByText("Setup required")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Quote$/i })).not.toBeInTheDocument();
   });
 });

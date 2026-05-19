@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import DashboardLayout, { providerNavItems } from "../../components/dashboard/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
@@ -15,7 +15,7 @@ import { useAuth } from "../../providers/AuthProvider";
 import { getProductsV2Api } from "../../lib/products/productsV2";
 import type { ProductV2, CoverageCategory, PricingRow, Benefit, TermsSection } from "../../lib/products/typesV2";
 import {
-  Save, ArrowLeft, Plus, Trash2, Sparkles, Eye,
+  Save, ArrowLeft, Plus, Trash2, Eye,
   FileText, Shield, DollarSign, Award, Scale, Loader2, Globe, EyeOff,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -166,18 +166,14 @@ function formToDbFields(form: ProductForm) {
 
 export default function ProviderProductEditorPage() {
   const { id } = useParams();
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
   const api = useMemo(() => getProductsV2Api(), []);
   const isNew = !id || id === "new";
-  const showAI = searchParams.get("ai") === "true";
 
   const [form, setForm] = useState<ProductForm>(emptyForm);
-  const [activeTab, setActiveTab] = useState(showAI ? "ai" : "overview");
-  const [aiText, setAiText] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState("overview");
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState(false);
@@ -225,57 +221,6 @@ export default function ProviderProductEditorPage() {
   const addTermsSection = () => updateForm({ termsSections: [...form.termsSections, { title: "", content: "" }] });
   const removeTermsSection = (i: number) => updateForm({ termsSections: form.termsSections.filter((_, idx) => idx !== i) });
   const updateTermsSection = (i: number, u: Partial<TermsSection>) => { const s = [...form.termsSections]; s[i] = { ...s[i], ...u }; updateForm({ termsSections: s }); };
-
-  // AI extract
-  const handleAIExtract = async () => {
-    if (!aiText.trim()) return;
-    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
-      toast({
-        title: "Supabase Not Configured",
-        description: "AI import requires the Supabase project URL and anon key.",
-        variant: "destructive",
-      });
-      return;
-    }
-    setAiLoading(true);
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-plan-data`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({ text: aiText }),
-        }
-      );
-      if (!response.ok) { const err = await response.json().catch(() => ({})); throw new Error(err.error || "AI extraction failed"); }
-      const data = await response.json();
-      if (data.product) {
-        const p = data.product;
-        updateForm({
-          name: p.name || form.name, type: p.type || form.type, description: p.description || form.description,
-          group: p.group || form.group, maxAge: p.maxAge || form.maxAge, maxMileage: p.maxMileage || form.maxMileage,
-          deductible: p.deductible || form.deductible, perClaim: p.perClaim || form.perClaim,
-          coverageCategories: p.coverageCategories?.length ? p.coverageCategories : form.coverageCategories,
-          pricingRows: p.pricingRows?.length ? p.pricingRows : form.pricingRows,
-          benefits: p.benefits?.length ? p.benefits : form.benefits,
-          termsSections: p.termsSections?.length ? p.termsSections : form.termsSections,
-          exclusions: p.exclusions || form.exclusions, waitingPeriod: p.waitingPeriod || form.waitingPeriod,
-          coverageTerritory: p.coverageTerritory || form.coverageTerritory, importantNotes: p.importantNotes || form.importantNotes,
-        });
-        toast({ title: "AI Extraction Complete", description: "Plan data populated. Review and adjust." });
-        setActiveTab("overview");
-      }
-    } catch (err: any) {
-      const message = err.message === "LOVABLE_API_KEY is not configured"
-        ? "Lovable is not connected on the Supabase function. Add LOVABLE_API_KEY as a Supabase Edge Function secret."
-        : err.message;
-      toast({ title: "AI Error", description: message, variant: "destructive" });
-    } finally { setAiLoading(false); }
-  };
 
   // Save to DB
   const handleSave = async (publishOnSave?: boolean) => {
@@ -337,7 +282,6 @@ export default function ProviderProductEditorPage() {
     { value: "pricing", label: "Pricing Tiers", icon: DollarSign },
     { value: "benefits", label: "Benefits", icon: Award },
     { value: "terms", label: "Terms", icon: Scale },
-    { value: "ai", label: "AI", icon: Sparkles },
     { value: "preview", label: "Preview", icon: Eye },
   ];
 
@@ -418,30 +362,6 @@ export default function ProviderProductEditorPage() {
             ))}
           </TabsList>
 
-          {/* AI */}
-          <TabsContent value="ai">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Sparkles className="w-5 h-5 text-primary" /> AI-Powered Plan Import</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Paste your plan document or brochure text. The Supabase function will use Lovable AI to extract details and auto-fill the form.
-                </p>
-                <Textarea value={aiText} onChange={(e) => setAiText(e.target.value)} placeholder="Paste your plan document text here..." className="min-h-[300px] font-mono text-sm" />
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-xs text-muted-foreground">{aiText.length} characters</p>
-                  <Button onClick={handleAIExtract} disabled={aiLoading || !aiText.trim()}>
-                    <Sparkles className="w-4 h-4 mr-1" /> {aiLoading ? "Extracting..." : "Extract & Auto-Fill"}
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Lovable API keys stay server-side. Configure `LOVABLE_API_KEY` as a Supabase Edge Function secret.
-                </p>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
           {/* Overview */}
           <TabsContent value="overview">
             <Card>
@@ -455,7 +375,7 @@ export default function ProviderProductEditorPage() {
                   <div>
                     <Label>Product Type *</Label>
                     <Select value={form.type} onValueChange={(v) => updateForm({ type: v })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger><SelectValue labels={TYPE_LABELS} /></SelectTrigger>
                       <SelectContent>
                         {Object.entries(TYPE_LABELS).map(([val, label]) => (
                           <SelectItem key={val} value={val}>{label}</SelectItem>

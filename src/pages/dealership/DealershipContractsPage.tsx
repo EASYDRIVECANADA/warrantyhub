@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { supabase } from "../../integrations/supabase/client";
 import { useDealership } from "../../hooks/useDealership";
 import { useAuth } from "../../providers/AuthProvider";
-import { Search, Plus, Eye } from "lucide-react";
+import { Search, Plus, Eye, Send } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 
@@ -35,6 +35,14 @@ const statusColors: Record<string, string> = {
   active: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
   expired: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
   cancelled: "bg-destructive/10 text-destructive",
+};
+
+const statusLabels: Record<string, string> = {
+  draft: "Draft",
+  submitted: "Submitted",
+  active: "Active",
+  expired: "Expired",
+  cancelled: "Cancelled",
 };
 
 const TABS = ["all", "draft", "submitted", "active", "expired", "cancelled"];
@@ -171,7 +179,9 @@ export default function DealershipContractsPage() {
                         <TableCell className="text-sm">{products[c.product_id] || "—"}</TableCell>
                         <TableCell>${Number(c.contract_price || 0).toLocaleString()}</TableCell>
                         <TableCell>
-                          <Badge className={statusColors[resolveStatus(c)] || ""} variant="secondary">{resolveStatus(c)}</Badge>
+                          <Badge className={statusColors[resolveStatus(c)] || ""} variant="secondary">
+                            {statusLabels[resolveStatus(c)] ?? resolveStatus(c)}
+                          </Badge>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {format(new Date(c.created_at), "MMM d, yyyy")}
@@ -182,7 +192,12 @@ export default function DealershipContractsPage() {
                               <Eye className="w-3.5 h-3.5 mr-1" /> View
                             </Button>
                             {resolveStatus(c) === "draft" && (
-                              <Button size="sm" variant="outline" onClick={() => handleStatusChange(c.id, "submitted")}>Submit</Button>
+                              <Button size="sm" onClick={() => handleStatusChange(c.id, "submitted")}>Submit</Button>
+                            )}
+                            {resolveStatus(c) === "submitted" && (
+                              <Button size="sm" variant="outline" onClick={() => navigate("/dealership/remittances")}>
+                                <Send className="w-3.5 h-3.5 mr-1" /> Remit
+                              </Button>
                             )}
                             {(resolveStatus(c) === "draft" || resolveStatus(c) === "submitted") && (
                               <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleStatusChange(c.id, "cancelled")}>Cancel</Button>

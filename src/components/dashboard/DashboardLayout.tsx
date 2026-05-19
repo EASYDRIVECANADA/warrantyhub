@@ -262,6 +262,7 @@ export const platformAdminNavItems: NavItem[] = [
   { label: "Platform Dashboard", href: "/platform", icon: LayoutDashboard },
   { label: "Access Requests", href: "/admin-access-requests", icon: Users },
   { label: "Companies", href: "/admin-companies", icon: Package },
+  { label: "Providers", href: "/admin/providers", icon: Shield },
   { label: "Dealerships", href: "/admin-dealerships", icon: Building2 },
   { label: "Platform Users", href: "/admin-users", icon: UserCircle },
   { label: "Audit Logs", href: "/audit-logs", icon: FileText },

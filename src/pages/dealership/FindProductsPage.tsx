@@ -9,6 +9,7 @@ import { Search, RotateCcw, Car, Shield, Check, Loader2, AlertCircle, LayoutGrid
 import { supabase } from "../../integrations/supabase/client";
 import { useDealership } from "../../hooks/useDealership";
 import { cn } from "../../lib/utils";
+import { canSellDealerProduct } from "../../lib/dealerProductAccess";
 import { buildBasePricingRows, resolveCustomerRetailNumber, resolveDealerCostNumber } from "../../lib/pricing/dealerPricing";
 import { compareProductsByConfiguredOrder } from "../../lib/products/defaultProductOrder";
 import { PRODUCT_TYPE_FILTERS, matchesProductTypeFilter } from "../../lib/products/productTypeFilters";
@@ -110,7 +111,7 @@ export default function FindProductsPage() {
   const [loading, setLoading] = useState(true);
   const [selectedProvider, setSelectedProvider] = useState("all");
   const [selectedType, setSelectedType] = useState(PRODUCT_TYPE_FILTERS[0].value);
-  const [dealerPricing, setDealerPricing] = useState<Record<string, { retail_price: Record<string, number>; confidentiality_enabled: boolean; sort_order?: number | null }>>({});
+  const [dealerPricing, setDealerPricing] = useState<Record<string, { retail_price: Record<string, number>; confidentiality_enabled: boolean; selling_enabled: boolean; sort_order?: number | null }>>({});
 
   // ── load products (real data) ──────────────────────────────────────────
   useEffect(() => {
@@ -183,10 +184,10 @@ export default function FindProductsPage() {
     (async () => {
       const { data } = await supabase
         .from("dealership_product_pricing")
-        .select("product_id, retail_price, confidentiality_enabled, sort_order")
+        .select("product_id, retail_price, confidentiality_enabled, selling_enabled, sort_order")
         .eq("dealership_id", dealershipId);
-      const map: Record<string, { retail_price: Record<string, number>; confidentiality_enabled: boolean; sort_order?: number | null }> = {};
-      (data || []).forEach((r: any) => { map[r.product_id] = r; });
+      const map: Record<string, { retail_price: Record<string, number>; confidentiality_enabled: boolean; selling_enabled: boolean; sort_order?: number | null }> = {};
+      (data || []).forEach((r: any) => { map[r.product_id] = { ...r, selling_enabled: Boolean(r.selling_enabled) }; });
       setDealerPricing(map);
     })();
   }, [dealershipId]);
@@ -558,6 +559,7 @@ export default function FindProductsPage() {
             <div className="grid sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
               {filteredProducts.map((product) => {
                 const config = dealerPricing[product.id];
+                const canQuote = canSellDealerProduct(product.pricing_json, config);
                 const baseRows = buildBasePricingRows(product.pricing_json);
                 const showCustomerRetail = Boolean(config?.confidentiality_enabled);
                 const visiblePrices = showCustomerRetail
@@ -598,6 +600,10 @@ export default function FindProductsPage() {
                         {tierChips.length > 0 ? (
                           <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20">
                             {tierChips.length} Tier{tierChips.length !== 1 ? "s" : ""}
+                          </span>
+                        ) : !canQuote ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                            Setup required
                           </span>
                         ) : isTireRim ? (
                           <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-200">
@@ -670,8 +676,13 @@ export default function FindProductsPage() {
 
                       {/* $0 Premium Fees */}
                       <div className="flex">
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                          $0 Premium Fees
+                        <span className={cn(
+                          "px-2.5 py-0.5 rounded-full text-[10px] font-semibold border",
+                          canQuote
+                            ? "bg-amber-50 text-amber-700 border-amber-200"
+                            : "bg-slate-100 text-slate-600 border-slate-200",
+                        )}>
+                          {canQuote ? "$0 Premium Fees" : "Setup required"}
                         </span>
                       </div>
 
@@ -683,13 +694,24 @@ export default function FindProductsPage() {
                         >
                           View Details →
                         </button>
-                        <button
-                          onClick={() => navigate(`/dealership/contracts/new?productId=${product.id}`)}
-                          className="flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold rounded-xl border border-slate-300 text-slate-600 hover:border-primary/40 hover:text-primary bg-white transition-colors"
-                        >
-                          <FileText className="w-3.5 h-3.5" />
-                          Quote
-                        </button>
+                        {canQuote ? (
+                          <button
+                            onClick={() => navigate(`/dealership/contracts/new?productId=${product.id}`)}
+                            className="flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold rounded-xl border border-slate-300 text-slate-600 hover:border-primary/40 hover:text-primary bg-white transition-colors"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            Quote
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled
+                            className="flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold rounded-xl border border-slate-200 text-slate-400 bg-slate-50"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            Locked
+                          </button>
+                        )}
                       </div>
 
                     </div>

@@ -113,6 +113,7 @@ export function AppRouter() {
           <Route path="platform" element={<SuperAdminPlatformPage />} />
           <Route path="admin-access-requests" element={<AdminAccessRequestsPage />} />
           <Route path="admin-companies" element={<SuperAdminCompaniesPage />} />
+          <Route path="admin/providers" element={<AdminProvidersPage2 />} />
           <Route path="admin-dealerships" element={<AdminDealershipsPage />} />
           <Route path="admin-users" element={<AdminUsersPage />} />
           <Route path="audit-logs" element={<AuditLogsPage />} />
@@ -187,14 +188,6 @@ export function AppRouter() {
         element={
           <ProtectedRouteV2 allowedRoles={["super_admin"]}>
             <AdminDealershipsPage />
-          </ProtectedRouteV2>
-        }
-      />
-      <Route
-        path="/admin/providers"
-        element={
-          <ProtectedRouteV2 allowedRoles={["super_admin"]}>
-            <AdminProvidersPage2 />
           </ProtectedRouteV2>
         }
       />

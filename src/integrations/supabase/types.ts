@@ -266,6 +266,7 @@ export type Database = {
           dealer_cost: Json
           retail_price: Json
           confidentiality_enabled: boolean
+          selling_enabled: boolean
           created_at: string
           updated_at: string
         }
@@ -276,6 +277,7 @@ export type Database = {
           dealer_cost?: Json
           retail_price?: Json
           confidentiality_enabled?: boolean
+          selling_enabled?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -286,6 +288,7 @@ export type Database = {
           dealer_cost?: Json
           retail_price?: Json
           confidentiality_enabled?: boolean
+          selling_enabled?: boolean
           created_at?: string
           updated_at?: string
         }

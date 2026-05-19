@@ -5,6 +5,7 @@ export type DealershipProductPricing = {
   dealerCost: Record<string, unknown>;
   retailPrice: Record<string, unknown>;
   confidentialityEnabled: boolean;
+  sellingEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -14,4 +15,5 @@ export type UpsertDealershipPricingInput = {
   productId: string;
   retailPrice: Record<string, unknown>;
   confidentialityEnabled?: boolean;
+  sellingEnabled?: boolean;
 };

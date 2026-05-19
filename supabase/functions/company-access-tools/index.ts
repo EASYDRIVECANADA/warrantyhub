@@ -45,6 +45,7 @@ type CompanyType = "dealership" | "provider";
 type Action =
   | "approve_access_request"
   | "reject_access_request"
+  | "create_provider_account"
   | "create_company_member"
   | "update_company_member_role"
   | "generate_temporary_password"
@@ -474,6 +475,66 @@ async function getCompanyName(svc: ReturnType<typeof getServiceSupabaseClient>, 
   return name;
 }
 
+async function createProviderAccount(svc: ReturnType<typeof getServiceSupabaseClient>, body: any) {
+  const provider = body?.provider ?? {};
+  const member = body?.member ?? {};
+  const companyName = safeTrim(provider.companyName);
+  const contactEmail = normalizeEmail(provider.contactEmail) || normalizeEmail(member.email) || null;
+  const status = safeTrim(provider.status) || "approved";
+  if (!companyName) throw new HttpError(400, "provider.companyName is required");
+
+  const { userId, temporaryPassword } = await createOrUpdateAuthUser(
+    svc,
+    { ...member, role: "admin" },
+    "provider",
+    companyName,
+    "admin",
+  );
+
+  const regionsServed = Array.isArray(provider.regionsServed)
+    ? provider.regionsServed.map((region: unknown) => safeTrim(region)).filter(Boolean)
+    : [];
+
+  const existing = await svc.from("providers").select("id").eq("company_name", companyName).maybeSingle();
+  if (existing.error) throw new Error(existing.error.message);
+
+  let providerId = safeTrim((existing.data as any)?.id);
+  const providerRow = {
+    company_name: companyName,
+    contact_email: contactEmail,
+    contact_phone: safeTrim(provider.contactPhone) || null,
+    address: safeTrim(provider.address) || null,
+    status,
+    regions_served: regionsServed,
+    legacy_profile_id: userId,
+  } as any;
+
+  if (providerId) {
+    const updated = await svc.from("providers").update(providerRow).eq("id", providerId);
+    if (updated.error) throw new Error(updated.error.message);
+  } else {
+    const created = await svc.from("providers").insert(providerRow).select("id").single();
+    if (created.error) throw new Error(created.error.message);
+    providerId = safeTrim((created.data as any)?.id);
+  }
+
+  if (!providerId) throw new Error("Failed to create provider");
+
+  const upsert = await svc
+    .from("provider_members")
+    .upsert({ provider_id: providerId, user_id: userId, role: "admin" } as any, { onConflict: "user_id,provider_id" })
+    .select("id")
+    .single();
+  if (upsert.error) throw new Error(upsert.error.message);
+
+  return {
+    providerId,
+    providerMemberId: (upsert.data as any)?.id ?? null,
+    userId,
+    temporaryPassword,
+  };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json(405, { error: "Method not allowed" });
@@ -566,6 +627,12 @@ Deno.serve(async (req: Request) => {
         actorUserId,
       });
 
+      return json(200, { ok: true, ...result });
+    }
+
+    if (action === "create_provider_account") {
+      const { svc } = await assertSuperAdmin(jwt);
+      const result = await createProviderAccount(svc, body);
       return json(200, { ok: true, ...result });
     }
 

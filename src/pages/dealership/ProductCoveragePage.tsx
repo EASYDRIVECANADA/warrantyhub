@@ -11,6 +11,7 @@ import {
 import { supabase } from "../../integrations/supabase/client";
 import { useDealership } from "../../hooks/useDealership";
 import { cn } from "../../lib/utils";
+import { canSellDealerProduct } from "../../lib/dealerProductAccess";
 import {
   buildAddOnPricingRows as buildSharedAddOnPricingRows,
   buildBasePricingRows,
@@ -240,6 +241,7 @@ export default function ProductCoveragePage() {
   const [expandedCategories, setExpandedCategories] = useState<Set<number>>(new Set());
   const [customPricing, setCustomPricing] = useState<Record<string, number>>({});
   const [confidentialityEnabled, setConfidentialityEnabled] = useState(false);
+  const [sellingEnabled, setSellingEnabled] = useState(false);
   const [selectedTier, setSelectedTier] = useState<string | null>(null);
   const [selectedBaseKey, setSelectedBaseKey] = useState<string>("");
   const [selectedAddOns, setSelectedAddOns] = useState<Set<string>>(new Set());
@@ -276,12 +278,13 @@ export default function ProductCoveragePage() {
     (async () => {
       const { data } = await supabase
         .from("dealership_product_pricing")
-        .select("retail_price, confidentiality_enabled")
+        .select("retail_price, confidentiality_enabled, selling_enabled")
         .eq("dealership_id", dealershipId)
         .eq("product_id", id)
         .maybeSingle();
       if (data?.retail_price) setCustomPricing(data.retail_price as Record<string, number>);
       if (data?.confidentiality_enabled) setConfidentialityEnabled(true);
+      setSellingEnabled(Boolean(data?.selling_enabled));
     })();
   }, [dealershipId, id]);
 
@@ -324,6 +327,11 @@ export default function ProductCoveragePage() {
   const cd = (product.coverage_details_json ?? {}) as any;
   const pr = (product.pricing_json ?? {}) as any;
   const er = (product.eligibility_rules ?? {}) as any;
+  const canQuoteProduct = canSellDealerProduct(product.pricing_json, {
+    retail_price: customPricing,
+    confidentiality_enabled: confidentialityEnabled,
+    selling_enabled: sellingEnabled,
+  });
 
   const categories: CoverageCategory[] = (cd.categories || []).map((c: any) => ({
     name: c.name || "",
@@ -381,15 +389,17 @@ export default function ProductCoveragePage() {
     ...includedAddOnRows,
     ...explicitlySelectedAddOnRows.filter((row) => !includedAddOnRows.some((included) => included.name === row.name)),
   ];
-  const selectedBaseRetail = selectedBaseRow ? getDisplayPrice(selectedBaseRow) : 0;
-  const selectedAddOnRetail = selectedAddOnRows.reduce((sum, row) => sum + numericPrice(getAddOnDisplayPrice(row)), 0);
+  const selectedBaseRetail = selectedBaseRow && canQuoteProduct ? getDisplayPrice(selectedBaseRow) : 0;
+  const selectedAddOnRetail = canQuoteProduct
+    ? selectedAddOnRows.reduce((sum, row) => sum + numericPrice(getAddOnDisplayPrice(row)), 0)
+    : 0;
   const selectedQuoteTotal = selectedBaseRetail + selectedAddOnRetail;
 
-  const allRetails = pricingRows.map(r => getDisplayPrice(r)).filter(Boolean);
+  const allRetails = canQuoteProduct ? pricingRows.map(r => getDisplayPrice(r)).filter(Boolean) : [];
   const minRetail = allRetails.length ? Math.min(...allRetails) : null;
   const maxRetail = allRetails.length ? Math.max(...allRetails) : null;
 
-  const tierRetails = tierRows.map(r => getDisplayPrice(r)).filter(Boolean);
+  const tierRetails = canQuoteProduct ? tierRows.map(r => getDisplayPrice(r)).filter(Boolean) : [];
   const tierMinRetail = tierRetails.length ? Math.min(...tierRetails) : minRetail;
   const tierMaxRetail = tierRetails.length ? Math.max(...tierRetails) : maxRetail;
 
@@ -516,9 +526,10 @@ export default function ProductCoveragePage() {
               <Button
                 size="lg"
                 className="mt-4 bg-accent text-[#0f1b3d] hover:bg-accent/90 font-semibold"
+                disabled={!canQuoteProduct}
                 onClick={() => navigate(quoteUrl())}
               >
-                Get a Quote →
+                {canQuoteProduct ? "Get a Quote →" : "Setup required"}
               </Button>
 
               {/* Coverage includes bullets */}
@@ -627,8 +638,12 @@ export default function ProductCoveragePage() {
                           <Badge variant="secondary" className="text-xs">{row.term || "Term option"}</Badge>
                           <DollarSign className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
                         </div>
-                        <p className="font-display font-bold text-2xl text-foreground">${getDisplayPrice(row).toLocaleString()}</p>
-                        <p className="text-xs text-muted-foreground">Customer price</p>
+                        <p className="font-display font-bold text-2xl text-foreground">
+                          {canQuoteProduct ? `$${getDisplayPrice(row).toLocaleString()}` : "Setup required"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {canQuoteProduct ? "Customer price" : "Dealer admin setup"}
+                        </p>
                         <div className="border-t mt-3 pt-3 space-y-1.5">
                           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                             <Shield className="h-3 w-3" />{tierLabel}
@@ -845,15 +860,19 @@ export default function ProductCoveragePage() {
                               {row ? (
                                 <button
                                   type="button"
-                                  onClick={() => selectBaseRow(row)}
+                                  disabled={!canQuoteProduct}
+                                  onClick={() => {
+                                    if (canQuoteProduct) selectBaseRow(row);
+                                  }}
                                   className={cn(
                                     "w-full rounded-lg border px-3 py-2 text-right font-semibold transition-all",
                                     isSelected
                                       ? "border-primary bg-primary/10 text-primary ring-1 ring-primary"
-                                      : "border-transparent text-primary hover:border-primary/40 hover:bg-muted/30"
+                                      : "border-transparent text-primary hover:border-primary/40 hover:bg-muted/30",
+                                    !canQuoteProduct && "cursor-not-allowed text-muted-foreground hover:border-transparent hover:bg-transparent"
                                   )}
                                 >
-                                  ${getDisplayPrice(row).toLocaleString()}
+                                  {canQuoteProduct ? `$${getDisplayPrice(row).toLocaleString()}` : "Setup required"}
                                 </button>
                               ) : (
                                 <span className="text-muted-foreground/50">—</span>
@@ -875,7 +894,7 @@ export default function ProductCoveragePage() {
                       <td className="px-4 py-3 font-medium">{row.term}</td>
                       <td className="px-4 py-3 text-muted-foreground">{row.vehicleClass || "—"}</td>
                       <td className="px-4 py-3 text-right text-primary font-semibold">
-                        ${getDisplayPrice(row).toLocaleString()}
+                        {canQuoteProduct ? `$${getDisplayPrice(row).toLocaleString()}` : "Setup required"}
                       </td>
                     </tr>
                   ))}
@@ -963,7 +982,9 @@ export default function ProductCoveragePage() {
                 </div>
                 <div className="text-left md:text-right">
                   <p className="text-xs text-muted-foreground">Customer price</p>
-                  <p className="text-xl font-bold text-primary">{selectedQuoteTotal > 0 ? `$${selectedQuoteTotal.toLocaleString()}` : "-"}</p>
+                  <p className="text-xl font-bold text-primary">
+                    {canQuoteProduct ? (selectedQuoteTotal > 0 ? `$${selectedQuoteTotal.toLocaleString()}` : "-") : "Setup required"}
+                  </p>
                 </div>
               </div>
               {selectedAddOnRows.length > 0 && (
@@ -1060,8 +1081,8 @@ export default function ProductCoveragePage() {
           <Button variant="outline" onClick={() => navigate("/dealership/find-products")}>
             <ArrowLeft className="mr-1 h-4 w-4" /> Back to Products
           </Button>
-          <Button className="bg-accent text-[#0f1b3d] hover:bg-accent/90 font-semibold" onClick={() => navigate(quoteUrl())}>
-            Get a Quote →
+          <Button className="bg-accent text-[#0f1b3d] hover:bg-accent/90 font-semibold" disabled={!canQuoteProduct} onClick={() => navigate(quoteUrl())}>
+            {canQuoteProduct ? "Get a Quote →" : "Setup required"}
           </Button>
         </div>
       </div>
