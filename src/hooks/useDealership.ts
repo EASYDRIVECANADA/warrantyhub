@@ -18,13 +18,29 @@ export function useDealership(): UseDealershipResult {
   const [loading, setLoading] = useState(true);
 
   const resolve = useCallback(async () => {
-    if (!user) { setLoading(false); return; }
+    setLoading(true);
+    if (!user) {
+      setDealershipId(null);
+      setDealershipName(null);
+      setMemberRole(null);
+      setLoading(false);
+      return;
+    }
+
+    if (user.role !== "DEALER_ADMIN" && user.role !== "DEALER_EMPLOYEE" && user.role !== "SUPER_ADMIN") {
+      setDealershipId(null);
+      setDealershipName(null);
+      setMemberRole(null);
+      setLoading(false);
+      return;
+    }
 
     // Try new dealership_members first
     const { data: member } = await supabase
       .from("dealership_members")
       .select("dealership_id, role")
       .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
@@ -42,6 +58,8 @@ export function useDealership(): UseDealershipResult {
       .from("dealer_members")
       .select("dealer_id, role")
       .eq("user_id", user.id)
+      .eq("status", "ACTIVE")
+      .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
@@ -80,6 +98,9 @@ export function useDealership(): UseDealershipResult {
     }
 
     setLoading(false);
+    setDealershipId(null);
+    setDealershipName(null);
+    setMemberRole(null);
   }, [user]);
 
   useEffect(() => { resolve(); }, [resolve]);

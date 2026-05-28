@@ -99,7 +99,12 @@ describe("dealership settings team creation", () => {
     legacyMembers = [];
     profilesById = [];
     mockedMemberRole = "admin";
-    vi.mocked(invokeEdgeFunction).mockClear();
+    vi.mocked(invokeEdgeFunction).mockReset();
+    vi.mocked(invokeEdgeFunction).mockResolvedValue({
+      dealerMemberId: "member-1",
+      userId: "employee-1",
+      temporaryPassword: "TempPass123!",
+    });
   });
 
   it("creates a brand-new employee instead of requiring an existing account", async () => {
@@ -181,7 +186,7 @@ describe("dealership settings team creation", () => {
     expect(screen.getByDisplayValue(fallbackPassword!)).toBeInTheDocument();
   });
 
-  it("links the created auth user to the current dealership for older deployed functions", async () => {
+  it("does not rely on browser RLS to link a newly created auth user", async () => {
     vi.mocked(invokeEdgeFunction).mockResolvedValueOnce({
       dealerMemberId: "legacy-member-1",
       userId: "employee-legacy-1",
@@ -207,16 +212,8 @@ describe("dealership settings team creation", () => {
     await user.type(screen.getByPlaceholderText("John Doe"), "Elaide Lossantos");
     await user.click(screen.getByRole("button", { name: /create employee/i }));
 
-    await waitFor(() => {
-      expect(dealershipMembersUpsert).toHaveBeenCalledWith(
-        {
-          dealership_id: "dealership-1",
-          user_id: "employee-legacy-1",
-          role: "employee",
-        },
-        { onConflict: "user_id,dealership_id" },
-      );
-    });
+    await waitFor(() => expect(screen.getByDisplayValue(/./)).toBeInTheDocument());
+    expect(dealershipMembersUpsert).not.toHaveBeenCalled();
   });
 
   it("still shows the temporary password when browser membership linking is blocked", async () => {
@@ -292,6 +289,90 @@ describe("dealership settings team creation", () => {
     expect(screen.getAllByText(/employee/i).length).toBeGreaterThan(0);
   });
 
+  it("uses dealer-team-tools list_members to fill profile details hidden by browser RLS", async () => {
+    dealershipById = { legacy_dealer_id: "dealer-1" };
+    legacyMembers = [
+      {
+        id: "legacy-member-admin",
+        user_id: "panda-admin-1",
+        role: "DEALER_ADMIN",
+        created_at: "2026-03-12T00:00:00.000Z",
+      },
+      {
+        id: "legacy-member-employee",
+        user_id: "employee-legacy-1",
+        role: "DEALER_EMPLOYEE",
+        created_at: "2026-05-28T00:00:00.000Z",
+      },
+    ];
+    profilesById = [
+      {
+        id: "employee-legacy-1",
+        email: "dlsantos_elai@yahoo.com",
+        display_name: "",
+        first_name: null,
+        last_name: null,
+        phone: null,
+      },
+    ];
+    vi.mocked(invokeEdgeFunction).mockImplementation(async (_functionName, payload: any) => {
+      if (payload?.action !== "list_members") {
+        return {
+          dealerMemberId: "member-1",
+          userId: "employee-1",
+          temporaryPassword: "TempPass123!",
+        };
+      }
+
+      return {
+        members: [
+        {
+          id: "legacy:legacy-member-admin",
+          user_id: "panda-admin-1",
+          role: "admin",
+          created_at: "2026-03-12T00:00:00.000Z",
+          source: "legacy",
+          profile: {
+            name: "pandaautosales@bridgewarranty.test",
+            email: "pandaautosales@bridgewarranty.test",
+            phone: null,
+          },
+        },
+        {
+          id: "legacy:legacy-member-employee",
+          user_id: "employee-legacy-1",
+          role: "employee",
+          created_at: "2026-05-28T00:00:00.000Z",
+          source: "legacy",
+          profile: {
+            name: "dlsantos_elai@yahoo.com",
+            email: "dlsantos_elai@yahoo.com",
+            phone: null,
+          },
+        },
+        ],
+      };
+    });
+
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <TeamManagementPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect((await screen.findAllByText("pandaautosales@bridgewarranty.test")).length).toBeGreaterThan(0);
+    expect(screen.queryByText("No email on profile")).not.toBeInTheDocument();
+    expect(invokeEdgeFunction).toHaveBeenCalledWith("dealer-team-tools", { action: "list_members" });
+  });
+
   it("updates legacy dealer member roles without using the prefixed row id as a uuid", async () => {
     dealershipById = { legacy_dealer_id: "dealer-1" };
     legacyMembers = [
@@ -334,9 +415,10 @@ describe("dealership settings team creation", () => {
     await user.click(screen.getByRole("option", { name: /^admin$/i }));
 
     await waitFor(() => {
-      expect(invokeEdgeFunction).toHaveBeenCalledWith("dealer-team-tools", {
+      expect(invokeEdgeFunction).toHaveBeenCalledWith("dealer-team-tools", expect.objectContaining({
         action: "update_employee",
         dealerMemberId: "50ae05bf-5ed0-4202-beb9-782f1b437648",
+        userId: "employee-legacy-1",
         employee: {
           firstName: "Elaide",
           lastName: "Lossantos",
@@ -344,7 +426,7 @@ describe("dealership settings team creation", () => {
           email: "elaidelossantos05@gmail.com",
           role: "DEALER_ADMIN",
         },
-      });
+      }));
     });
     expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Role Updated" }));
   });
@@ -646,8 +728,9 @@ describe("dealership settings team creation", () => {
   });
 
   it("links an existing profile when the account was already created without a dealership membership", async () => {
-    existingProfileByEmail = { id: "employee-existing-1" };
-    vi.mocked(invokeEdgeFunction).mockRejectedValueOnce(new Error("An account with this email already exists."));
+    vi.mocked(invokeEdgeFunction)
+      .mockRejectedValueOnce(new Error("An account with this email already exists."))
+      .mockResolvedValueOnce({ ok: true, userId: "employee-existing-1" });
 
     const user = userEvent.setup();
     const client = new QueryClient({
@@ -670,15 +753,13 @@ describe("dealership settings team creation", () => {
     await user.click(screen.getByRole("button", { name: /create employee/i }));
 
     await waitFor(() => {
-      expect(dealershipMembersUpsert).toHaveBeenCalledWith(
-        {
-          dealership_id: "dealership-1",
-          user_id: "employee-existing-1",
-          role: "employee",
-        },
-        { onConflict: "user_id,dealership_id" },
-      );
+      expect(invokeEdgeFunction).toHaveBeenCalledWith("dealer-team-tools", {
+        action: "link_existing_member",
+        email: "elaidelossantos05@gmail.com",
+        role: "DEALER_EMPLOYEE",
+      });
     });
+    expect(dealershipMembersUpsert).not.toHaveBeenCalled();
     expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Member Linked" }));
   });
 });

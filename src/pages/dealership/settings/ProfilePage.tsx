@@ -13,7 +13,7 @@ import { User, Lock, Building2 } from "lucide-react";
 export default function DealershipProfilePage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { dealershipId, reloadDealership } = useDealership();
+  const { dealershipId, memberRole, reloadDealership } = useDealership();
   const [profile, setProfile] = useState({ full_name: "", phone: "" });
   const [dealershipInfo, setDealershipInfo] = useState({ name: "", phone: "", address: "", province: "", license_number: "" });
   const [passwords, setPasswords] = useState({ new: "", confirm: "" });
@@ -21,6 +21,7 @@ export default function DealershipProfilePage() {
   const [saving, setSaving] = useState(false);
   const [savingDealership, setSavingDealership] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
+  const isAdmin = memberRole === "admin";
 
   const fetchDealershipInfo = useCallback(async () => {
     if (!dealershipId) return;
@@ -177,7 +178,7 @@ export default function DealershipProfilePage() {
           </CardContent>
         </Card>
 
-        {dealershipId && (
+        {dealershipId && isAdmin && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">

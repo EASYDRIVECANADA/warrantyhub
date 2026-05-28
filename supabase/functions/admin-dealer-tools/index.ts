@@ -116,6 +116,19 @@ function v2UserRole(role: string) {
   return role === "DEALER_ADMIN" ? "dealership_admin" : "dealership_employee";
 }
 
+async function syncUserDealershipRole(
+  svc: ReturnType<typeof getServiceSupabaseClient>,
+  userId: string,
+  role: string,
+) {
+  const nextRole = v2UserRole(role);
+  const previousRole = nextRole === "dealership_admin" ? "dealership_employee" : "dealership_admin";
+  const userRole = await svc.from("user_roles").upsert({ user_id: userId, role: nextRole } as any, { onConflict: "user_id,role" });
+  if (userRole.error) throw new Error(userRole.error.message);
+  const oldRoleDelete = await svc.from("user_roles").delete().eq("user_id", userId).eq("role", previousRole);
+  if (oldRoleDelete.error) throw new Error(oldRoleDelete.error.message);
+}
+
 const TEMP_PASSWORD_UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const TEMP_PASSWORD_LOWER = "abcdefghijkmnopqrstuvwxyz";
 const TEMP_PASSWORD_DIGITS = "23456789";
@@ -169,6 +182,34 @@ async function findAuthUserIdByEmail(svc: ReturnType<typeof getServiceSupabaseCl
     if (users.length < pageSize) break;
   }
   return null;
+}
+
+async function ensureDealershipBridge(
+  svc: ReturnType<typeof getServiceSupabaseClient>,
+  dealerId: string,
+  dealerName?: string,
+) {
+  const existing = await svc.from("dealerships").select("id").eq("legacy_dealer_id", dealerId).maybeSingle();
+  if (existing.error) throw new Error(existing.error.message);
+
+  const existingId = safeTrim((existing.data as any)?.id);
+  if (existingId) return existingId;
+
+  const insert = await svc
+    .from("dealerships")
+    .upsert(
+      {
+        name: safeTrim(dealerName) || "Dealership",
+        legacy_dealer_id: dealerId,
+        status: "approved",
+      } as any,
+      { onConflict: "legacy_dealer_id" },
+    )
+    .select("id")
+    .single();
+  if (insert.error) throw new Error(insert.error.message);
+
+  return safeTrim((insert.data as any)?.id);
 }
 
 async function assertSuperAdmin(jwt: string) {
@@ -366,9 +407,13 @@ Deno.serve(async (req: Request) => {
       if (!dealerRow.data) return json(404, { error: "Dealer not found" });
       const dealerName = safeTrim((dealerRow.data as any).name) || undefined;
 
-      const dealershipRow = await svc.from("dealerships").select("id").eq("legacy_dealer_id", dealerId).maybeSingle();
-      if (dealershipRow.error) return json(500, { error: dealershipRow.error.message });
-      const dealershipId = safeTrim((dealershipRow.data as any)?.id);
+      let dealershipId = "";
+      try {
+        dealershipId = await ensureDealershipBridge(svc, dealerId, dealerName);
+      } catch (e) {
+        const err = e instanceof Error ? e : new Error(String(e));
+        return json(500, { error: err.message });
+      }
 
       const profile = await svc.from("profiles").select("id, email, role").eq("email", email).limit(1);
       if (profile.error) return json(500, { error: profile.error.message });
@@ -445,24 +490,24 @@ Deno.serve(async (req: Request) => {
         dealerMemberId = ((insert.data as any[])?.[0]?.id ?? null) as string | null;
       }
 
-      if (dealershipId) {
-        const dealershipMember = await svc
-          .from("dealership_members")
-          .upsert(
-            {
-              dealership_id: dealershipId,
-              user_id: userId,
-              role: v2DealershipRole(role),
-            } as any,
-            { onConflict: "user_id,dealership_id" },
-          );
-        if (dealershipMember.error) return json(400, { error: dealershipMember.error.message });
-      }
+      const dealershipMember = await svc
+        .from("dealership_members")
+        .upsert(
+          {
+            dealership_id: dealershipId,
+            user_id: userId,
+            role: v2DealershipRole(role),
+          } as any,
+          { onConflict: "user_id,dealership_id" },
+        );
+      if (dealershipMember.error) return json(400, { error: dealershipMember.error.message });
 
-      const userRole = await svc
-        .from("user_roles")
-        .upsert({ user_id: userId, role: v2UserRole(role) } as any, { onConflict: "user_id,role" });
-      if (userRole.error) return json(400, { error: userRole.error.message });
+      try {
+        await syncUserDealershipRole(svc, userId, role);
+      } catch (e) {
+        const err = e instanceof Error ? e : new Error(String(e));
+        return json(400, { error: err.message });
+      }
 
       return json(200, { dealerMemberId, userId, temporaryPassword });
     }
@@ -550,11 +595,17 @@ Deno.serve(async (req: Request) => {
           .eq("id", userId);
         if (profUpd.error) return json(500, { error: profUpd.error.message });
 
-        const dealershipRow = dealerId
-          ? await svc.from("dealerships").select("id").eq("legacy_dealer_id", dealerId).maybeSingle()
-          : null;
-        if (dealershipRow?.error) return json(500, { error: dealershipRow.error.message });
-        const dealershipId = safeTrim((dealershipRow?.data as any)?.id);
+        const dealerRow = dealerId ? await svc.from("dealers").select("name").eq("id", dealerId).maybeSingle() : null;
+        if (dealerRow?.error) return json(500, { error: dealerRow.error.message });
+        let dealershipId = "";
+        if (dealerId) {
+          try {
+            dealershipId = await ensureDealershipBridge(svc, dealerId, safeTrim((dealerRow?.data as any)?.name));
+          } catch (e) {
+            const err = e instanceof Error ? e : new Error(String(e));
+            return json(500, { error: err.message });
+          }
+        }
         if (dealershipId && role) {
           const dealershipMember = await svc
             .from("dealership_members")
@@ -570,12 +621,12 @@ Deno.serve(async (req: Request) => {
         }
 
         if (role) {
-          const nextRole = v2UserRole(role);
-          const previousRole = nextRole === "dealership_admin" ? "dealership_employee" : "dealership_admin";
-          const userRole = await svc.from("user_roles").upsert({ user_id: userId, role: nextRole } as any, { onConflict: "user_id,role" });
-          if (userRole.error) return json(400, { error: userRole.error.message });
-          const oldRoleDelete = await svc.from("user_roles").delete().eq("user_id", userId).eq("role", previousRole);
-          if (oldRoleDelete.error) return json(400, { error: oldRoleDelete.error.message });
+          try {
+            await syncUserDealershipRole(svc, userId, role);
+          } catch (e) {
+            const err = e instanceof Error ? e : new Error(String(e));
+            return json(400, { error: err.message });
+          }
         }
       }
 

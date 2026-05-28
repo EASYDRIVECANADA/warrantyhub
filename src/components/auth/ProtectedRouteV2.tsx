@@ -1,5 +1,6 @@
 import { Navigate } from "react-router-dom";
 
+import { useDealership } from "../../hooks/useDealership";
 import type { Role } from "../../lib/auth/types";
 import { useAuth } from "../../providers/AuthProvider";
 
@@ -12,8 +13,24 @@ const ROLE_MAP: Record<string, AppRoleCompat[]> = {
   provider: ["PROVIDER", "provider"],
 };
 
-function matchesRole(userRole: string, allowedRoles: string[]): boolean {
+function matchesRole(userRole: string, allowedRoles: string[], memberRole?: "admin" | "employee" | null): boolean {
   if (userRole === "SUPER_ADMIN") return true;
+  const isDealershipRouteCheck = allowedRoles.some((role) => role === "dealership_admin" || role === "dealership_employee");
+  const effectiveDealershipRole =
+    memberRole === "admin"
+      ? "dealership_admin"
+      : memberRole === "employee"
+        ? "dealership_employee"
+        : null;
+
+  if (isDealershipRouteCheck && effectiveDealershipRole) {
+    return allowedRoles.includes(effectiveDealershipRole);
+  }
+
+  if (isDealershipRouteCheck && allowedRoles.length === 1 && allowedRoles[0] === "dealership_admin") {
+    return false;
+  }
+
   for (const allowed of allowedRoles) {
     if (userRole === allowed) return true;
     const mapped = ROLE_MAP[allowed];
@@ -41,6 +58,10 @@ export function ProtectedRouteV2({
   children: React.ReactNode;
 }) {
   const { user, isLoading } = useAuth();
+  const { memberRole, loading: dealershipLoading } = useDealership();
+  const isDealershipRouteCheck = Boolean(
+    allowedRoles?.some((role) => role === "dealership_admin" || role === "dealership_employee"),
+  );
 
   if (isLoading && !user) {
     return (
@@ -52,7 +73,15 @@ export function ProtectedRouteV2({
 
   if (!user) return <Navigate to="/sign-in" replace />;
 
-  if (allowedRoles && !matchesRole(user.role, allowedRoles)) {
+  if (isDealershipRouteCheck && dealershipLoading && user.role !== "SUPER_ADMIN") {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  if (allowedRoles && !matchesRole(user.role, allowedRoles, memberRole)) {
     return <Navigate to={roleToDashboardPath(user.role)} replace />;
   }
 

@@ -11,4 +11,18 @@ describe("admin dealer tools source", () => {
     expect(adminDealerTools).toContain("svc.auth.admin.updateUserById(targetUserId");
     expect(adminDealerTools).toContain("temporaryPassword");
   });
+
+  it("ensures legacy dealers have V2 dealership bridges before linking team members", () => {
+    expect(adminDealerTools).toContain("async function ensureDealershipBridge");
+    expect(adminDealerTools).toContain(".from(\"dealerships\")");
+    expect(adminDealerTools).toContain("legacy_dealer_id: dealerId");
+    expect(adminDealerTools).toContain("{ onConflict: \"legacy_dealer_id\" }");
+    expect(adminDealerTools).toContain("dealershipId = await ensureDealershipBridge");
+  });
+
+  it("keeps dealership admin and staff roles mutually exclusive when admin changes team access", () => {
+    expect(adminDealerTools).toContain("async function syncUserDealershipRole");
+    expect(adminDealerTools).toContain("const previousRole = nextRole === \"dealership_admin\" ? \"dealership_employee\" : \"dealership_admin\"");
+    expect(adminDealerTools).toContain("await syncUserDealershipRole(svc, userId, role)");
+  });
 });

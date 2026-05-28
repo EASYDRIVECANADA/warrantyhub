@@ -18,6 +18,7 @@ import {
   UserCircle,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { useDealership } from "../../hooks/useDealership";
 import { Button } from "../ui/button";
 import { SupportWidget } from "../SupportWidget";
 
@@ -37,13 +38,28 @@ interface DashboardLayoutProps {
 
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, title }) => {
   const { user, signOut } = useAuth();
+  const { memberRole } = useDealership();
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const effectiveDealerRole =
+    memberRole === "admin"
+      ? "dealership_admin"
+      : memberRole === "employee"
+        ? "dealership_employee"
+        : user?.role === "DEALER_ADMIN"
+          ? "dealership_admin"
+          : user?.role === "DEALER_EMPLOYEE"
+            ? "dealership_employee"
+            : null;
   const roleMatches = (allowedRoles?: string[]) => {
     if (!allowedRoles?.length) return true;
     const role = user?.role ?? "";
     if (role === "SUPER_ADMIN") return true;
+    const dealerOnlyRoles = allowedRoles.filter((allowed) => allowed === "dealership_admin" || allowed === "dealership_employee");
+    if (dealerOnlyRoles.length > 0 && effectiveDealerRole) {
+      return allowedRoles.includes(effectiveDealerRole);
+    }
     const aliases: Record<string, string[]> = {
       dealership_admin: ["DEALER_ADMIN", "dealership_admin"],
       dealership_employee: ["DEALER_EMPLOYEE", "dealership_employee"],
@@ -78,10 +94,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, t
 
   const roleLabel = (() => {
     const role = user?.role ?? "";
+    const dealershipRoleLabel =
+      memberRole === "admin" || (!memberRole && role === "DEALER_ADMIN") ? "Dealer Admin" : "Dealer Staff";
     switch (role) {
       case "DEALER_ADMIN":
       case "DEALER_EMPLOYEE":
-        return "Dealer Portal";
+        return dealershipRoleLabel;
       case "PROVIDER":
         return "Provider Portal";
       case "SUPER_ADMIN":
@@ -90,6 +108,13 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, t
       default:
         return "Dashboard";
     }
+  })();
+
+  const userRoleLabel = (() => {
+    if (user?.role === "DEALER_ADMIN" || user?.role === "DEALER_EMPLOYEE") {
+      return memberRole === "admin" || (!memberRole && user.role === "DEALER_ADMIN") ? "Dealer Admin" : "Dealer Staff";
+    }
+    return (user?.role ?? "").replace(/_/g, " ").toLowerCase();
   })();
 
   const handleSignOut = async () => {
@@ -209,7 +234,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, t
                   {user?.email || "User"}
                 </p>
                 <p className="text-xs text-muted-foreground capitalize">
-                  {(user?.role ?? "").replace(/_/g, " ").toLowerCase()}
+                  {userRoleLabel}
                 </p>
               </div>
             </div>
@@ -279,10 +304,10 @@ export const dealershipNavItems: NavItem[] = [
     label: "Settings",
     href: "#",
     icon: Settings,
-    allowedRoles: ["dealership_admin"],
+    allowedRoles: ["dealership_admin", "dealership_employee"],
     children: [
-      { label: "Configuration", href: "/dealership/settings/configuration", icon: Settings },
-      { label: "Team", href: "/dealership/settings/team", icon: Users },
+      { label: "Configuration", href: "/dealership/settings/configuration", icon: Settings, allowedRoles: ["dealership_admin"] },
+      { label: "Team", href: "/dealership/settings/team", icon: Users, allowedRoles: ["dealership_admin", "dealership_employee"] },
     ],
   },
 ];

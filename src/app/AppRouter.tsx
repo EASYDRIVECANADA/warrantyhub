@@ -382,7 +382,7 @@ export function AppRouter() {
       <Route
         path="/dealership/settings/team"
         element={
-          <ProtectedRouteV2 allowedRoles={["dealership_admin"]}>
+          <ProtectedRouteV2 allowedRoles={["dealership_admin", "dealership_employee"]}>
             <DealershipTeamManagementPage />
           </ProtectedRouteV2>
         }

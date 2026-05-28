@@ -42,6 +42,10 @@ type GenerateTemporaryPasswordResponse = {
   temporaryPassword: string;
 };
 
+type ListTeamMembersResponse = {
+  members: TeamMember[];
+};
+
 function splitFullName(fullName: string) {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
   const firstName = parts.shift() ?? "";
@@ -85,7 +89,7 @@ export default function TeamManagementPage() {
   const enrichMembers = useCallback(async (rows: TeamMember[]) => {
     if (rows.length === 0) {
       setMembers([]);
-      return;
+      return [];
     }
 
     const userIds = rows.map((m) => m.user_id).filter(Boolean);
@@ -97,7 +101,7 @@ export default function TeamManagementPage() {
     const profileMap: Record<string, any> = {};
     (profiles || []).forEach((p: any) => { profileMap[p.id] = p; });
 
-    setMembers(rows.map((m) => ({
+    const enriched = rows.map((m) => ({
       ...m,
       profile: {
         name:
@@ -108,11 +112,17 @@ export default function TeamManagementPage() {
         email: profileMap[m.user_id]?.email ?? null,
         phone: profileMap[m.user_id]?.phone ?? null,
       },
-    })));
+    }));
+    setMembers(enriched);
+    return enriched;
   }, []);
 
   const fetchMembers = useCallback(async () => {
-    if (!dealershipId) return;
+    if (!dealershipId) {
+      setMembers([]);
+      setLoading(false);
+      return;
+    }
 
     const { data: dealershipRows } = await supabase
       .from("dealership_members")
@@ -156,12 +166,31 @@ export default function TeamManagementPage() {
       });
     }
 
-    await enrichMembers(rows);
+    const enrichedRows = await enrichMembers(rows);
+    if (enrichedRows.some((m) => !m.profile?.email)) {
+      try {
+        const response = await invokeEdgeFunction<ListTeamMembersResponse>("dealer-team-tools", {
+          action: "list_members",
+        });
+        if (Array.isArray(response.members)) {
+          setMembers(response.members);
+        }
+      } catch (err: any) {
+        const message = err instanceof Error ? err.message : String(err ?? "");
+        if (!message.toLowerCase().includes("unsupported action")) {
+          console.warn("Could not load service-enriched team members", err);
+        }
+      }
+    }
     setLoading(false);
   }, [dealershipId, enrichMembers]);
 
   useEffect(() => {
-    if (!dealershipId) return;
+    if (!dealershipId) {
+      setMembers([]);
+      setLoading(false);
+      return;
+    }
 
     if (!user) {
       setLoading(false);
@@ -183,22 +212,6 @@ export default function TeamManagementPage() {
 
       const role = newMember.role === "admin" ? "DEALER_ADMIN" : "DEALER_EMPLOYEE";
       const fallbackTemporaryPassword = generateTemporaryPassword();
-      const linkDealershipMembership = async (userId: string) => {
-        const dealershipRole = role === "DEALER_ADMIN" ? "admin" : "employee";
-        const { error: membershipError } = await supabase
-          .from("dealership_members")
-          .upsert(
-            {
-              dealership_id: dealershipId,
-              user_id: userId,
-              role: dealershipRole,
-            },
-            { onConflict: "user_id,dealership_id" },
-          );
-        if (membershipError) {
-          console.warn("Could not create dealership_members compatibility link", membershipError);
-        }
-      };
 
       let response: CreateEmployeeResponse;
       try {
@@ -217,16 +230,11 @@ export default function TeamManagementPage() {
         const message = err instanceof Error ? err.message : String(err ?? "");
         if (!message.toLowerCase().includes("already exists")) throw err;
 
-        const { data: existingProfile, error: profileError } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("email", email)
-          .maybeSingle();
-        if (profileError) throw profileError;
-        const existingUserId = (existingProfile as any)?.id;
-        if (!existingUserId) throw err;
-
-        await linkDealershipMembership(existingUserId);
+        await invokeEdgeFunction<{ ok: true; userId: string }>("dealer-team-tools", {
+          action: "link_existing_member",
+          email,
+          role,
+        });
         toast({ title: "Member Linked", description: `${email} has been linked to this dealership.` });
         setDialogOpen(false);
         setNewMember({ email: "", full_name: "", phone: "", role: "employee" });
@@ -264,7 +272,6 @@ export default function TeamManagementPage() {
         };
 
         appendPendingMember();
-        await linkDealershipMembership(response.userId);
         await fetchMembers();
         appendPendingMember();
       } else {
@@ -280,42 +287,25 @@ export default function TeamManagementPage() {
   const handleRoleChange = async (member: TeamMember, newRole: string) => {
     if (!dealershipId) return;
     try {
-      if (member.source === "legacy" && member.id.startsWith("legacy:")) {
-        const dealerMemberId = member.id.replace(/^legacy:/, "");
-        const email = member.profile?.email;
-        if (!email) throw new Error("Member email is required to update role.");
+      const dealerMemberId = member.source === "legacy" && member.id.startsWith("legacy:") ? member.id.replace(/^legacy:/, "") : undefined;
+      const dealershipMemberId = member.source === "dealership" && !member.id.startsWith("pending:") ? member.id : undefined;
+      const email = member.profile?.email;
+      if (!email) throw new Error("Member email is required to update role.");
 
-        const { firstName, lastName } = getEditableNameParts(member.profile?.name, email);
-        await invokeEdgeFunction<{ ok: true }>("dealer-team-tools", {
-          action: "update_employee",
-          dealerMemberId,
-          employee: {
-            firstName,
-            lastName,
-            phone: member.profile?.phone || undefined,
-            email,
-            role: newRole === "admin" ? "DEALER_ADMIN" : "DEALER_EMPLOYEE",
-          },
-        });
-      } else {
-        const { error } = await supabase
-          .from("dealership_members")
-          .update({ role: newRole })
-          .eq("id", member.id);
-
-        if (error) throw error;
-      }
-
-      // Also update user_roles
-      const v2Role = newRole === "admin" ? "dealership_admin" : "dealership_employee";
-      const oldRole = newRole === "admin" ? "dealership_employee" : "dealership_admin";
-
-      // Remove old role, add new role
-      await supabase.from("user_roles").delete().eq("user_id", member.user_id).eq("role", oldRole);
-      await supabase.from("user_roles").upsert({ user_id: member.user_id, role: v2Role }, { onConflict: "user_id,role" });
-
-      // Update profile role
-      await supabase.from("profiles").update({ role: newRole === "admin" ? "DEALER_ADMIN" : "DEALER_EMPLOYEE" }).eq("id", member.user_id);
+      const { firstName, lastName } = getEditableNameParts(member.profile?.name, email);
+      await invokeEdgeFunction<{ ok: true }>("dealer-team-tools", {
+        action: "update_employee",
+        dealerMemberId,
+        dealershipMemberId,
+        userId: member.user_id,
+        employee: {
+          firstName,
+          lastName,
+          phone: member.profile?.phone || undefined,
+          email,
+          role: newRole === "admin" ? "DEALER_ADMIN" : "DEALER_EMPLOYEE",
+        },
+      });
 
       setMembers((prev) => prev.map((m) => (m.id === member.id ? { ...m, role: newRole } : m)));
       toast({ title: "Role Updated", description: `Member role changed to ${newRole}.` });
