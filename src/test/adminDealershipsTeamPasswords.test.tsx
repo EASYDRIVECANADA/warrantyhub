@@ -100,6 +100,42 @@ describe("AdminDealershipsPage dealer team passwords", () => {
     vi.mocked(invokeEdgeFunction).mockReset();
   });
 
+  it("lets super admins manually create a dealership with an initial admin", async () => {
+    vi.mocked(invokeEdgeFunction).mockResolvedValue({
+      dealerId: "dealer-created-1",
+      dealershipId: "dealership-created-1",
+      adminUserId: "admin-created-1",
+      temporaryPassword: "DealerAdminTemp123!",
+    });
+    const user = userEvent.setup();
+
+    renderPage();
+
+    await screen.findByText("Bridge Test Dealer");
+    await user.click(screen.getByRole("button", { name: /new dealership/i }));
+    await user.type(screen.getByLabelText(/dealership name/i), "North Star Auto");
+    await user.type(screen.getByLabelText(/admin email/i), "Owner@NorthStar.test");
+    await user.clear(screen.getByLabelText(/markup percentage/i));
+    await user.type(screen.getByLabelText(/markup percentage/i), "7");
+    await user.clear(screen.getByLabelText(/contract fee/i));
+    await user.type(screen.getByLabelText(/contract fee/i), "49.99");
+    await user.click(screen.getByRole("button", { name: /^create dealership$/i }));
+
+    await waitFor(() => {
+      expect(invokeEdgeFunction).toHaveBeenCalledWith("admin-dealer-tools", {
+        action: "create_dealer",
+        dealer: {
+          name: "North Star Auto",
+          adminEmail: "Owner@NorthStar.test",
+          markupPct: 7,
+          contractFeeCents: 4999,
+        },
+      });
+    });
+    expect(await screen.findByText("Temporary password created")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("DealerAdminTemp123!")).toBeInTheDocument();
+  });
+
   it("shows the generated temporary password after adding a dealer member", async () => {
     vi.mocked(invokeEdgeFunction).mockResolvedValue({
       dealerMemberId: "member-created-1",

@@ -25,4 +25,15 @@ describe("admin dealer tools source", () => {
     expect(adminDealerTools).toContain("const previousRole = nextRole === \"dealership_admin\" ? \"dealership_employee\" : \"dealership_admin\"");
     expect(adminDealerTools).toContain("await syncUserDealershipRole(svc, userId, role)");
   });
+
+  it("lets super admins manually create dealerships and optional admin users", () => {
+    expect(adminDealerTools).toContain('"create_dealer"');
+    expect(adminDealerTools).toContain('if (action === "create_dealer")');
+    expect(adminDealerTools).toContain("const createdDealer = await svc");
+    expect(adminDealerTools).toContain(".from(\"dealers\")");
+    expect(adminDealerTools).toContain(".from(\"dealerships\")");
+    expect(adminDealerTools).toContain("adminEmail");
+    expect(adminDealerTools).toContain("temporaryPassword");
+    expect(adminDealerTools).toContain("syncUserDealershipRole(svc, adminUserId");
+  });
 });

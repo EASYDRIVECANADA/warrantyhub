@@ -42,6 +42,13 @@ type AddDealerMemberResponse = {
   temporaryPassword?: string | null;
 };
 
+type CreateDealerResponse = {
+  dealerId: string;
+  dealershipId: string;
+  adminUserId?: string | null;
+  temporaryPassword?: string | null;
+};
+
 type GenerateTemporaryPasswordResponse = {
   temporaryPassword: string;
 };
@@ -55,6 +62,14 @@ function moneyCentsToDollarsString(cents: number | null) {
   const v = typeof cents === "number" && Number.isFinite(cents) ? cents : 0;
   const dollars = v / 100;
   return dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function dollarsStringToCents(raw: string) {
+  const cleaned = raw.trim();
+  if (!cleaned) return null;
+  const dollars = Number(cleaned);
+  if (!Number.isFinite(dollars) || dollars < 0) return null;
+  return Math.round(dollars * 100);
 }
 
 function statusBadgeClass(status: string) {
@@ -75,6 +90,12 @@ export function AdminDealershipsPage() {
 
   const [search, setSearch] = useState("");
   const [selectedDealerId, setSelectedDealerId] = useState<string | null>(null);
+
+  const [createDealerOpen, setCreateDealerOpen] = useState(false);
+  const [newDealerName, setNewDealerName] = useState("");
+  const [newDealerAdminEmail, setNewDealerAdminEmail] = useState("");
+  const [newDealerMarkupPct, setNewDealerMarkupPct] = useState("0");
+  const [newDealerContractFee, setNewDealerContractFee] = useState("0.00");
 
   const [newEmployeeEmail, setNewEmployeeEmail] = useState("");
   const [newEmployeeRole, setNewEmployeeRole] = useState<"DEALER_ADMIN" | "DEALER_EMPLOYEE">("DEALER_EMPLOYEE");
@@ -106,6 +127,34 @@ export function AdminDealershipsPage() {
   });
 
   const selectedDealer = filteredDealers.find((d) => d.id === selectedDealerId) ?? (dealersQuery.data ?? []).find((d) => d.id === selectedDealerId) ?? null;
+
+  const createDealerMutation = useMutation({
+    mutationFn: async (input: { name: string; adminEmail?: string; markupPct: number; contractFeeCents: number | null }) => {
+      if (mode !== "supabase") throw new Error("Supabase mode required");
+      const response = await invokeEdgeFunction<CreateDealerResponse>("admin-dealer-tools", {
+        action: "create_dealer",
+        dealer: input,
+      });
+      return { ...response, adminEmail: input.adminEmail };
+    },
+    onSuccess: async (result) => {
+      setNewDealerName("");
+      setNewDealerAdminEmail("");
+      setNewDealerMarkupPct("0");
+      setNewDealerContractFee("0.00");
+      setCreateDealerOpen(false);
+      setSelectedDealerId(result.dealerId);
+      if (result.temporaryPassword && result.adminEmail) {
+        markTemporaryPasswordEmail(result.adminEmail);
+        setPasswordCopied(false);
+        setCreatedCredentials({
+          email: result.adminEmail,
+          temporaryPassword: result.temporaryPassword,
+        });
+      }
+      await qc.invalidateQueries({ queryKey: ["superadmin-dealers", mode] });
+    },
+  });
 
   const membersQuery = useQuery({
     queryKey: ["superadmin-dealer-members", mode, selectedDealerId],
@@ -255,6 +304,7 @@ export function AdminDealershipsPage() {
   });
 
   const busy =
+    createDealerMutation.isPending ||
     dealerPatchMutation.isPending ||
     addMemberMutation.isPending ||
     removeMemberMutation.isPending ||
@@ -282,6 +332,17 @@ export function AdminDealershipsPage() {
             </Link>
           </Button>
           <Button
+            size="sm"
+            className="gap-2"
+            onClick={() => {
+              if (mode !== "supabase") return alertMissing("This page requires Supabase mode.");
+              setCreateDealerOpen(true);
+            }}
+          >
+            <Plus className="w-4 h-4" />
+            New Dealership
+          </Button>
+          <Button
             variant="outline"
             size="sm"
             onClick={() => {
@@ -294,6 +355,110 @@ export function AdminDealershipsPage() {
         </div>
       }
     >
+      <Dialog open={createDealerOpen} onOpenChange={setCreateDealerOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New dealership</DialogTitle>
+            <DialogDescription>
+              Create a dealership company now. Add an initial admin email to create or link the first admin account.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium" htmlFor="newDealerName">
+                Dealership name
+              </label>
+              <Input
+                id="newDealerName"
+                value={newDealerName}
+                onChange={(e) => setNewDealerName(e.target.value)}
+                className="mt-1"
+                placeholder="North Star Auto"
+                disabled={busy}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium" htmlFor="newDealerAdminEmail">
+                Admin email
+              </label>
+              <Input
+                id="newDealerAdminEmail"
+                type="email"
+                value={newDealerAdminEmail}
+                onChange={(e) => setNewDealerAdminEmail(e.target.value)}
+                className="mt-1"
+                placeholder="owner@dealership.com"
+                disabled={busy}
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium" htmlFor="newDealerMarkupPct">
+                  Markup percentage
+                </label>
+                <Input
+                  id="newDealerMarkupPct"
+                  type="number"
+                  min="0"
+                  max="200"
+                  step="0.01"
+                  value={newDealerMarkupPct}
+                  onChange={(e) => setNewDealerMarkupPct(e.target.value)}
+                  className="mt-1"
+                  disabled={busy}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium" htmlFor="newDealerContractFee">
+                  Contract fee
+                </label>
+                <Input
+                  id="newDealerContractFee"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={newDealerContractFee}
+                  onChange={(e) => setNewDealerContractFee(e.target.value)}
+                  className="mt-1"
+                  disabled={busy}
+                />
+              </div>
+            </div>
+
+            {createDealerMutation.isError ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-800 dark:text-red-200">
+                {createDealerMutation.error instanceof Error ? createDealerMutation.error.message : "Failed to create dealership."}
+              </div>
+            ) : null}
+
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setCreateDealerOpen(false)} disabled={busy}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={busy || !newDealerName.trim()}
+                onClick={() => {
+                  const name = newDealerName.trim();
+                  if (!name) return;
+                  const markupPct = Number(newDealerMarkupPct.trim() || "0");
+                  if (!Number.isFinite(markupPct) || markupPct < 0 || markupPct > 200) return;
+                  createDealerMutation.mutate({
+                    name,
+                    adminEmail: newDealerAdminEmail.trim() || undefined,
+                    markupPct,
+                    contractFeeCents: dollarsStringToCents(newDealerContractFee),
+                  });
+                }}
+              >
+                Create Dealership
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={Boolean(createdCredentials)}
         onOpenChange={(open) => {

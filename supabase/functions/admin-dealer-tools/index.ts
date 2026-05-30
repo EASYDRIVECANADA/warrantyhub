@@ -7,6 +7,7 @@ type Action =
   | "generate_password_reset_link"
   | "generate_temporary_password"
   | "set_user_disabled"
+  | "create_dealer"
   | "update_dealer"
   | "add_dealer_member"
   | "remove_dealer_member"
@@ -43,6 +44,15 @@ type Body =
       userId: string;
       disabled: boolean;
       duration?: string;
+    }
+  | {
+      action: "create_dealer";
+      dealer: {
+        name: string;
+        adminEmail?: string;
+        markupPct?: number;
+        contractFeeCents?: number | null;
+      };
     }
   | {
       action: "update_dealer";
@@ -356,6 +366,143 @@ Deno.serve(async (req: Request) => {
       if (profUpd.error) return json(500, { error: profUpd.error.message });
 
       return json(200, { user: (upd.data as any)?.user ?? null });
+    }
+
+    if (action === "create_dealer") {
+      const dealer = ((body as any).dealer ?? {}) as any;
+      const name = safeTrim(dealer.name);
+      const adminEmail = normalizeEmail(dealer.adminEmail ?? "");
+      const markupPctRaw = dealer.markupPct;
+      const contractFeeCentsRaw = dealer.contractFeeCents;
+
+      if (!name) return json(400, { error: "name is required" });
+
+      const markupPct = typeof markupPctRaw === "number" && Number.isFinite(markupPctRaw) ? markupPctRaw : 0;
+      if (markupPct < 0 || markupPct > 200) return json(400, { error: "markupPct must be between 0 and 200" });
+
+      const contractFeeCents =
+        contractFeeCentsRaw === null || contractFeeCentsRaw === undefined
+          ? null
+          : typeof contractFeeCentsRaw === "number" && Number.isFinite(contractFeeCentsRaw)
+            ? Math.max(0, Math.round(contractFeeCentsRaw))
+            : null;
+
+      const createdDealer = await svc
+        .from("dealers")
+        .insert(
+          {
+            name,
+            markup_pct: markupPct,
+            contract_fee_cents: contractFeeCents,
+          } as any,
+        )
+        .select("id")
+        .single();
+      if (createdDealer.error) return json(400, { error: createdDealer.error.message });
+      const dealerId = safeTrim((createdDealer.data as any)?.id);
+      if (!dealerId) return json(500, { error: "Failed to create dealership" });
+
+      const createdDealership = await svc
+        .from("dealerships")
+        .insert(
+          {
+            name,
+            status: "approved",
+            legacy_dealer_id: dealerId,
+            contract_fee_cents: contractFeeCents,
+          } as any,
+        )
+        .select("id")
+        .single();
+      if (createdDealership.error) return json(400, { error: createdDealership.error.message });
+      const dealershipId = safeTrim((createdDealership.data as any)?.id);
+      if (!dealershipId) return json(500, { error: "Failed to create dealership entity" });
+
+      let adminUserId: string | null = null;
+      let temporaryPassword: string | null = null;
+
+      if (adminEmail) {
+        const profile = await svc.from("profiles").select("id").eq("email", adminEmail).limit(1);
+        if (profile.error) return json(500, { error: profile.error.message });
+        adminUserId = ((profile.data as any[])?.[0]?.id ?? null) as string | null;
+
+        if (!adminUserId) {
+          try {
+            adminUserId = await findAuthUserIdByEmail(svc, adminEmail);
+          } catch (e) {
+            const err = e instanceof Error ? e : new Error(String(e));
+            return json(500, { error: err.message });
+          }
+        }
+
+        if (!adminUserId) {
+          temporaryPassword = generateTemporaryPassword();
+          const createdUser = await svc.auth.admin.createUser({
+            email: adminEmail,
+            password: temporaryPassword,
+            email_confirm: true,
+            user_metadata: { mustChangePassword: true },
+          } as any);
+          if (createdUser.error) return json(400, { error: createdUser.error.message });
+          adminUserId = (createdUser.data as any)?.user?.id ?? null;
+          if (!adminUserId) return json(500, { error: "Failed to create dealership admin user" });
+        }
+
+        const profileUpsert = await svc
+          .from("profiles")
+          .upsert(
+            {
+              id: adminUserId,
+              email: adminEmail,
+              role: "DEALER_ADMIN",
+              company_name: name,
+              display_name: null,
+              is_active: true,
+              ...(temporaryPassword ? { must_change_password: true } : {}),
+            } as any,
+            { onConflict: "id" },
+          );
+        if (profileUpsert.error) return json(500, { error: profileUpsert.error.message });
+
+        const dealerMember = await svc
+          .from("dealer_members")
+          .upsert(
+            {
+              dealer_id: dealerId,
+              user_id: adminUserId,
+              role: "DEALER_ADMIN",
+              status: "ACTIVE",
+            } as any,
+            { onConflict: "dealer_id,user_id" },
+          );
+        if (dealerMember.error) return json(400, { error: dealerMember.error.message });
+
+        const dealershipMember = await svc
+          .from("dealership_members")
+          .upsert(
+            {
+              dealership_id: dealershipId,
+              user_id: adminUserId,
+              role: "admin",
+            } as any,
+            { onConflict: "user_id,dealership_id" },
+          );
+        if (dealershipMember.error) return json(400, { error: dealershipMember.error.message });
+
+        try {
+          await syncUserDealershipRole(svc, adminUserId, "DEALER_ADMIN");
+        } catch (e) {
+          const err = e instanceof Error ? e : new Error(String(e));
+          return json(400, { error: err.message });
+        }
+      }
+
+      return json(200, {
+        dealerId,
+        dealershipId,
+        adminUserId,
+        temporaryPassword,
+      });
     }
 
     if (action === "update_dealer") {
