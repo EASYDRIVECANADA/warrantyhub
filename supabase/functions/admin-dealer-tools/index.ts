@@ -409,7 +409,6 @@ Deno.serve(async (req: Request) => {
             name,
             status: "approved",
             legacy_dealer_id: dealerId,
-            contract_fee_cents: contractFeeCents,
           } as any,
         )
         .select("id")

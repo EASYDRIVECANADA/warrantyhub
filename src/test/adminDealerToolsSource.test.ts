@@ -36,4 +36,14 @@ describe("admin dealer tools source", () => {
     expect(adminDealerTools).toContain("temporaryPassword");
     expect(adminDealerTools).toContain("syncUserDealershipRole(svc, adminUserId");
   });
+
+  it("stores manual dealership contract fees only on legacy dealers", () => {
+    const dealershipInsertStart = adminDealerTools.indexOf("const createdDealership = await svc");
+    const adminUserStart = adminDealerTools.indexOf("let adminUserId", dealershipInsertStart);
+    const dealershipInsertBlock = adminDealerTools.slice(dealershipInsertStart, adminUserStart);
+
+    expect(dealershipInsertBlock).toContain(".from(\"dealerships\")");
+    expect(dealershipInsertBlock).toContain("legacy_dealer_id: dealerId");
+    expect(dealershipInsertBlock).not.toContain("contract_fee_cents");
+  });
 });
