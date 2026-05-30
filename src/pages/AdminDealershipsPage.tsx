@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Building2, Users, ChevronRight, ArrowLeft, Mail, Shield, UserCog, UserX, Search, DollarSign, Percent, Calendar, Plus, KeyRound, Check, Copy } from "lucide-react";
+import { Building2, Users, ChevronRight, ArrowLeft, Mail, Shield, UserCog, UserX, Search, DollarSign, Percent, Calendar, Plus, KeyRound, Check, Copy, Trash2 } from "lucide-react";
 
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../components/ui/dialog";
@@ -129,7 +129,7 @@ export function AdminDealershipsPage() {
   const selectedDealer = filteredDealers.find((d) => d.id === selectedDealerId) ?? (dealersQuery.data ?? []).find((d) => d.id === selectedDealerId) ?? null;
 
   const createDealerMutation = useMutation({
-    mutationFn: async (input: { name: string; adminEmail?: string; markupPct: number; contractFeeCents: number | null }) => {
+    mutationFn: async (input: { name: string; adminEmail: string; markupPct: number; contractFeeCents: number | null }) => {
       if (mode !== "supabase") throw new Error("Supabase mode required");
       const response = await invokeEdgeFunction<CreateDealerResponse>("admin-dealer-tools", {
         action: "create_dealer",
@@ -188,6 +188,22 @@ export function AdminDealershipsPage() {
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["superadmin-dealers", mode] });
+    },
+  });
+
+  const deleteDealerMutation = useMutation({
+    mutationFn: async (dealer: DealerRow) => {
+      if (mode !== "supabase") throw new Error("Supabase mode required");
+      await invokeEdgeFunction("admin-dealer-tools", {
+        action: "delete_dealer",
+        dealerId: dealer.id,
+      });
+      return dealer.id;
+    },
+    onSuccess: async () => {
+      setSelectedDealerId(null);
+      await qc.invalidateQueries({ queryKey: ["superadmin-dealers", mode] });
+      await qc.invalidateQueries({ queryKey: ["superadmin-dealer-members", mode] });
     },
   });
 
@@ -306,6 +322,7 @@ export function AdminDealershipsPage() {
   const busy =
     createDealerMutation.isPending ||
     dealerPatchMutation.isPending ||
+    deleteDealerMutation.isPending ||
     addMemberMutation.isPending ||
     removeMemberMutation.isPending ||
     updateMemberMutation.isPending ||
@@ -360,7 +377,7 @@ export function AdminDealershipsPage() {
           <DialogHeader>
             <DialogTitle>New dealership</DialogTitle>
             <DialogDescription>
-              Create a dealership company now. Add an initial admin email to create or link the first admin account.
+              Create a dealership company now. The admin email is required for the first login account.
             </DialogDescription>
           </DialogHeader>
 
@@ -389,6 +406,7 @@ export function AdminDealershipsPage() {
                 onChange={(e) => setNewDealerAdminEmail(e.target.value)}
                 className="mt-1"
                 placeholder="owner@dealership.com"
+                required
                 disabled={busy}
               />
             </div>
@@ -438,15 +456,16 @@ export function AdminDealershipsPage() {
               </Button>
               <Button
                 type="button"
-                disabled={busy || !newDealerName.trim()}
+                disabled={busy || !newDealerName.trim() || !newDealerAdminEmail.trim()}
                 onClick={() => {
                   const name = newDealerName.trim();
-                  if (!name) return;
+                  const adminEmail = newDealerAdminEmail.trim();
+                  if (!name || !adminEmail) return;
                   const markupPct = Number(newDealerMarkupPct.trim() || "0");
                   if (!Number.isFinite(markupPct) || markupPct < 0 || markupPct > 200) return;
                   createDealerMutation.mutate({
                     name,
-                    adminEmail: newDealerAdminEmail.trim() || undefined,
+                    adminEmail,
                     markupPct,
                     contractFeeCents: dollarsStringToCents(newDealerContractFee),
                   });
@@ -526,6 +545,27 @@ export function AdminDealershipsPage() {
                     <p className="text-sm text-muted-foreground">Dealership ID: {selectedDealer.id}</p>
                   </div>
                 </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                  disabled={busy}
+                  onClick={() => {
+                    void (async () => {
+                      if (
+                        !(await confirmProceed(
+                          `Delete ${selectedDealer.name}? This only works if the dealership has no contract history.`,
+                          "Delete",
+                        ))
+                      )
+                        return;
+                      deleteDealerMutation.mutate(selectedDealer);
+                    })();
+                  }}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete Dealership
+                </Button>
               </div>
             </div>
 
@@ -631,6 +671,11 @@ export function AdminDealershipsPage() {
               {dealerPatchMutation.isError ? (
                 <div className="mt-4 rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-800 dark:text-red-200">
                   {dealerPatchMutation.error instanceof Error ? dealerPatchMutation.error.message : "Failed to update dealership."}
+                </div>
+              ) : null}
+              {deleteDealerMutation.isError ? (
+                <div className="mt-4 rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-800 dark:text-red-200">
+                  {deleteDealerMutation.error instanceof Error ? deleteDealerMutation.error.message : "Failed to delete dealership."}
                 </div>
               ) : null}
             </div>

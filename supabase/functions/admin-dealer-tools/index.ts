@@ -8,6 +8,7 @@ type Action =
   | "generate_temporary_password"
   | "set_user_disabled"
   | "create_dealer"
+  | "delete_dealer"
   | "update_dealer"
   | "add_dealer_member"
   | "remove_dealer_member"
@@ -49,10 +50,14 @@ type Body =
       action: "create_dealer";
       dealer: {
         name: string;
-        adminEmail?: string;
+        adminEmail: string;
         markupPct?: number;
         contractFeeCents?: number | null;
       };
+    }
+  | {
+      action: "delete_dealer";
+      dealerId: string;
     }
   | {
       action: "update_dealer";
@@ -222,6 +227,69 @@ async function ensureDealershipBridge(
   return safeTrim((insert.data as any)?.id);
 }
 
+async function countRows(
+  svc: ReturnType<typeof getServiceSupabaseClient>,
+  table: string,
+  column: string,
+  value: string,
+) {
+  if (!value) return 0;
+  const rows = await svc.from(table).select("id", { count: "exact", head: true }).eq(column, value);
+  if (rows.error) throw new Error(rows.error.message);
+  return rows.count ?? 0;
+}
+
+function uniqueIds(values: unknown[]) {
+  return Array.from(new Set(values.map((v) => safeTrim(v)).filter(Boolean)));
+}
+
+async function cleanupDeletedDealerUsers(
+  svc: ReturnType<typeof getServiceSupabaseClient>,
+  userIds: string[],
+) {
+  const deletedUserIds: string[] = [];
+
+  for (const userId of uniqueIds(userIds)) {
+    const remainingLegacyMemberships = await svc.from("dealer_members").select("id").eq("user_id", userId);
+    if (remainingLegacyMemberships.error) throw new Error(remainingLegacyMemberships.error.message);
+    const remainingV2Memberships = await svc.from("dealership_members").select("id").eq("user_id", userId);
+    if (remainingV2Memberships.error) throw new Error(remainingV2Memberships.error.message);
+
+    const hasRemainingDealerMemberships =
+      (Array.isArray(remainingLegacyMemberships.data) && remainingLegacyMemberships.data.length > 0) ||
+      (Array.isArray(remainingV2Memberships.data) && remainingV2Memberships.data.length > 0);
+
+    if (!hasRemainingDealerMemberships) {
+      const roleDelete = await svc.from("user_roles").delete().eq("user_id", userId).in("role", ["dealership_admin", "dealership_employee"]);
+      if (roleDelete.error) throw new Error(roleDelete.error.message);
+    }
+
+    const remainingProviderMemberships = await svc.from("provider_members").select("id").eq("user_id", userId);
+    if (remainingProviderMemberships.error) throw new Error(remainingProviderMemberships.error.message);
+    const roleRows = await svc.from("user_roles").select("role").eq("user_id", userId);
+    if (roleRows.error) throw new Error(roleRows.error.message);
+
+    const hasProviderMemberships = Array.isArray(remainingProviderMemberships.data) && remainingProviderMemberships.data.length > 0;
+    const hasNonDealershipRoles =
+      Array.isArray(roleRows.data) &&
+      roleRows.data.some((r: any) => {
+        const role = safeTrim(r?.role);
+        return role && role !== "dealership_admin" && role !== "dealership_employee";
+      });
+
+    if (!hasRemainingDealerMemberships && !hasProviderMemberships && !hasNonDealershipRoles) {
+      const delProfile = await svc.from("profiles").delete().eq("id", userId);
+      if (delProfile.error) throw new Error(delProfile.error.message);
+
+      const delUser = await svc.auth.admin.deleteUser(userId);
+      if (delUser.error) throw new Error(delUser.error.message);
+      deletedUserIds.push(userId);
+    }
+  }
+
+  return deletedUserIds;
+}
+
 async function assertSuperAdmin(jwt: string) {
   const authed = getAuthedSupabaseClient(jwt);
   const { data: u, error: uerr } = await authed.auth.getUser();
@@ -376,6 +444,7 @@ Deno.serve(async (req: Request) => {
       const contractFeeCentsRaw = dealer.contractFeeCents;
 
       if (!name) return json(400, { error: "name is required" });
+      if (!adminEmail) return json(400, { error: "adminEmail is required" });
 
       const markupPct = typeof markupPctRaw === "number" && Number.isFinite(markupPctRaw) ? markupPctRaw : 0;
       if (markupPct < 0 || markupPct > 200) return json(400, { error: "markupPct must be between 0 and 200" });
@@ -502,6 +571,66 @@ Deno.serve(async (req: Request) => {
         adminUserId,
         temporaryPassword,
       });
+    }
+
+    if (action === "delete_dealer") {
+      const dealerId = safeTrim((body as any).dealerId);
+      if (!dealerId) return json(400, { error: "dealerId is required" });
+
+      const dealerRow = await svc.from("dealers").select("id, name").eq("id", dealerId).maybeSingle();
+      if (dealerRow.error) return json(400, { error: dealerRow.error.message });
+      if (!dealerRow.data) return json(404, { error: "Dealer not found" });
+
+      const dealershipRow = await svc.from("dealerships").select("id").eq("legacy_dealer_id", dealerId).maybeSingle();
+      if (dealershipRow.error) return json(400, { error: dealershipRow.error.message });
+      const dealershipId = safeTrim((dealershipRow.data as any)?.id);
+
+      const legacyMembers = await svc.from("dealer_members").select("user_id").eq("dealer_id", dealerId);
+      if (legacyMembers.error) return json(400, { error: legacyMembers.error.message });
+      const v2Members = dealershipId
+        ? await svc.from("dealership_members").select("user_id").eq("dealership_id", dealershipId)
+        : { data: [], error: null };
+      if (v2Members.error) return json(400, { error: v2Members.error.message });
+
+      const userIds = uniqueIds([
+        ...(((legacyMembers.data as any[]) ?? []).map((m) => m?.user_id)),
+        ...(((v2Members.data as any[]) ?? []).map((m) => m?.user_id)),
+      ]);
+
+      let historyCount = 0;
+      try {
+        historyCount += await countRows(svc, "contracts", "dealer_id", dealerId);
+        historyCount += await countRows(svc, "contracts", "dealership_id", dealershipId);
+        historyCount += await countRows(svc, "remittances", "dealer_id", dealerId);
+        historyCount += await countRows(svc, "batches", "dealer_id", dealerId);
+      } catch (e) {
+        const err = e instanceof Error ? e : new Error(String(e));
+        return json(500, { error: err.message });
+      }
+
+      if (historyCount > 0) {
+        return json(400, {
+          error: "This dealership has contract history and cannot be deleted. Disable or suspend it instead.",
+        });
+      }
+
+      if (dealershipId) {
+        const delDealership = await svc.from("dealerships").delete().eq("id", dealershipId);
+        if (delDealership.error) return json(400, { error: delDealership.error.message });
+      }
+
+      const delDealer = await svc.from("dealers").delete().eq("id", dealerId);
+      if (delDealer.error) return json(400, { error: delDealer.error.message });
+
+      let deletedUserIds: string[] = [];
+      try {
+        deletedUserIds = await cleanupDeletedDealerUsers(svc, userIds);
+      } catch (e) {
+        const err = e instanceof Error ? e : new Error(String(e));
+        return json(500, { error: err.message });
+      }
+
+      return json(200, { ok: true, dealerId, dealershipId: dealershipId || null, deletedUserIds });
     }
 
     if (action === "update_dealer") {

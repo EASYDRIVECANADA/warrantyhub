@@ -26,7 +26,7 @@ describe("admin dealer tools source", () => {
     expect(adminDealerTools).toContain("await syncUserDealershipRole(svc, userId, role)");
   });
 
-  it("lets super admins manually create dealerships and optional admin users", () => {
+  it("lets super admins manually create dealerships with required admin users", () => {
     expect(adminDealerTools).toContain('"create_dealer"');
     expect(adminDealerTools).toContain('if (action === "create_dealer")');
     expect(adminDealerTools).toContain("const createdDealer = await svc");
@@ -35,6 +35,23 @@ describe("admin dealer tools source", () => {
     expect(adminDealerTools).toContain("adminEmail");
     expect(adminDealerTools).toContain("temporaryPassword");
     expect(adminDealerTools).toContain("syncUserDealershipRole(svc, adminUserId");
+  });
+
+  it("requires an initial admin email when super admins create dealerships", () => {
+    expect(adminDealerTools).toContain('if (!adminEmail) return json(400, { error: "adminEmail is required" })');
+  });
+
+  it("supports guarded super-admin dealership deletion", () => {
+    expect(adminDealerTools).toContain('"delete_dealer"');
+    expect(adminDealerTools).toContain('if (action === "delete_dealer")');
+    expect(adminDealerTools).toContain("This dealership has contract history and cannot be deleted");
+    expect(adminDealerTools).toContain('countRows(svc, "contracts", "dealer_id", dealerId)');
+    expect(adminDealerTools).toContain('countRows(svc, "contracts", "dealership_id", dealershipId)');
+    expect(adminDealerTools).toContain('countRows(svc, "remittances", "dealer_id", dealerId)');
+    expect(adminDealerTools).toContain('countRows(svc, "batches", "dealer_id", dealerId)');
+    expect(adminDealerTools).toContain('await cleanupDeletedDealerUsers(svc, userIds)');
+    expect(adminDealerTools).toContain('.from("dealerships").delete()');
+    expect(adminDealerTools).toContain('.from("dealers").delete()');
   });
 
   it("stores manual dealership contract fees only on legacy dealers", () => {

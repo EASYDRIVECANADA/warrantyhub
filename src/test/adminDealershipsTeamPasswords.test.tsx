@@ -136,6 +136,36 @@ describe("AdminDealershipsPage dealer team passwords", () => {
     expect(screen.getByDisplayValue("DealerAdminTemp123!")).toBeInTheDocument();
   });
 
+  it("requires an admin email before creating a dealership", async () => {
+    const user = userEvent.setup();
+
+    renderPage();
+
+    await screen.findByText("Bridge Test Dealer");
+    await user.click(screen.getByRole("button", { name: /new dealership/i }));
+    await user.type(screen.getByLabelText(/dealership name/i), "North Star Auto");
+
+    expect(screen.getByRole("button", { name: /^create dealership$/i })).toBeDisabled();
+    expect(invokeEdgeFunction).not.toHaveBeenCalled();
+  });
+
+  it("lets super admins delete dealerships without history", async () => {
+    vi.mocked(invokeEdgeFunction).mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+
+    renderPage();
+
+    await user.click(await screen.findByText("Bridge Test Dealer"));
+    await user.click(screen.getByRole("button", { name: /delete dealership/i }));
+
+    await waitFor(() => {
+      expect(invokeEdgeFunction).toHaveBeenCalledWith("admin-dealer-tools", {
+        action: "delete_dealer",
+        dealerId: "dealer-1",
+      });
+    });
+  });
+
   it("shows the generated temporary password after adding a dealer member", async () => {
     vi.mocked(invokeEdgeFunction).mockResolvedValue({
       dealerMemberId: "member-created-1",
