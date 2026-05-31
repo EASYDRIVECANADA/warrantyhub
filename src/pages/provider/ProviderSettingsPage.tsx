@@ -38,6 +38,15 @@ function splitFullName(fullName: string) {
   return { firstName, lastName };
 }
 
+function profileDisplayName(profile: any) {
+  return (
+    profile?.display_name ||
+    [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
+    profile?.email ||
+    "Unknown"
+  );
+}
+
 export default function ProviderSettingsPage() {
   const { user, refreshUser } = useAuth();
   const { toast } = useToast();
@@ -105,14 +114,17 @@ export default function ProviderSettingsPage() {
 
       if (members && members.length > 0) {
         const userIds = members.map((m: any) => m.user_id);
-        const { data: profiles } = await supabase.from("profiles").select("id, full_name, email").in("id", userIds);
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, display_name, first_name, last_name, email")
+          .in("id", userIds);
         const profileMap: Record<string, any> = {};
         (profiles || []).forEach((p: any) => { profileMap[p.id] = p; });
 
         setTeam(members.map((m: any) => ({
           id: m.id,
           user_id: m.user_id,
-          name: profileMap[m.user_id]?.full_name || profileMap[m.user_id]?.email || "Unknown",
+          name: profileDisplayName(profileMap[m.user_id]),
           email: profileMap[m.user_id]?.email || "",
           role: m.role,
           joinedAt: m.created_at,
@@ -151,18 +163,16 @@ export default function ProviderSettingsPage() {
     const { data: updatedMembers } = await supabase.from("provider_members").select("id, user_id, role, created_at").eq("provider_id", pid);
     if (updatedMembers) {
       const userIds = updatedMembers.map((m: any) => m.user_id);
-      const { data: profiles } = await supabase.from("profiles").select("id, full_name, display_name, first_name, last_name, email").in("id", userIds);
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, display_name, first_name, last_name, email")
+        .in("id", userIds);
       const profileMap: Record<string, any> = {};
       (profiles || []).forEach((p: any) => { profileMap[p.id] = p; });
       setTeam(updatedMembers.map((m: any) => ({
         id: m.id,
         user_id: m.user_id,
-        name:
-          profileMap[m.user_id]?.full_name ||
-          profileMap[m.user_id]?.display_name ||
-          [profileMap[m.user_id]?.first_name, profileMap[m.user_id]?.last_name].filter(Boolean).join(" ") ||
-          profileMap[m.user_id]?.email ||
-          "Unknown",
+        name: profileDisplayName(profileMap[m.user_id]),
         email: profileMap[m.user_id]?.email || "",
         role: m.role,
         joinedAt: m.created_at,

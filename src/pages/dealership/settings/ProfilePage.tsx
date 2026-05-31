@@ -10,6 +10,13 @@ import { useDealership } from "../../../hooks/useDealership";
 import { useToast } from "../../../hooks/use-toast";
 import { User, Lock, Building2 } from "lucide-react";
 
+function splitFullName(fullName: string) {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  const firstName = parts.shift() ?? "";
+  const lastName = parts.join(" ");
+  return { firstName, lastName };
+}
+
 export default function DealershipProfilePage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -71,10 +78,15 @@ export default function DealershipProfilePage() {
     const fetchProfile = async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("full_name, phone")
+        .select("display_name, first_name, last_name, phone")
         .eq("id", user.id)
         .maybeSingle();
-      if (data) setProfile({ full_name: (data as any).full_name || "", phone: (data as any).phone || "" });
+      if (data) {
+        const displayName =
+          (data as any).display_name ||
+          [(data as any).first_name, (data as any).last_name].filter(Boolean).join(" ");
+        setProfile({ full_name: displayName || "", phone: (data as any).phone || "" });
+      }
       await fetchDealershipInfo();
       setLoading(false);
     };
@@ -84,9 +96,16 @@ export default function DealershipProfilePage() {
   const handleSaveProfile = async () => {
     if (!user) return;
     setSaving(true);
+    const fullName = profile.full_name.trim();
+    const { firstName, lastName } = splitFullName(fullName);
     const { error } = await supabase
       .from("profiles")
-      .update({ full_name: profile.full_name, phone: profile.phone })
+      .update({
+        display_name: fullName || null,
+        first_name: firstName || null,
+        last_name: lastName || null,
+        phone: profile.phone,
+      })
       .eq("id", user.id);
     setSaving(false);
     if (error) {

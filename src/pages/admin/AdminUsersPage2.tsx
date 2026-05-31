@@ -10,7 +10,12 @@ interface UserWithRole {
   user_id: string;
   role: string;
   created_at: string;
-  profile?: { full_name: string | null; phone: string | null };
+  profile?: {
+    display_name: string | null;
+    first_name: string | null;
+    last_name: string | null;
+    phone: string | null;
+  };
 }
 
 const roleBadgeClass: Record<string, string> = {
@@ -28,6 +33,11 @@ function RoleBadge({ role }: { role: string }) {
       {label}
     </span>
   );
+}
+
+function profileDisplayName(profile?: UserWithRole["profile"]) {
+  if (!profile) return null;
+  return profile.display_name || [profile.first_name, profile.last_name].filter(Boolean).join(" ") || null;
 }
 
 export default function AdminUsersPage2() {
@@ -49,16 +59,16 @@ export default function AdminUsersPage2() {
       const userIds = roles.map((r: any) => r.user_id);
       const { data: profiles } = await supabase
         .from("profiles")
-        .select("user_id, full_name, phone")
-        .in("user_id", userIds);
+        .select("id, display_name, first_name, last_name, phone")
+        .in("id", userIds);
 
       const profileMap: Record<string, any> = {};
-      (profiles ?? []).forEach((p: any) => { profileMap[p.user_id] = p; });
+      (profiles ?? []).forEach((p: any) => { profileMap[p.id] = p; });
 
       setUsers(
         roles.map((r: any) => ({
           ...r,
-          profile: profileMap[r.user_id] ?? { full_name: null, phone: null },
+          profile: profileMap[r.user_id] ?? { display_name: null, first_name: null, last_name: null, phone: null },
         }))
       );
       setLoading(false);
@@ -93,7 +103,7 @@ export default function AdminUsersPage2() {
                 {users.map((u) => (
                   <TableRow key={u.id}>
                     <TableCell className="font-medium">
-                      {u.profile?.full_name ?? <span className="text-muted-foreground italic">Unknown</span>}
+                      {profileDisplayName(u.profile) ?? <span className="text-muted-foreground italic">Unknown</span>}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{u.profile?.phone ?? "—"}</TableCell>
                     <TableCell><RoleBadge role={u.role} /></TableCell>

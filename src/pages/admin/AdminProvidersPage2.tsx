@@ -117,7 +117,7 @@ export default function AdminProvidersPage2() {
       if (userIds.length > 0) {
         const { data: profiles, error: profilesError } = await supabase
           .from("profiles")
-          .select("id, full_name, display_name, first_name, last_name, email")
+          .select("id, display_name, first_name, last_name, email")
           .in("id", userIds);
         if (profilesError) throw profilesError;
         profileMap = Object.fromEntries((profiles ?? []).map((p: any) => [p.id, p]));
@@ -127,7 +127,6 @@ export default function AdminProvidersPage2() {
         memberRows.map((m) => {
           const profile = profileMap[m.user_id] ?? {};
           const name =
-            profile.full_name ||
             profile.display_name ||
             [profile.first_name, profile.last_name].filter(Boolean).join(" ") ||
             profile.email ||
