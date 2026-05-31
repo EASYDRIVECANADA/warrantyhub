@@ -102,12 +102,12 @@ export function AdminDashboardPage() {
       href: "/admin-support",
     },
     {
-      title: "Provider Companies",
+      title: "Providers",
       value: countsLoading ? "—" : `${providersCount}`,
-      subtitle: "Active warranty providers",
+      subtitle: "Provider accounts",
       icon: Store,
       tone: "emerald" as const,
-      href: "/admin-providers",
+      href: "/admin/providers",
     },
     {
       title: "Dealer Companies",
@@ -340,11 +340,11 @@ export function AdminDashboardPage() {
               </Link>
             </Button>
             <Button variant="outline" asChild className="h-auto py-4 justify-start gap-3">
-              <Link to="/admin-providers">
+              <Link to="/admin/providers">
                 <Store className="w-5 h-5 text-emerald-600" />
                 <div className="text-left">
                   <div className="font-medium">Providers</div>
-                  <div className="text-xs text-muted-foreground">View companies</div>
+                  <div className="text-xs text-muted-foreground">Accounts and teams</div>
                 </div>
               </Link>
             </Button>

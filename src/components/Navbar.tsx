@@ -126,7 +126,7 @@ export function Navbar() {
               ? [
                   { to: "/platform", label: "Dashboard", exact: true },
                   { to: "/admin-access-requests", label: "Access Requests" },
-                  { to: "/admin-companies", label: "Companies" },
+                  { to: "/admin/providers", label: "Providers" },
                   { to: "/admin-users", label: "Users" },
                 ]
               : []

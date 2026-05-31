@@ -188,9 +188,9 @@ export function AdminProvidersPage() {
       actions={
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" asChild className="gap-2">
-            <Link to="/superadmin-companies">
+            <Link to="/admin/providers">
               <Store className="w-4 h-4" />
-              Manage Companies
+              Provider Accounts
             </Link>
           </Button>
           <Button variant="outline" size="sm" asChild className="gap-2">

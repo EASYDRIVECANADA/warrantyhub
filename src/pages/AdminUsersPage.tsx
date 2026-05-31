@@ -644,7 +644,7 @@ export function AdminUsersPage() {
                                 ))}
                                 <div className="px-6 py-2 pl-20 border-t">
                                   <Button variant="ghost" size="sm" asChild className="text-xs gap-1">
-                                    <Link to="/admin-providers">
+                                    <Link to="/admin/providers">
                                       View in Providers
                                       <ArrowUpRight className="w-3 h-3" />
                                     </Link>

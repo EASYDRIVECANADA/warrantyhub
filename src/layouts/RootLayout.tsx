@@ -327,6 +327,7 @@ export function RootLayout() {
     const path = location.pathname;
     if (path === "/platform") return "Platform Dashboard";
     if (path.startsWith("/admin-access-requests")) return "Access Requests";
+    if (path.startsWith("/admin/providers")) return "Providers";
     if (path.startsWith("/admin-companies")) return "Companies";
     if (path.startsWith("/admin-dealerships")) return "Dealerships";
     if (path.startsWith("/admin-users")) return "Platform Users";

@@ -192,7 +192,7 @@ export function SuperAdminPlatformPage() {
         value: activeProviders,
         icon: BriefcaseBusiness,
         tone: "violet" as const,
-        href: "/admin-providers",
+        href: "/admin/providers",
       },
     ],
     [totalUsers, pendingApprovals.length, activeDealers, activeProviders],
@@ -434,20 +434,11 @@ export function SuperAdminPlatformPage() {
             </Link>
           </Button>
           <Button variant="outline" asChild className="h-auto py-4 justify-start gap-3">
-            <Link to="/admin-providers">
+            <Link to="/admin/providers">
               <Store className="w-5 h-5 text-emerald-600" />
               <div className="text-left">
-                <div className="font-medium">Provider Companies</div>
-                <div className="text-xs text-muted-foreground">View provider details</div>
-              </div>
-            </Link>
-          </Button>
-          <Button variant="outline" asChild className="h-auto py-4 justify-start gap-3">
-            <Link to="/superadmin-companies">
-              <BriefcaseBusiness className="w-5 h-5 text-violet-600" />
-              <div className="text-left">
-                <div className="font-medium">Company Management</div>
-                <div className="text-xs text-muted-foreground">Create and manage companies</div>
+                <div className="font-medium">Providers</div>
+                <div className="text-xs text-muted-foreground">Provider accounts and teams</div>
               </div>
             </Link>
           </Button>

@@ -5,10 +5,15 @@ import adminDealerTools from "../../supabase/functions/admin-dealer-tools/index.
 import dealerCreateContract from "../../supabase/functions/dealer-create-contract/index.ts?raw";
 import easyDriveBootstrap from "../../supabase/migrations/20260518010000_bootstrap_easydrive_super_admin.sql?raw";
 import schema from "../../supabase/schema.sql?raw";
+import adminDashboardPage from "../pages/AdminDashboardPage.tsx?raw";
+import legacyAdminProvidersPage from "../pages/AdminProvidersPage.tsx?raw";
+import adminUsersPage from "../pages/AdminUsersPage.tsx?raw";
+import superAdminPlatformPage from "../pages/SuperAdminPlatformPage.tsx?raw";
 import dealerConfiguration from "../pages/dealership/settings/ConfigurationPage.tsx?raw";
 import protectedRoute from "../components/ProtectedRoute.tsx?raw";
 import protectedRouteV2 from "../components/auth/ProtectedRouteV2.tsx?raw";
 import dashboardLayout from "../components/dashboard/DashboardLayout.tsx?raw";
+import navbar from "../components/Navbar.tsx?raw";
 import useDealership from "../hooks/useDealership.ts?raw";
 import rootLayout from "../layouts/RootLayout.tsx?raw";
 
@@ -102,6 +107,35 @@ describe("Bridge Warranty platform hardening source checks", () => {
 
     expect(navSource).toContain('label: "Providers"');
     expect(navSource).toContain('href: "/admin/providers"');
+    expect(navSource).not.toContain('label: "Companies"');
+    expect(navSource).not.toContain('href: "/admin-companies"');
+  });
+
+  it("does not expose the legacy company registry in top-level super admin navigation", () => {
+    const navStart = navbar.indexOf('user.role === "SUPER_ADMIN"');
+    const navEnd = navbar.indexOf(": []", navStart);
+    const navSource = navbar.slice(navStart, navEnd);
+
+    expect(navSource).toContain('label: "Providers"');
+    expect(navSource).toContain('to: "/admin/providers"');
+    expect(navSource).not.toContain('label: "Companies"');
+    expect(navSource).not.toContain('to: "/admin-companies"');
+  });
+
+  it("routes visible provider shortcuts to current provider account management", () => {
+    const visibleProviderEntrypoints = [
+      superAdminPlatformPage,
+      adminDashboardPage,
+      legacyAdminProvidersPage,
+      adminUsersPage,
+    ].join("\n");
+
+    expect(visibleProviderEntrypoints).toContain('to="/admin/providers"');
+    expect(visibleProviderEntrypoints).toContain('href: "/admin/providers"');
+    expect(visibleProviderEntrypoints).not.toContain('to="/superadmin-companies"');
+    expect(visibleProviderEntrypoints).not.toContain('href: "/admin-providers"');
+    expect(visibleProviderEntrypoints).not.toContain("Company Management");
+    expect(visibleProviderEntrypoints).not.toContain("Manage Companies");
   });
 
   it("keeps provider account management inside the shared super admin shell", () => {
