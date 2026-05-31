@@ -46,6 +46,13 @@ describe("company access tools source", () => {
     expect(companyAccessTools).toContain("createProviderAccount");
   });
 
+  it("lets super admins manage provider company members without being provider admins", () => {
+    expect(companyAccessTools).toContain("async function assertCompanyManager");
+    expect(companyAccessTools).toContain("assertCompanyManager(jwt, companyType, companyId)");
+    expect(companyAccessTools).toContain("assertSuperAdmin(jwt)");
+    expect(companyAccessTools).toContain("assertCompanyAdmin(jwt, companyType, companyId)");
+  });
+
   it("removes broad authenticated insert policies for tenant tables", () => {
     expect(hardeningMigration).toContain("drop policy if exists \"Authenticated can insert dealerships\"");
     expect(hardeningMigration).toContain("drop policy if exists \"Authenticated can insert dealership members\"");

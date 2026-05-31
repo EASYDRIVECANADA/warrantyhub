@@ -196,6 +196,17 @@ async function assertCompanyAdmin(jwt: string, companyType: CompanyType, company
   return { svc, userId };
 }
 
+async function assertCompanyManager(jwt: string, companyType: CompanyType, companyId: string) {
+  try {
+    return await assertSuperAdmin(jwt);
+  } catch (e) {
+    const err = e instanceof HttpError ? e : null;
+    if (!err || err.status !== 403) throw e;
+  }
+
+  return await assertCompanyAdmin(jwt, companyType, companyId);
+}
+
 async function findAuthUserIdByEmail(svc: ReturnType<typeof getServiceSupabaseClient>, email: string) {
   const profile = await svc.from("profiles").select("id").eq("email", email).maybeSingle();
   if (profile.error) throw new Error(profile.error.message);
@@ -646,7 +657,7 @@ Deno.serve(async (req: Request) => {
     }
     if (!companyId) return json(400, { error: "companyId is required" });
 
-    const { svc, userId: actorUserId } = await assertCompanyAdmin(jwt, companyType, companyId);
+    const { svc, userId: actorUserId } = await assertCompanyManager(jwt, companyType, companyId);
 
     if (action === "create_company_member") {
       const member = body?.member ?? {};

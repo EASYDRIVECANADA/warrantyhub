@@ -44,18 +44,49 @@ const providerRows = [
   },
 ];
 
-function makeSupabaseChain() {
+const providerMemberRows = [
+  {
+    id: "provider-member-admin-1",
+    user_id: "provider-admin-1",
+    role: "admin",
+    created_at: "2026-05-19T00:00:00.000Z",
+  },
+];
+
+const profileRows = [
+  {
+    id: "provider-admin-1",
+    email: "admin@provider.test",
+    full_name: "Provider Admin",
+    display_name: "Provider Admin",
+    first_name: "Provider",
+    last_name: "Admin",
+  },
+];
+
+function makeSupabaseChain(table: string) {
   const chain: Record<string, unknown> = {};
+  let mode = "";
   chain.select = vi.fn(() => chain);
-  chain.order = vi.fn(() => Promise.resolve({ data: providerRows, error: null }));
-  chain.update = vi.fn(() => chain);
-  chain.eq = vi.fn(() => Promise.resolve({ error: null }));
+  chain.order = vi.fn(() => Promise.resolve({ data: table === "providers" ? providerRows : [], error: null }));
+  chain.update = vi.fn(() => {
+    mode = "update";
+    return chain;
+  });
+  chain.eq = vi.fn((column: string) => {
+    if (mode === "update") return Promise.resolve({ error: null });
+    if (table === "provider_members" && column === "provider_id") {
+      return Promise.resolve({ data: providerMemberRows, error: null });
+    }
+    return chain;
+  });
+  chain.in = vi.fn(() => Promise.resolve({ data: table === "profiles" ? profileRows : [], error: null }));
   return chain;
 }
 
 vi.mock("../integrations/supabase/client", () => ({
   supabase: {
-    from: vi.fn(() => makeSupabaseChain()),
+    from: vi.fn((table: string) => makeSupabaseChain(table)),
   },
 }));
 
@@ -109,5 +140,53 @@ describe("AdminProvidersPage2 provider account creation", () => {
     });
     expect(screen.getByText("Temporary password created")).toBeInTheDocument();
     expect(screen.getByDisplayValue("ProviderTemp123!")).toBeInTheDocument();
+  });
+
+  it("lets superadmin add a provider employee to an existing provider", async () => {
+    vi.mocked(invokeEdgeFunction).mockResolvedValueOnce({
+      providerMemberId: "provider-member-created-1",
+      userId: "provider-employee-created-1",
+      temporaryPassword: "ProviderEmployeeTemp123!",
+    });
+    const user = userEvent.setup();
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <AdminProvidersPage2 />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("Existing Provider");
+    await user.click(screen.getByRole("button", { name: /team/i }));
+    await screen.findByText("Provider Team");
+    await user.click(screen.getByRole("button", { name: /add member/i }));
+    await user.type(screen.getByLabelText(/full name/i), "Eli Employee");
+    await user.type(screen.getByLabelText(/^email$/i), "Employee@Provider.test");
+    await user.click(screen.getByRole("button", { name: /create member/i }));
+
+    await waitFor(() => {
+      expect(invokeEdgeFunction).toHaveBeenCalledWith("company-access-tools", {
+        action: "create_company_member",
+        companyType: "provider",
+        companyId: "provider-1",
+        member: {
+          firstName: "Eli",
+          lastName: "Employee",
+          email: "employee@provider.test",
+          phone: undefined,
+          role: "member",
+        },
+      });
+    });
+    expect(screen.getByText("Temporary password created")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("ProviderEmployeeTemp123!")).toBeInTheDocument();
   });
 });
