@@ -3,14 +3,29 @@ import { PageShell } from "../../components/PageShell";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "../../components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { supabase } from "../../integrations/supabase/client";
 import { useToast } from "../../hooks/use-toast";
 import { invokeEdgeFunction } from "../../lib/supabase/functions";
+import { markTemporaryPasswordEmail } from "../../lib/auth/temporaryPasswordChange";
 import { format } from "date-fns";
-import { Check, Copy, Plus, Users } from "lucide-react";
+import {
+  ArrowLeft,
+  Building2,
+  Calendar,
+  Check,
+  Copy,
+  KeyRound,
+  Mail,
+  MapPin,
+  Plus,
+  Shield,
+  Trash2,
+  UserCog,
+  Users,
+} from "lucide-react";
 
 interface Provider {
   id: string;
@@ -60,6 +75,11 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function roleBadgeClass(role: string) {
+  if (role === "admin") return "bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/20";
+  return "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20";
+}
+
 export default function AdminProvidersPage2() {
   const { toast } = useToast();
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -69,7 +89,6 @@ export default function AdminProvidersPage2() {
   const [updating, setUpdating] = useState<string | null>(null);
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [memberDialogOpen, setMemberDialogOpen] = useState(false);
   const [creatingProvider, setCreatingProvider] = useState(false);
   const [creatingMember, setCreatingMember] = useState(false);
   const [passwordCopied, setPasswordCopied] = useState(false);
@@ -87,6 +106,10 @@ export default function AdminProvidersPage2() {
   });
 
   const selectedProvider = providers.find((p) => p.id === selectedProviderId) ?? null;
+  const adminCount = providerMembers.filter((m) => m.role === "admin").length;
+  const memberCount = providerMembers.filter((m) => m.role !== "admin").length;
+  const activeCount = providerMembers.length;
+  const regionCount = selectedProvider?.regions_served?.length ?? 0;
 
   const fetchProviders = useCallback(async () => {
     const { data } = await supabase
@@ -155,6 +178,18 @@ export default function AdminProvidersPage2() {
     void fetchProviderMembers(provider.id);
   };
 
+  const handleProviderPatch = async (providerId: string, patch: Partial<Pick<Provider, "company_name" | "contact_email" | "contact_phone" | "status">>) => {
+    setUpdating(providerId);
+    const { error } = await supabase.from("providers").update(patch).eq("id", providerId);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      setProviders((prev) => prev.map((p) => (p.id === providerId ? { ...p, ...patch } : p)));
+      toast({ title: "Provider Updated" });
+    }
+    setUpdating(null);
+  };
+
   const handleCreateProviderAccount = async () => {
     const companyName = newProvider.companyName.trim();
     const firstName = newProvider.adminFirstName.trim();
@@ -187,12 +222,15 @@ export default function AdminProvidersPage2() {
         },
       );
 
+      markTemporaryPasswordEmail(email);
       setCreatedCredentials({ email, temporaryPassword: response.temporaryPassword });
       setPasswordCopied(false);
       setNewProvider({ companyName: "", adminFirstName: "", adminLastName: "", adminEmail: "" });
       setCreateDialogOpen(false);
+      setSelectedProviderId(response.providerId);
       toast({ title: "Provider Created", description: `${companyName} can now sign in with the temporary password.` });
       await fetchProviders();
+      await fetchProviderMembers(response.providerId);
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Could not create provider account.", variant: "destructive" });
     } finally {
@@ -228,10 +266,10 @@ export default function AdminProvidersPage2() {
         },
       );
 
+      markTemporaryPasswordEmail(email);
       setCreatedCredentials({ email, temporaryPassword: response.temporaryPassword });
       setPasswordCopied(false);
       setNewMember({ fullName: "", email: "", role: "member" });
-      setMemberDialogOpen(false);
       toast({ title: "Member Added", description: `${email} can now sign in with the temporary password.` });
       await fetchProviderMembers(selectedProvider.id);
     } catch (err: any) {
@@ -241,17 +279,64 @@ export default function AdminProvidersPage2() {
     }
   };
 
-  const updateStatus = async (id: string, status: string) => {
-    setUpdating(id);
-    const { error } = await supabase.from("providers").update({ status }).eq("id", id);
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
-      setProviders((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)));
-      toast({ title: "Status Updated", description: `Provider marked as ${status}.` });
+  const handleRoleChange = async (member: ProviderMember, role: string) => {
+    if (!selectedProvider) return;
+    try {
+      await invokeEdgeFunction("company-access-tools", {
+        action: "update_company_member_role",
+        companyType: "provider",
+        companyId: selectedProvider.id,
+        memberId: member.id,
+        role,
+      });
+      setProviderMembers((prev) => prev.map((m) => (m.id === member.id ? { ...m, role: role as "admin" | "member" } : m)));
+      toast({ title: "Role Updated" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Could not update role.", variant: "destructive" });
     }
-    setUpdating(null);
   };
+
+  const handleGenerateTemporaryPassword = async (member: ProviderMember) => {
+    if (!selectedProvider) return;
+    try {
+      const response = await invokeEdgeFunction<{ temporaryPassword: string }>("company-access-tools", {
+        action: "generate_temporary_password",
+        companyType: "provider",
+        companyId: selectedProvider.id,
+        userId: member.user_id,
+      });
+      markTemporaryPasswordEmail(member.email);
+      setCreatedCredentials({ email: member.email || member.name, temporaryPassword: response.temporaryPassword });
+      setPasswordCopied(false);
+      toast({ title: "Temporary Password Created" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Could not generate password.", variant: "destructive" });
+    }
+  };
+
+  const handleRemoveMember = async (member: ProviderMember) => {
+    if (!selectedProvider) return;
+    if (!window.confirm(`Remove ${member.email || member.name} from this provider?`)) return;
+    try {
+      await invokeEdgeFunction("company-access-tools", {
+        action: "remove_company_member",
+        companyType: "provider",
+        companyId: selectedProvider.id,
+        memberId: member.id,
+        userId: member.user_id,
+      });
+      setProviderMembers((prev) => prev.filter((m) => m.id !== member.id));
+      toast({ title: "Member Removed" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Could not remove member.", variant: "destructive" });
+    }
+  };
+
+  const updateStatus = async (id: string, status: string) => {
+    await handleProviderPatch(id, { status });
+  };
+
+  const busy = creatingProvider || creatingMember || Boolean(updating);
 
   return (
     <>
@@ -259,235 +344,441 @@ export default function AdminProvidersPage2() {
         title="Providers"
         subtitle="Create provider companies and initial provider admin accounts"
         badge="Admin"
+        actions={
+          <div className="flex items-center gap-2">
+            <Button size="sm" className="gap-2" onClick={() => setCreateDialogOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Create Provider Account
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => void fetchProviders()}>
+              Refresh
+            </Button>
+          </div>
+        }
       >
-      <Card className="rounded-2xl bg-card/80 backdrop-blur-sm shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between gap-4">
-          <CardTitle className="text-base">All Providers</CardTitle>
-          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="gap-2">
-                <Plus className="h-4 w-4" />
-                Create Provider Account
+        <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create Provider Account</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="provider-company-name">Company Name</Label>
+                <Input
+                  id="provider-company-name"
+                  value={newProvider.companyName}
+                  onChange={(e) => setNewProvider((prev) => ({ ...prev, companyName: e.target.value }))}
+                  placeholder="Apex Warranty"
+                  disabled={creatingProvider}
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="provider-admin-first-name">Admin First Name</Label>
+                  <Input
+                    id="provider-admin-first-name"
+                    value={newProvider.adminFirstName}
+                    onChange={(e) => setNewProvider((prev) => ({ ...prev, adminFirstName: e.target.value }))}
+                    placeholder="Pat"
+                    disabled={creatingProvider}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="provider-admin-last-name">Admin Last Name</Label>
+                  <Input
+                    id="provider-admin-last-name"
+                    value={newProvider.adminLastName}
+                    onChange={(e) => setNewProvider((prev) => ({ ...prev, adminLastName: e.target.value }))}
+                    placeholder="Provider"
+                    disabled={creatingProvider}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="provider-admin-email">Admin Email</Label>
+                <Input
+                  id="provider-admin-email"
+                  type="email"
+                  value={newProvider.adminEmail}
+                  onChange={(e) => setNewProvider((prev) => ({ ...prev, adminEmail: e.target.value }))}
+                  placeholder="admin@provider.com"
+                  disabled={creatingProvider}
+                />
+              </div>
+              <Button className="w-full" onClick={handleCreateProviderAccount} disabled={creatingProvider}>
+                {creatingProvider ? "Creating..." : "Create Account"}
               </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create Provider Account</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="provider-company-name">Company Name</Label>
-                  <Input
-                    id="provider-company-name"
-                    value={newProvider.companyName}
-                    onChange={(e) => setNewProvider((prev) => ({ ...prev, companyName: e.target.value }))}
-                    placeholder="Apex Warranty"
-                  />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="provider-admin-first-name">Admin First Name</Label>
-                    <Input
-                      id="provider-admin-first-name"
-                      value={newProvider.adminFirstName}
-                      onChange={(e) => setNewProvider((prev) => ({ ...prev, adminFirstName: e.target.value }))}
-                      placeholder="Pat"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="provider-admin-last-name">Admin Last Name</Label>
-                    <Input
-                      id="provider-admin-last-name"
-                      value={newProvider.adminLastName}
-                      onChange={(e) => setNewProvider((prev) => ({ ...prev, adminLastName: e.target.value }))}
-                      placeholder="Provider"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="provider-admin-email">Admin Email</Label>
-                  <Input
-                    id="provider-admin-email"
-                    type="email"
-                    value={newProvider.adminEmail}
-                    onChange={(e) => setNewProvider((prev) => ({ ...prev, adminEmail: e.target.value }))}
-                    placeholder="admin@provider.com"
-                  />
-                </div>
-                <Button className="w-full" onClick={handleCreateProviderAccount} disabled={creatingProvider}>
-                  {creatingProvider ? "Creating..." : "Create Account"}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
             </div>
-          ) : providers.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">No providers found.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Company</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Regions</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Joined</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {providers.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="font-medium">{p.company_name}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{p.contact_email ?? "—"}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{p.contact_phone ?? "—"}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {p.regions_served?.join(", ") ?? "—"}
-                    </TableCell>
-                    <TableCell><StatusBadge status={p.status} /></TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {format(new Date(p.created_at), "MMM d, yyyy")}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 gap-1 text-xs"
-                          onClick={() => handleOpenProviderTeam(p)}
-                        >
-                          <Users className="h-3.5 w-3.5" />
-                          Team
-                        </Button>
-                        {p.status !== "approved" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs border-green-300 text-green-700 hover:bg-green-50"
-                            disabled={updating === p.id}
-                            onClick={() => updateStatus(p.id, "approved")}
-                          >
-                            Approve
-                          </Button>
-                        )}
-                        {p.status !== "suspended" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs border-red-300 text-red-700 hover:bg-red-50"
-                            disabled={updating === p.id}
-                            onClick={() => updateStatus(p.id, "suspended")}
-                          >
-                            Suspend
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+          </DialogContent>
+        </Dialog>
 
-      {selectedProvider ? (
-        <Card className="mt-6 rounded-2xl bg-card/80 backdrop-blur-sm shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between gap-4">
-            <div>
-              <CardTitle className="text-base">Provider Team</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">{selectedProvider.company_name}</p>
-            </div>
-            <Dialog open={memberDialogOpen} onOpenChange={setMemberDialogOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm" className="gap-2">
-                  <Plus className="h-4 w-4" />
-                  Add Member
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Add Provider Member</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="provider-member-full-name">Full Name</Label>
-                    <Input
-                      id="provider-member-full-name"
-                      value={newMember.fullName}
-                      onChange={(e) => setNewMember((prev) => ({ ...prev, fullName: e.target.value }))}
-                      placeholder="Pat Provider"
-                    />
+        {selectedProvider ? (
+          <div className="space-y-6">
+            <Button variant="ghost" size="sm" onClick={() => setSelectedProviderId(null)} className="gap-2">
+              <ArrowLeft className="w-4 h-4" />
+              Back to providers
+            </Button>
+
+            <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+              <div className="px-6 py-5 border-b bg-gradient-to-r from-blue-500/5 via-transparent to-transparent">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 rounded-xl bg-blue-500/10 text-blue-600">
+                      <Building2 className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold">{selectedProvider.company_name}</h2>
+                      <p className="text-sm text-muted-foreground">Provider ID: {selectedProvider.id}</p>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="provider-member-email">Email</Label>
-                    <Input
-                      id="provider-member-email"
-                      type="email"
-                      value={newMember.email}
-                      onChange={(e) => setNewMember((prev) => ({ ...prev, email: e.target.value }))}
-                      placeholder="employee@provider.com"
-                    />
+                  <div className="flex items-center gap-2">
+                    <StatusBadge status={selectedProvider.status} />
+                    {selectedProvider.status !== "approved" ? (
+                      <Button size="sm" variant="outline" disabled={busy} onClick={() => updateStatus(selectedProvider.id, "approved")}>
+                        Approve
+                      </Button>
+                    ) : null}
+                    {selectedProvider.status !== "suspended" ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-red-300 text-red-700 hover:bg-red-50"
+                        disabled={busy}
+                        onClick={() => updateStatus(selectedProvider.id, "suspended")}
+                      >
+                        Suspend
+                      </Button>
+                    ) : null}
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="provider-member-role">Role</Label>
-                    <select
-                      id="provider-member-role"
-                      value={newMember.role}
-                      onChange={(e) => setNewMember((prev) => ({ ...prev, role: e.target.value }))}
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm"
-                    >
-                      <option value="member">Member</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </div>
-                  <Button className="w-full" onClick={handleCreateProviderMember} disabled={creatingMember}>
-                    {creatingMember ? "Creating..." : "Create Member"}
-                  </Button>
                 </div>
-              </DialogContent>
-            </Dialog>
-          </CardHeader>
-          <CardContent>
-            {membersLoading ? (
-              <div className="flex justify-center py-8">
-                <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
               </div>
-            ) : providerMembers.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">No provider members found.</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Joined</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {providerMembers.map((m) => (
-                    <TableRow key={m.id}>
-                      <TableCell className="font-medium">{m.name}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{m.email || "—"}</TableCell>
-                      <TableCell className="text-sm capitalize">{m.role}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {format(new Date(m.created_at), "MMM d, yyyy")}
-                      </TableCell>
+
+              <div className="p-6">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                  <div className="rounded-xl border bg-gradient-to-br from-violet-500/5 to-transparent p-5">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Shield className="w-4 h-4" />
+                      Admins
+                    </div>
+                    <div className="text-3xl font-bold mt-2">{adminCount}</div>
+                    <div className="text-xs text-muted-foreground mt-1">Provider administrators</div>
+                  </div>
+                  <div className="rounded-xl border bg-gradient-to-br from-blue-500/5 to-transparent p-5">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Users className="w-4 h-4" />
+                      Members
+                    </div>
+                    <div className="text-3xl font-bold mt-2">{memberCount}</div>
+                    <div className="text-xs text-muted-foreground mt-1">Team members</div>
+                  </div>
+                  <div className="rounded-xl border bg-gradient-to-br from-emerald-500/5 to-transparent p-5">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <UserCog className="w-4 h-4" />
+                      Active
+                    </div>
+                    <div className="text-3xl font-bold mt-2">{activeCount}</div>
+                    <div className="text-xs text-muted-foreground mt-1">Listed provider users</div>
+                  </div>
+                  <div className="rounded-xl border bg-gradient-to-br from-amber-500/5 to-transparent p-5">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <MapPin className="w-4 h-4" />
+                      Regions
+                    </div>
+                    <div className="text-3xl font-bold mt-2">{regionCount}</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {selectedProvider.regions_served?.join(", ") || "No regions listed"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Provider Settings</h3>
+                    <div className="space-y-3">
+                      <div>
+                        <Label className="text-xs text-muted-foreground" htmlFor="provider-detail-name">Provider Name</Label>
+                        <Input
+                          id="provider-detail-name"
+                          defaultValue={selectedProvider.company_name}
+                          className="mt-1 bg-background/70"
+                          disabled={busy}
+                          onBlur={(e) => {
+                            const next = e.target.value.trim();
+                            if (!next || next === selectedProvider.company_name) return;
+                            void handleProviderPatch(selectedProvider.id, { company_name: next });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs text-muted-foreground" htmlFor="provider-detail-email">Contact Email</Label>
+                        <Input
+                          id="provider-detail-email"
+                          defaultValue={selectedProvider.contact_email ?? ""}
+                          className="mt-1 bg-background/70"
+                          disabled={busy}
+                          onBlur={(e) => {
+                            const next = e.target.value.trim();
+                            if (next === (selectedProvider.contact_email ?? "")) return;
+                            void handleProviderPatch(selectedProvider.id, { contact_email: next || null });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs text-muted-foreground" htmlFor="provider-detail-phone">Phone</Label>
+                        <Input
+                          id="provider-detail-phone"
+                          defaultValue={selectedProvider.contact_phone ?? ""}
+                          className="mt-1 bg-background/70"
+                          disabled={busy}
+                          onBlur={(e) => {
+                            const next = e.target.value.trim();
+                            if (next === (selectedProvider.contact_phone ?? "")) return;
+                            void handleProviderPatch(selectedProvider.id, { contact_phone: next || null });
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Provider Details</h3>
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/50">
+                        <Mail className="w-4 h-4 text-muted-foreground" />
+                        <div>
+                          <div className="text-xs text-muted-foreground">Primary Email</div>
+                          <div className="text-sm font-medium">{selectedProvider.contact_email ?? "—"}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/50">
+                        <Calendar className="w-4 h-4 text-muted-foreground" />
+                        <div>
+                          <div className="text-xs text-muted-foreground">Joined</div>
+                          <div className="text-sm font-medium">{format(new Date(selectedProvider.created_at), "MMM d, yyyy")}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border bg-card/80 backdrop-blur-sm shadow-sm overflow-hidden">
+              <div className="px-6 py-5 border-b bg-gradient-to-r from-blue-500/5 via-transparent to-transparent">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 rounded-xl bg-blue-500/10 text-blue-600">
+                    <Users className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold">Team Members</h2>
+                    <p className="text-sm text-muted-foreground">Manage members and administrators for this provider</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6">
+                <div className="mb-6 p-4 rounded-xl border bg-gradient-to-r from-violet-500/5 via-transparent to-transparent">
+                  <h3 className="text-sm font-semibold mb-3">Add Team Member</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                    <div className="sm:col-span-4">
+                      <Label className="text-xs text-muted-foreground" htmlFor="provider-member-full-name">Member full name</Label>
+                      <Input
+                        id="provider-member-full-name"
+                        value={newMember.fullName}
+                        onChange={(e) => setNewMember((prev) => ({ ...prev, fullName: e.target.value }))}
+                        className="mt-1 bg-background/70"
+                        placeholder="Pat Provider"
+                        disabled={busy}
+                      />
+                    </div>
+                    <div className="sm:col-span-4">
+                      <Label className="text-xs text-muted-foreground" htmlFor="provider-member-email">Member email</Label>
+                      <Input
+                        id="provider-member-email"
+                        type="email"
+                        value={newMember.email}
+                        onChange={(e) => setNewMember((prev) => ({ ...prev, email: e.target.value }))}
+                        className="mt-1 bg-background/70"
+                        placeholder="employee@provider.com"
+                        disabled={busy}
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label className="text-xs text-muted-foreground" htmlFor="provider-member-role">Role</Label>
+                      <select
+                        id="provider-member-role"
+                        value={newMember.role}
+                        disabled={busy}
+                        onChange={(e) => setNewMember((prev) => ({ ...prev, role: e.target.value }))}
+                        className="mt-1 h-10 w-full rounded-md border border-input bg-background/70 px-3 text-sm shadow-sm"
+                      >
+                        <option value="member">Member</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Button className="w-full gap-2" onClick={handleCreateProviderMember} disabled={busy || !newMember.email.trim()}>
+                        <Plus className="w-4 h-4" />
+                        Add Member
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                {membersLoading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
+                  </div>
+                ) : providerMembers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">No provider members found.</p>
+                ) : (
+                  <div className="rounded-xl border overflow-hidden divide-y">
+                    {providerMembers.map((m) => (
+                      <div key={m.id} className="p-4 sm:p-5 hover:bg-muted/30 transition-colors">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-start gap-4">
+                            <div className="p-2.5 rounded-xl bg-muted/50 text-muted-foreground">
+                              <Mail className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-3 flex-wrap">
+                                <span className="font-medium text-sm break-all">{m.email || m.name}</span>
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full border text-[11px] font-medium capitalize ${roleBadgeClass(m.role)}`}>
+                                  {m.role}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
+                                <span>Display: {m.name}</span>
+                                <span>User ID: {m.user_id.slice(0, 8)}...</span>
+                                <span>Joined {format(new Date(m.created_at), "MMM d, yyyy")}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10 gap-1"
+                            disabled={busy}
+                            onClick={() => void handleRemoveMember(m)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Remove
+                          </Button>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-1 lg:grid-cols-[184px_184px] gap-3 items-end">
+                          <div>
+                            <Label className="text-xs text-muted-foreground" htmlFor={`provider-role-${m.id}`}>Role</Label>
+                            <select
+                              id={`provider-role-${m.id}`}
+                              value={m.role}
+                              disabled={busy}
+                              onChange={(e) => void handleRoleChange(m, e.target.value)}
+                              className="mt-1 h-10 w-full rounded-md border border-input bg-background/70 px-3 text-sm shadow-sm"
+                            >
+                              <option value="member">Member</option>
+                              <option value="admin">Admin</option>
+                            </select>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="gap-2"
+                            disabled={busy}
+                            onClick={() => void handleGenerateTemporaryPassword(m)}
+                          >
+                            <KeyRound className="w-4 h-4" />
+                            Reset Password
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <Card className="rounded-2xl bg-card/80 backdrop-blur-sm shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <CardTitle className="text-base">All Providers</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
+                </div>
+              ) : providers.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No providers found.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Company</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Phone</TableHead>
+                      <TableHead>Regions</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Joined</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      ) : null}
+                  </TableHeader>
+                  <TableBody>
+                    {providers.map((p) => (
+                      <TableRow key={p.id}>
+                        <TableCell className="font-medium">{p.company_name}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{p.contact_email ?? "—"}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{p.contact_phone ?? "—"}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {p.regions_served?.join(", ") ?? "—"}
+                        </TableCell>
+                        <TableCell><StatusBadge status={p.status} /></TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {format(new Date(p.created_at), "MMM d, yyyy")}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 gap-1 text-xs"
+                              onClick={() => handleOpenProviderTeam(p)}
+                            >
+                              <Users className="h-3.5 w-3.5" />
+                              Team
+                            </Button>
+                            {p.status !== "approved" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs border-green-300 text-green-700 hover:bg-green-50"
+                                disabled={updating === p.id}
+                                onClick={() => updateStatus(p.id, "approved")}
+                              >
+                                Approve
+                              </Button>
+                            )}
+                            {p.status !== "suspended" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs border-red-300 text-red-700 hover:bg-red-50"
+                                disabled={updating === p.id}
+                                onClick={() => updateStatus(p.id, "suspended")}
+                              >
+                                Suspend
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </PageShell>
 
       <Dialog
@@ -507,7 +798,7 @@ export default function AdminProvidersPage2() {
             <div className="space-y-4">
               <div className="rounded-lg border bg-muted/40 p-4">
                 <div className="text-xs font-medium text-muted-foreground">Provider login</div>
-                <div className="mt-1 text-sm font-medium">{createdCredentials.email}</div>
+                <div className="mt-1 text-sm font-medium break-all">{createdCredentials.email}</div>
               </div>
               <div className="rounded-lg border bg-muted/40 p-4">
                 <div className="text-xs font-medium text-muted-foreground">Temporary password</div>

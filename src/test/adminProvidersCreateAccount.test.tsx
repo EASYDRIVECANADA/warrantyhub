@@ -57,7 +57,6 @@ const profileRows = [
   {
     id: "provider-admin-1",
     email: "admin@provider.test",
-    full_name: "Provider Admin",
     display_name: "Provider Admin",
     first_name: "Provider",
     last_name: "Admin",
@@ -142,6 +141,34 @@ describe("AdminProvidersPage2 provider account creation", () => {
     expect(screen.getByDisplayValue("ProviderTemp123!")).toBeInTheDocument();
   });
 
+  it("opens providers in the same master-detail workflow as dealerships", async () => {
+    const user = userEvent.setup();
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <AdminProvidersPage2 />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("Existing Provider");
+    await user.click(screen.getByRole("button", { name: /team/i }));
+
+    expect(await screen.findByRole("button", { name: /back to providers/i })).toBeInTheDocument();
+    expect(screen.getByText("Provider ID: provider-1")).toBeInTheDocument();
+    expect(screen.getByText("Provider Settings")).toBeInTheDocument();
+    expect(screen.getByText("Team Members")).toBeInTheDocument();
+    expect(screen.getByText("Admins")).toBeInTheDocument();
+    expect(screen.getByText("Members")).toBeInTheDocument();
+  });
+
   it("lets superadmin add a provider employee to an existing provider", async () => {
     vi.mocked(invokeEdgeFunction).mockResolvedValueOnce({
       providerMemberId: "provider-member-created-1",
@@ -166,11 +193,10 @@ describe("AdminProvidersPage2 provider account creation", () => {
 
     await screen.findByText("Existing Provider");
     await user.click(screen.getByRole("button", { name: /team/i }));
-    await screen.findByText("Provider Team");
+    await screen.findByText("Team Members");
+    await user.type(screen.getByLabelText(/member full name/i), "Eli Employee");
+    await user.type(screen.getByLabelText(/member email/i), "Employee@Provider.test");
     await user.click(screen.getByRole("button", { name: /add member/i }));
-    await user.type(screen.getByLabelText(/full name/i), "Eli Employee");
-    await user.type(screen.getByLabelText(/^email$/i), "Employee@Provider.test");
-    await user.click(screen.getByRole("button", { name: /create member/i }));
 
     await waitFor(() => {
       expect(invokeEdgeFunction).toHaveBeenCalledWith("company-access-tools", {
@@ -188,5 +214,53 @@ describe("AdminProvidersPage2 provider account creation", () => {
     });
     expect(screen.getByText("Temporary password created")).toBeInTheDocument();
     expect(screen.getByDisplayValue("ProviderEmployeeTemp123!")).toBeInTheDocument();
+  });
+
+  it("lets superadmin reset and remove provider members from the detail view", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(invokeEdgeFunction).mockResolvedValue({
+      temporaryPassword: "ProviderReset123!",
+    });
+    const user = userEvent.setup();
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <AdminProvidersPage2 />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("Existing Provider");
+    await user.click(screen.getByRole("button", { name: /team/i }));
+    await screen.findByText("admin@provider.test");
+
+    await user.click(screen.getByRole("button", { name: /reset password/i }));
+    await waitFor(() => {
+      expect(invokeEdgeFunction).toHaveBeenCalledWith("company-access-tools", {
+        action: "generate_temporary_password",
+        companyType: "provider",
+        companyId: "provider-1",
+        userId: "provider-admin-1",
+      });
+    });
+    expect(screen.getByDisplayValue("ProviderReset123!")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /remove/i }));
+    await waitFor(() => {
+      expect(invokeEdgeFunction).toHaveBeenCalledWith("company-access-tools", {
+        action: "remove_company_member",
+        companyType: "provider",
+        companyId: "provider-1",
+        memberId: "provider-member-admin-1",
+        userId: "provider-admin-1",
+      });
+    });
   });
 });
