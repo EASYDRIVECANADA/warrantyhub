@@ -51,6 +51,14 @@ type CreatedProviderCredentials = {
   temporaryPassword: string;
 };
 
+type TeamFeedback = {
+  kind: "success" | "error";
+  title: string;
+  description?: string;
+  email?: string;
+  temporaryPassword?: string;
+};
+
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
@@ -93,6 +101,7 @@ export default function AdminProvidersPage2() {
   const [creatingMember, setCreatingMember] = useState(false);
   const [passwordCopied, setPasswordCopied] = useState(false);
   const [createdCredentials, setCreatedCredentials] = useState<CreatedProviderCredentials | null>(null);
+  const [teamFeedback, setTeamFeedback] = useState<TeamFeedback | null>(null);
   const [newProvider, setNewProvider] = useState({
     companyName: "",
     adminFirstName: "",
@@ -123,6 +132,17 @@ export default function AdminProvidersPage2() {
   useEffect(() => {
     void fetchProviders();
   }, [fetchProviders]);
+
+  const upsertVisibleProviderMember = useCallback((member: ProviderMember) => {
+    setProviderMembers((prev) => {
+      const existingIndex = prev.findIndex((m) => m.id === member.id || m.user_id === member.user_id);
+      if (existingIndex === -1) return [member, ...prev];
+
+      const next = [...prev];
+      next[existingIndex] = { ...next[existingIndex], ...member };
+      return next;
+    });
+  }, []);
 
   const fetchProviderMembers = useCallback(async (providerId: string) => {
     setMembersLoading(true);
@@ -174,6 +194,7 @@ export default function AdminProvidersPage2() {
   }, [toast]);
 
   const handleOpenProviderTeam = (provider: Provider) => {
+    setTeamFeedback(null);
     setSelectedProviderId(provider.id);
     void fetchProviderMembers(provider.id);
   };
@@ -203,7 +224,7 @@ export default function AdminProvidersPage2() {
 
     setCreatingProvider(true);
     try {
-      const response = await invokeEdgeFunction<{ providerId: string; userId: string; temporaryPassword: string }>(
+      const response = await invokeEdgeFunction<{ providerId: string; providerMemberId?: string | null; userId: string; temporaryPassword: string }>(
         "company-access-tools",
         {
           action: "create_provider_account",
@@ -222,16 +243,50 @@ export default function AdminProvidersPage2() {
         },
       );
 
+      const createdAt = new Date().toISOString();
+      const providerId = response.providerId;
       markTemporaryPasswordEmail(email);
       setCreatedCredentials({ email, temporaryPassword: response.temporaryPassword });
       setPasswordCopied(false);
       setNewProvider({ companyName: "", adminFirstName: "", adminLastName: "", adminEmail: "" });
       setCreateDialogOpen(false);
-      setSelectedProviderId(response.providerId);
+      setProviders((prev) => [
+        {
+          id: providerId,
+          company_name: companyName,
+          contact_email: email,
+          contact_phone: null,
+          regions_served: [],
+          status: "approved",
+          created_at: createdAt,
+        },
+        ...prev.filter((p) => p.id !== providerId),
+      ]);
+      setProviderMembers([
+        {
+          id: response.providerMemberId ?? `provider-admin-${response.userId}`,
+          user_id: response.userId,
+          role: "admin",
+          created_at: createdAt,
+          name: `${firstName} ${lastName}`.trim(),
+          email,
+        },
+      ]);
+      setTeamFeedback({
+        kind: "success",
+        title: "Temporary password ready",
+        description: `${email} was added as the provider admin.`,
+        email,
+        temporaryPassword: response.temporaryPassword,
+      });
+      setSelectedProviderId(providerId);
       toast({ title: "Provider Created", description: `${companyName} can now sign in with the temporary password.` });
-      await fetchProviders();
-      await fetchProviderMembers(response.providerId);
     } catch (err: any) {
+      setTeamFeedback({
+        kind: "error",
+        title: "Could not create provider",
+        description: err.message || "Could not create provider account.",
+      });
       toast({ title: "Error", description: err.message || "Could not create provider account.", variant: "destructive" });
     } finally {
       setCreatingProvider(false);
@@ -249,6 +304,7 @@ export default function AdminProvidersPage2() {
     }
 
     setCreatingMember(true);
+    setTeamFeedback(null);
     try {
       const response = await invokeEdgeFunction<{ providerMemberId?: string | null; userId: string; temporaryPassword: string }>(
         "company-access-tools",
@@ -267,12 +323,31 @@ export default function AdminProvidersPage2() {
       );
 
       markTemporaryPasswordEmail(email);
+      upsertVisibleProviderMember({
+        id: response.providerMemberId ?? `provider-member-${response.userId}`,
+        user_id: response.userId,
+        role: newMember.role as "admin" | "member",
+        created_at: new Date().toISOString(),
+        name: `${firstName} ${lastName}`.trim(),
+        email,
+      });
       setCreatedCredentials({ email, temporaryPassword: response.temporaryPassword });
+      setTeamFeedback({
+        kind: "success",
+        title: "Temporary password ready",
+        description: `${email} was added to ${selectedProvider.company_name}.`,
+        email,
+        temporaryPassword: response.temporaryPassword,
+      });
       setPasswordCopied(false);
       setNewMember({ fullName: "", email: "", role: "member" });
       toast({ title: "Member Added", description: `${email} can now sign in with the temporary password.` });
-      await fetchProviderMembers(selectedProvider.id);
     } catch (err: any) {
+      setTeamFeedback({
+        kind: "error",
+        title: "Could not add member",
+        description: err.message || "Could not create provider member.",
+      });
       toast({ title: "Error", description: err.message || "Could not create provider member.", variant: "destructive" });
     } finally {
       setCreatingMember(false);
@@ -290,8 +365,18 @@ export default function AdminProvidersPage2() {
         role,
       });
       setProviderMembers((prev) => prev.map((m) => (m.id === member.id ? { ...m, role: role as "admin" | "member" } : m)));
+      setTeamFeedback({
+        kind: "success",
+        title: "Role updated",
+        description: `${member.email || member.name} is now ${role === "admin" ? "an admin" : "a member"}.`,
+      });
       toast({ title: "Role Updated" });
     } catch (err: any) {
+      setTeamFeedback({
+        kind: "error",
+        title: "Could not update role",
+        description: err.message || "Could not update role.",
+      });
       toast({ title: "Error", description: err.message || "Could not update role.", variant: "destructive" });
     }
   };
@@ -307,9 +392,21 @@ export default function AdminProvidersPage2() {
       });
       markTemporaryPasswordEmail(member.email);
       setCreatedCredentials({ email: member.email || member.name, temporaryPassword: response.temporaryPassword });
+      setTeamFeedback({
+        kind: "success",
+        title: "Temporary password ready",
+        description: `Password reset for ${member.email || member.name}.`,
+        email: member.email || member.name,
+        temporaryPassword: response.temporaryPassword,
+      });
       setPasswordCopied(false);
       toast({ title: "Temporary Password Created" });
     } catch (err: any) {
+      setTeamFeedback({
+        kind: "error",
+        title: "Could not reset password",
+        description: err.message || "Could not generate password.",
+      });
       toast({ title: "Error", description: err.message || "Could not generate password.", variant: "destructive" });
     }
   };
@@ -326,8 +423,18 @@ export default function AdminProvidersPage2() {
         userId: member.user_id,
       });
       setProviderMembers((prev) => prev.filter((m) => m.id !== member.id));
+      setTeamFeedback({
+        kind: "success",
+        title: "Member removed",
+        description: `${member.email || member.name} was removed from this provider.`,
+      });
       toast({ title: "Member Removed" });
     } catch (err: any) {
+      setTeamFeedback({
+        kind: "error",
+        title: "Could not remove member",
+        description: err.message || "Could not remove member.",
+      });
       toast({ title: "Error", description: err.message || "Could not remove member.", variant: "destructive" });
     }
   };
@@ -624,6 +731,52 @@ export default function AdminProvidersPage2() {
                     </div>
                   </div>
                 </div>
+
+                {teamFeedback ? (
+                  <div
+                    role={teamFeedback.kind === "error" ? "alert" : "status"}
+                    className={`mb-6 rounded-xl border p-4 ${
+                      teamFeedback.kind === "error"
+                        ? "border-red-200 bg-red-50 text-red-900"
+                        : "border-green-200 bg-green-50 text-green-900"
+                    }`}
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold">{teamFeedback.title}</div>
+                        {teamFeedback.description ? <div className="mt-1 text-sm opacity-80">{teamFeedback.description}</div> : null}
+                        {teamFeedback.email ? <div className="mt-2 text-xs font-medium break-all">Login: {teamFeedback.email}</div> : null}
+                        {teamFeedback.temporaryPassword ? (
+                          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                            <div className="rounded-md border bg-white/80 px-3 py-2 font-mono text-sm break-all">
+                              {teamFeedback.temporaryPassword}
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="w-fit bg-white/80"
+                              onClick={() => {
+                                void navigator.clipboard.writeText(teamFeedback.temporaryPassword ?? "");
+                              }}
+                            >
+                              Copy password
+                            </Button>
+                          </div>
+                        ) : null}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="w-fit"
+                        onClick={() => setTeamFeedback(null)}
+                      >
+                        Dismiss
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
 
                 {membersLoading ? (
                   <div className="flex justify-center py-8">

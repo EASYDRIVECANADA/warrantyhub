@@ -139,6 +139,8 @@ describe("AdminProvidersPage2 provider account creation", () => {
     });
     expect(screen.getByText("Temporary password created")).toBeInTheDocument();
     expect(screen.getByDisplayValue("ProviderTemp123!")).toBeInTheDocument();
+    expect(screen.getByText("Provider ID: provider-created-1")).toBeInTheDocument();
+    expect(screen.getByText("Apex Warranty")).toBeInTheDocument();
   });
 
   it("opens providers in the same master-detail workflow as dealerships", async () => {
@@ -214,6 +216,8 @@ describe("AdminProvidersPage2 provider account creation", () => {
     });
     expect(screen.getByText("Temporary password created")).toBeInTheDocument();
     expect(screen.getByDisplayValue("ProviderEmployeeTemp123!")).toBeInTheDocument();
+    expect(screen.getByText("Temporary password ready")).toBeInTheDocument();
+    expect(screen.getByText("Display: Eli Employee")).toBeInTheDocument();
   });
 
   it("lets superadmin reset and remove provider members from the detail view", async () => {
