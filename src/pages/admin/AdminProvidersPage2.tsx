@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageShell } from "../../components/PageShell";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
@@ -21,6 +21,8 @@ import {
   Mail,
   MapPin,
   Plus,
+  RefreshCw,
+  Search,
   Shield,
   Trash2,
   UserCog,
@@ -99,6 +101,9 @@ export default function AdminProvidersPage2() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [creatingProvider, setCreatingProvider] = useState(false);
   const [creatingMember, setCreatingMember] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [regionFilter, setRegionFilter] = useState("all");
   const [passwordCopied, setPasswordCopied] = useState(false);
   const [createdCredentials, setCreatedCredentials] = useState<CreatedProviderCredentials | null>(null);
   const [teamFeedback, setTeamFeedback] = useState<TeamFeedback | null>(null);
@@ -119,6 +124,33 @@ export default function AdminProvidersPage2() {
   const memberCount = providerMembers.filter((m) => m.role !== "admin").length;
   const activeCount = providerMembers.length;
   const regionCount = selectedProvider?.regions_served?.length ?? 0;
+  const regionOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        providers
+          .flatMap((p) => p.regions_served ?? [])
+          .map((region) => region.trim())
+          .filter(Boolean),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+  }, [providers]);
+
+  const filteredProviders = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return providers.filter((provider) => {
+      const searchable = [
+        provider.company_name,
+        provider.contact_email ?? "",
+        provider.contact_phone ?? "",
+        provider.id,
+        ...(provider.regions_served ?? []),
+      ].join(" ").toLowerCase();
+      const matchesSearch = !q || searchable.includes(q);
+      const matchesStatus = statusFilter === "all" || provider.status === statusFilter;
+      const matchesRegion = regionFilter === "all" || (provider.regions_served ?? []).includes(regionFilter);
+      return matchesSearch && matchesStatus && matchesRegion;
+    });
+  }, [providers, regionFilter, search, statusFilter]);
 
   const fetchProviders = useCallback(async () => {
     const { data } = await supabase
@@ -449,7 +481,7 @@ export default function AdminProvidersPage2() {
     <>
       <PageShell
         title="Providers"
-        subtitle="Create provider companies and initial provider admin accounts"
+        subtitle="Manage provider companies and team access"
         badge="Admin"
         actions={
           <div className="flex items-center gap-2">
@@ -457,7 +489,8 @@ export default function AdminProvidersPage2() {
               <Plus className="h-4 w-4" />
               Create Provider Account
             </Button>
-            <Button variant="outline" size="sm" onClick={() => void fetchProviders()}>
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => void fetchProviders()}>
+              <RefreshCw className="h-4 w-4" />
               Refresh
             </Button>
           </div>
@@ -854,15 +887,64 @@ export default function AdminProvidersPage2() {
         ) : (
           <Card className="rounded-2xl bg-card/80 backdrop-blur-sm shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between gap-4">
-              <CardTitle className="text-base">All Providers</CardTitle>
+              <CardTitle className="text-base">All Providers ({providers.length})</CardTitle>
             </CardHeader>
             <CardContent>
+              <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-[minmax(220px,1fr)_160px_180px]">
+                <div>
+                  <Label className="text-xs text-muted-foreground" htmlFor="provider-search">Search providers</Label>
+                  <div className="relative mt-1">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="provider-search"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search by name, email, region, or ID..."
+                      className="pl-10 bg-background/70"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground" htmlFor="provider-status-filter">Status filter</Label>
+                  <select
+                    id="provider-status-filter"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="mt-1 h-10 w-full rounded-md border border-input bg-background/70 px-3 text-sm shadow-sm"
+                  >
+                    <option value="all">All statuses</option>
+                    <option value="approved">Approved</option>
+                    <option value="pending">Pending</option>
+                    <option value="suspended">Suspended</option>
+                  </select>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground" htmlFor="provider-region-filter">Region filter</Label>
+                  <select
+                    id="provider-region-filter"
+                    value={regionFilter}
+                    onChange={(e) => setRegionFilter(e.target.value)}
+                    className="mt-1 h-10 w-full rounded-md border border-input bg-background/70 px-3 text-sm shadow-sm"
+                  >
+                    <option value="all">All regions</option>
+                    {regionOptions.map((region) => (
+                      <option key={region} value={region}>{region}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               {loading ? (
                 <div className="flex justify-center py-8">
                   <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
                 </div>
               ) : providers.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">No providers found.</p>
+              ) : filteredProviders.length === 0 ? (
+                <div className="text-center py-10">
+                  <div className="text-sm font-medium">No providers match your filters</div>
+                  <div className="mt-1 text-sm text-muted-foreground">Try a different search, status, or region.</div>
+                </div>
               ) : (
                 <Table>
                   <TableHeader>
@@ -877,7 +959,7 @@ export default function AdminProvidersPage2() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {providers.map((p) => (
+                    {filteredProviders.map((p) => (
                       <TableRow key={p.id}>
                         <TableCell className="font-medium">{p.company_name}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">{p.contact_email ?? "—"}</TableCell>
@@ -898,7 +980,7 @@ export default function AdminProvidersPage2() {
                               onClick={() => handleOpenProviderTeam(p)}
                             >
                               <Users className="h-3.5 w-3.5" />
-                              Team
+                              Manage Team
                             </Button>
                             {p.status !== "approved" && (
                               <Button
@@ -911,17 +993,6 @@ export default function AdminProvidersPage2() {
                                 Approve
                               </Button>
                             )}
-                            {p.status !== "suspended" && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs border-red-300 text-red-700 hover:bg-red-50"
-                                disabled={updating === p.id}
-                                onClick={() => updateStatus(p.id, "suspended")}
-                              >
-                                Suspend
-                              </Button>
-                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -929,6 +1000,11 @@ export default function AdminProvidersPage2() {
                   </TableBody>
                 </Table>
               )}
+              {!loading && providers.length > 0 ? (
+                <div className="mt-4 border-t pt-3 text-xs text-muted-foreground">
+                  Showing {filteredProviders.length} of {providers.length} providers
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         )}

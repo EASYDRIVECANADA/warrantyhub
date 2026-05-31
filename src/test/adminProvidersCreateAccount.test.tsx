@@ -112,7 +112,7 @@ describe("AdminProvidersPage2 provider account creation", () => {
     );
 
     await screen.findByText("Existing Provider");
-    expect(screen.getByText("Create provider companies and initial provider admin accounts")).toBeInTheDocument();
+    expect(screen.getByText("Manage provider companies and team access")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /create provider account/i }));
     await user.type(screen.getByLabelText(/company name/i), "Apex Warranty");
     await user.type(screen.getByLabelText(/admin first name/i), "Pat");
@@ -169,6 +169,42 @@ describe("AdminProvidersPage2 provider account creation", () => {
     expect(screen.getByText("Team Members")).toBeInTheDocument();
     expect(screen.getByText("Admins")).toBeInTheDocument();
     expect(screen.getByText("Members")).toBeInTheDocument();
+  });
+
+  it("keeps list actions focused and supports provider search and filters", async () => {
+    const user = userEvent.setup();
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <AdminProvidersPage2 />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("Existing Provider");
+    expect(screen.getByText("All Providers (1)")).toBeInTheDocument();
+    expect(screen.getByText("Showing 1 of 1 providers")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /manage team/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^suspend$/i })).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/search providers/i), "missing");
+    expect(screen.getByText("No providers match your filters")).toBeInTheDocument();
+    expect(screen.getByText("Showing 0 of 1 providers")).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText(/search providers/i));
+    await user.selectOptions(screen.getByLabelText(/status filter/i), "suspended");
+    expect(screen.getByText("No providers match your filters")).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText(/status filter/i), "all");
+    await user.selectOptions(screen.getByLabelText(/region filter/i), "Ontario");
+    expect(screen.getByText("Existing Provider")).toBeInTheDocument();
   });
 
   it("lets superadmin add a provider employee to an existing provider", async () => {
