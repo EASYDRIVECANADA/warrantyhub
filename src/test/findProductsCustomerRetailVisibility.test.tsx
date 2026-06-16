@@ -43,6 +43,7 @@ const products = [
 
 let pricingRows: Array<{
   product_id: string;
+  dealer_cost?: Record<string, number>;
   retail_price: Record<string, number>;
   confidentiality_enabled: boolean;
   selling_enabled: boolean;
@@ -51,7 +52,11 @@ let pricingRows: Array<{
 
 function makeSupabaseChain(table: string) {
   const chain: Record<string, unknown> = {};
-  chain.select = vi.fn(() => chain);
+  let selectedColumns: string | null = null;
+  chain.select = vi.fn((columns?: string) => {
+    selectedColumns = typeof columns === "string" ? columns : null;
+    return chain;
+  });
   chain.eq = vi.fn(() => chain);
   chain.in = vi.fn(() => chain);
   chain.order = vi.fn(() => Promise.resolve({ data: [], error: null }));
@@ -65,7 +70,18 @@ function makeSupabaseChain(table: string) {
   }
 
   if (table === "dealership_product_pricing") {
-    chain.eq = vi.fn(() => Promise.resolve({ data: pricingRows, error: null }));
+    chain.eq = vi.fn(() => {
+      const selected = selectedColumns
+        ? selectedColumns.split(",").map((column) => column.trim()).filter(Boolean)
+        : null;
+      const data = selected
+        ? pricingRows.map((row) =>
+            Object.fromEntries(selected.map((column) => [column, (row as Record<string, unknown>)[column]])),
+          )
+        : pricingRows;
+
+      return Promise.resolve({ data, error: null });
+    });
   }
 
   return chain;
@@ -107,6 +123,64 @@ describe("FindProductsPage customer retail visibility", () => {
     });
     expect(screen.queryByText("$889")).not.toBeInTheDocument();
     expect(screen.getByText("$189")).toBeInTheDocument();
+    expect(screen.getByText("Dealer cost")).toBeInTheDocument();
+  });
+
+  it("shows saved dealer cost overrides on product cards when customer retail is disabled", async () => {
+    pricingRows = [
+      {
+        product_id: "product-1",
+        dealer_cost: { "t0|m-|r0|term0": 275 },
+        retail_price: { "t0|m-|r0|term0": 999 },
+        confidentiality_enabled: false,
+        selling_enabled: true,
+        sort_order: null,
+      },
+    ];
+
+    render(
+      <MemoryRouter>
+        <FindProductsPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Customer Hidden Warranty")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.queryByText("$999")).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText("$889")).not.toBeInTheDocument();
+    expect(screen.queryByText("$189")).not.toBeInTheDocument();
+    expect(screen.getByText("$275")).toBeInTheDocument();
+    expect(screen.getByText("Dealer cost")).toBeInTheDocument();
+  });
+
+  it("shows dealer cost on product cards when customer retail is disabled before retail is configured", async () => {
+    pricingRows = [
+      {
+        product_id: "product-1",
+        dealer_cost: { "t0|m-|r0|term0": 275 },
+        retail_price: {},
+        confidentiality_enabled: false,
+        selling_enabled: false,
+        sort_order: null,
+      },
+    ];
+
+    render(
+      <MemoryRouter>
+        <FindProductsPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Customer Hidden Warranty")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.queryByText("$999")).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText("$889")).not.toBeInTheDocument();
+    expect(screen.queryByText("$189")).not.toBeInTheDocument();
+    expect(screen.getByText("$275")).toBeInTheDocument();
     expect(screen.getByText("Dealer cost")).toBeInTheDocument();
   });
 

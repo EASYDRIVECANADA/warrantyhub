@@ -21,6 +21,8 @@ import {
   retailStrategyForProvider,
   resolveCustomerRetail,
   resolveCustomerRetailNumber,
+  resolveDealerCost,
+  resolveDealerCostNumber,
 } from "../../lib/pricing/dealerPricing";
 
 // ── Types ─────────────────────────────────────────
@@ -240,7 +242,9 @@ export default function ProductCoveragePage() {
   const [notFound, setNotFound] = useState(false);
   const [activeSection, setActiveSection] = useState<"overview" | "coverage" | "pricing" | "benefits" | "terms">("overview");
   const [expandedCategories, setExpandedCategories] = useState<Set<number>>(new Set());
+  const [customDealerCost, setCustomDealerCost] = useState<Record<string, number>>({});
   const [customPricing, setCustomPricing] = useState<Record<string, number>>({});
+  const [hasDealerPricingConfig, setHasDealerPricingConfig] = useState(false);
   const [confidentialityEnabled, setConfidentialityEnabled] = useState(false);
   const [sellingEnabled, setSellingEnabled] = useState(false);
   const [selectedTier, setSelectedTier] = useState<string | null>(null);
@@ -279,31 +283,39 @@ export default function ProductCoveragePage() {
     (async () => {
       const { data } = await supabase
         .from("dealership_product_pricing")
-        .select("retail_price, confidentiality_enabled, selling_enabled")
+        .select("dealer_cost, retail_price, confidentiality_enabled, selling_enabled")
         .eq("dealership_id", dealershipId)
         .eq("product_id", id)
         .maybeSingle();
-      if (data?.retail_price) setCustomPricing(data.retail_price as Record<string, number>);
-      if (data?.confidentiality_enabled) setConfidentialityEnabled(true);
+      setHasDealerPricingConfig(Boolean(data));
+      setCustomDealerCost(((data as any)?.dealer_cost ?? {}) as Record<string, number>);
+      setCustomPricing(((data as any)?.retail_price ?? {}) as Record<string, number>);
+      setConfidentialityEnabled(Boolean(data?.confidentiality_enabled));
       setSellingEnabled(Boolean(data?.selling_enabled));
     })();
   }, [dealershipId, id]);
 
-  // Returns the dealer's saved customer-facing retail, or falls back to provider suggested retail.
+  const dealerPricingConfig = {
+    dealer_cost: customDealerCost,
+    retail_price: customPricing,
+    confidentiality_enabled: confidentialityEnabled,
+    selling_enabled: sellingEnabled,
+    retail_strategy: retailStrategyForProvider(providerName),
+  };
+  const showCustomerRetail = !hasDealerPricingConfig || confidentialityEnabled;
+  const visiblePriceLabel = showCustomerRetail ? "Customer price" : "Dealer cost";
+
+  // Returns the currently visible price according to the dealer retail toggle.
   function getDisplayPrice(row: PricingRow): number {
-    return resolveCustomerRetailNumber(row, {
-      retail_price: customPricing,
-      confidentiality_enabled: confidentialityEnabled,
-      retail_strategy: retailStrategyForProvider(providerName),
-    });
+    return showCustomerRetail
+      ? resolveCustomerRetailNumber(row, dealerPricingConfig)
+      : resolveDealerCostNumber(row, dealerPricingConfig);
   }
 
   function getAddOnDisplayPrice(row: AddOnPricingRow): number | string {
-    return resolveCustomerRetail(row, {
-      retail_price: customPricing,
-      confidentiality_enabled: confidentialityEnabled,
-      retail_strategy: retailStrategyForProvider(providerName),
-    });
+    return showCustomerRetail
+      ? resolveCustomerRetail(row, dealerPricingConfig)
+      : resolveDealerCost(row, dealerPricingConfig);
   }
 
   if (loading) {
@@ -331,6 +343,7 @@ export default function ProductCoveragePage() {
   const pr = (product.pricing_json ?? {}) as any;
   const er = (product.eligibility_rules ?? {}) as any;
   const canQuoteProduct = canSellDealerProduct(product.pricing_json, {
+    dealer_cost: customDealerCost,
     retail_price: customPricing,
     confidentiality_enabled: confidentialityEnabled,
     selling_enabled: sellingEnabled,
@@ -645,7 +658,7 @@ export default function ProductCoveragePage() {
                           {canQuoteProduct ? `$${getDisplayPrice(row).toLocaleString()}` : "Setup required"}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {canQuoteProduct ? "Customer price" : "Dealer admin setup"}
+                          {canQuoteProduct ? visiblePriceLabel : "Dealer admin setup"}
                         </p>
                         <div className="border-t mt-3 pt-3 space-y-1.5">
                           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -984,7 +997,7 @@ export default function ProductCoveragePage() {
                   </p>
                 </div>
                 <div className="text-left md:text-right">
-                  <p className="text-xs text-muted-foreground">Customer price</p>
+                  <p className="text-xs text-muted-foreground">{visiblePriceLabel}</p>
                   <p className="text-xl font-bold text-primary">
                     {canQuoteProduct ? (selectedQuoteTotal > 0 ? `$${selectedQuoteTotal.toLocaleString()}` : "-") : "Setup required"}
                   </p>

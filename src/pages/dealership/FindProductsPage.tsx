@@ -9,7 +9,7 @@ import { Search, RotateCcw, Car, Shield, Check, Loader2, AlertCircle, LayoutGrid
 import { supabase } from "../../integrations/supabase/client";
 import { useDealership } from "../../hooks/useDealership";
 import { cn } from "../../lib/utils";
-import { canSellDealerProduct, hasConfiguredBaseRetail } from "../../lib/dealerProductAccess";
+import { canSellDealerProduct } from "../../lib/dealerProductAccess";
 import { buildBasePricingRows, retailStrategyForProvider, resolveCustomerRetailNumber, resolveDealerCostNumber } from "../../lib/pricing/dealerPricing";
 import { compareProductsByConfiguredOrder } from "../../lib/products/defaultProductOrder";
 import { PRODUCT_TYPE_FILTERS, matchesProductTypeFilter } from "../../lib/products/productTypeFilters";
@@ -111,7 +111,7 @@ export default function FindProductsPage() {
   const [loading, setLoading] = useState(true);
   const [selectedProvider, setSelectedProvider] = useState("all");
   const [selectedType, setSelectedType] = useState(PRODUCT_TYPE_FILTERS[0].value);
-  const [dealerPricing, setDealerPricing] = useState<Record<string, { retail_price: Record<string, number>; confidentiality_enabled: boolean; selling_enabled: boolean; sort_order?: number | null }>>({});
+  const [dealerPricing, setDealerPricing] = useState<Record<string, { dealer_cost: Record<string, number>; retail_price: Record<string, number>; confidentiality_enabled: boolean; selling_enabled: boolean; sort_order?: number | null }>>({});
 
   // ── load products (real data) ──────────────────────────────────────────
   useEffect(() => {
@@ -184,10 +184,17 @@ export default function FindProductsPage() {
     (async () => {
       const { data } = await supabase
         .from("dealership_product_pricing")
-        .select("product_id, retail_price, confidentiality_enabled, selling_enabled, sort_order")
+        .select("product_id, dealer_cost, retail_price, confidentiality_enabled, selling_enabled, sort_order")
         .eq("dealership_id", dealershipId);
-      const map: Record<string, { retail_price: Record<string, number>; confidentiality_enabled: boolean; selling_enabled: boolean; sort_order?: number | null }> = {};
-      (data || []).forEach((r: any) => { map[r.product_id] = { ...r, selling_enabled: Boolean(r.selling_enabled) }; });
+      const map: Record<string, { dealer_cost: Record<string, number>; retail_price: Record<string, number>; confidentiality_enabled: boolean; selling_enabled: boolean; sort_order?: number | null }> = {};
+      (data || []).forEach((r: any) => {
+        map[r.product_id] = {
+          ...r,
+          dealer_cost: r.dealer_cost ?? {},
+          retail_price: r.retail_price ?? {},
+          selling_enabled: Boolean(r.selling_enabled),
+        };
+      });
       setDealerPricing(map);
     })();
   }, [dealershipId]);
@@ -562,8 +569,7 @@ export default function FindProductsPage() {
                 const retailConfig = { ...config, retail_strategy: retailStrategyForProvider(product.providerName) };
                 const canQuote = canSellDealerProduct(product.pricing_json, config);
                 const baseRows = buildBasePricingRows(product.pricing_json);
-                const hasCustomBaseRetail = hasConfiguredBaseRetail(product.pricing_json, config);
-                const showCustomerRetail = Boolean(config?.confidentiality_enabled) || !hasCustomBaseRetail;
+                const showCustomerRetail = !config || Boolean(config.confidentiality_enabled);
                 const visiblePrices = showCustomerRetail
                   ? baseRows
                     .map((row) => resolveCustomerRetailNumber(row, retailConfig))

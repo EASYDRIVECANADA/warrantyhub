@@ -42,6 +42,7 @@ const product = {
 };
 
 let dealerPricing: null | {
+  dealer_cost?: Record<string, number>;
   retail_price: Record<string, number>;
   confidentiality_enabled: boolean;
   selling_enabled: boolean;
@@ -49,7 +50,11 @@ let dealerPricing: null | {
 
 function makeSupabaseChain(table: string) {
   const chain: Record<string, unknown> = {};
-  chain.select = vi.fn(() => chain);
+  let selectedColumns: string | null = null;
+  chain.select = vi.fn((columns?: string) => {
+    selectedColumns = typeof columns === "string" ? columns : null;
+    return chain;
+  });
   chain.eq = vi.fn(() => chain);
   chain.single = vi.fn(() => Promise.resolve({ data: null, error: null }));
   chain.maybeSingle = vi.fn(() => Promise.resolve({ data: null, error: null }));
@@ -63,7 +68,17 @@ function makeSupabaseChain(table: string) {
   }
 
   if (table === "dealership_product_pricing") {
-    chain.maybeSingle = vi.fn(() => Promise.resolve({ data: dealerPricing, error: null }));
+    chain.maybeSingle = vi.fn(() => {
+      if (!dealerPricing) return Promise.resolve({ data: null, error: null });
+      const selected = selectedColumns
+        ? selectedColumns.split(",").map((column) => column.trim()).filter(Boolean)
+        : null;
+      const data = selected
+        ? Object.fromEntries(selected.map((column) => [column, (dealerPricing as Record<string, unknown>)[column]]))
+        : dealerPricing;
+
+      return Promise.resolve({ data, error: null });
+    });
   }
 
   return chain;
@@ -139,5 +154,29 @@ describe("ProductCoveragePage standard retail pricing", () => {
     expect(within(basePricing as HTMLElement).queryByRole("button", { name: /setup required/i })).not.toBeInTheDocument();
 
     product.pricing_json = originalPricing;
+  });
+
+  it("shows dealer cost on product detail when customer retail is disabled", async () => {
+    dealerPricing = {
+      dealer_cost: { "t0|m-|r0|term0": 125 },
+      retail_price: {},
+      confidentiality_enabled: false,
+      selling_enabled: false,
+    };
+
+    render(
+      <MemoryRouter initialEntries={["/dealership/products/product-1"]}>
+        <Routes>
+          <Route path="/dealership/products/:id" element={<ProductCoveragePage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: /test class 1/i });
+
+    expect(await screen.findAllByText("$125")).toHaveLength(2);
+    expect(screen.getByText("Dealer cost")).toBeInTheDocument();
+    expect(screen.queryByText("$809")).not.toBeInTheDocument();
+    expect(screen.queryByText("Customer price")).not.toBeInTheDocument();
   });
 });
